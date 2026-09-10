@@ -41,7 +41,8 @@ async function verify() {
       }
       await new Promise(resolve => setTimeout(resolve, 25));
     }
-    await page.waitForFunction(() => !document.querySelector('.unsaved-dot')); return JSON.parse(await fs.readFile(file, 'utf8'));
+    await page.waitForFunction(() => !document.querySelector('.unsaved-dot'));
+    await page.getByRole('dialog', { name: 'プロジェクトを保存しています', exact: true }).waitFor({ state: 'hidden' }); return JSON.parse(await fs.readFile(file, 'utf8'));
   };
   const open = async project => {
     if (await page.locator('.unsaved-dot').count()) await save();

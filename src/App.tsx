@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ExportEncoder from './components/ExportEncoder';
 import EditingGuide from './components/EditingGuide';
 import Toast from './components/Toast';
@@ -37,9 +37,17 @@ export default function App() {
   const [savingOnClose, setSavingOnClose] = useState(false);
   const [projectBusy, setProjectBusy] = useState('');
   const projectBusyRef = useRef(false);
+  const projectOperationFocus = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (!projectBusy) {
+      const previous = projectOperationFocus.current; projectOperationFocus.current = null;
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
+    }
+  }, [projectBusy]);
   const beginProjectOperation = (label: string) => {
     if (projectBusyRef.current) return false;
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    projectOperationFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    projectOperationFocus.current?.blur();
     useEditor.getState().gestureCancel?.(); useEditor.getState().stop();
     projectBusyRef.current = true; setProjectBusy(label); return true;
   };
@@ -85,8 +93,8 @@ export default function App() {
       if (window.luma) {
         const target = await window.luma.saveProject(snapshot, saveAs); if (!target) return false;
         const unchanged = useEditor.getState().project === snapshot;
-        useEditor.setState({ savedPath: target, dirty: !unchanged });
         if (unchanged) { await window.luma.clearRecovery(); setRecovery(null); }
+        useEditor.setState({ savedPath: target, dirty: !unchanged });
       } else { downloadJSON(snapshot); useEditor.setState({ dirty: false }); }
       useEditor.getState().notify('プロジェクトを保存しました'); return true;
     } catch (e) { useEditor.getState().notify(errorText(e)); return false; }
