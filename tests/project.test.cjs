@@ -153,3 +153,9 @@ test('rejects reserved and unsafe identifiers in every project namespace', () =>
 test('preserves Japanese project identifiers used by existing projects', () => {
   const p = fixture(); p.id = 'つなぎ目の描画 1'; assert.equal(validateProject(p), p);
 });
+
+test('invalid project JSON reports a concrete Japanese format error', () => {
+  const { parseProjectJson } = require('../electron/project.cjs');
+  for (const text of ['', '{', 'not json']) assert.throws(() => parseProjectJson(text), /プロジェクトのJSONが不正/);
+  assert.deepEqual(parseProjectJson(JSON.stringify(fixture())), fixture());
+});

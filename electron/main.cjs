@@ -20,7 +20,7 @@ const { exportEncoders, validateEncoder } = require('./encoders.cjs');
 const { validateTreatment } = require('../shared/audio-treatment.mjs');
 const { validateProject, exportProject, exportAssets } = require('./export.cjs');
 const { assertDestination, atomicWrite } = require('./persistence.cjs');
-const { assertReplacement, hydrateProject } = require('./project.cjs');
+const { assertReplacement, hydrateProject, parseProjectJson } = require('./project.cjs');
 const { createRecoveryStore } = require('./recovery.cjs');
 const { createCredentials, createOpenAI } = require('./openai.cjs');
 const { audioClips, totalTime, transcribeTimeline, generateMetadata, generateThumbnail } = require('./youtube.cjs');
@@ -271,7 +271,7 @@ function installIPC() {
     if (result.canceled) return null;
     const target = result.filePaths[0];
     if ((await fs.stat(target)).size > 15 * 1024 * 1024) throw new Error('プロジェクトファイルが大きすぎます。');
-    const p = await hydrate(JSON.parse(await fs.readFile(target, 'utf8')));
+    const p = await hydrate(parseProjectJson(await fs.readFile(target, 'utf8')));
     await recoveryFiles.clear(); projectPathGeneration++; projectPath = target; dirty = false;
     return { project: p, path: target };
   });

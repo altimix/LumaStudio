@@ -1,6 +1,14 @@
 const path = require('node:path');
 const { validateProject } = require('./export.cjs');
 
+function parseProjectJson(text) {
+  try { return JSON.parse(text); }
+  catch (error) {
+    if (error instanceof SyntaxError) throw new Error('プロジェクトのJSONが不正です。ファイルが途中で切れているか、保存内容が破損しています。');
+    throw error;
+  }
+}
+
 function assertReplacement(saved, fresh) {
   if (fresh.kind !== saved.kind || fresh.duration < saved.duration) {
     throw new Error('同じ種類で、元の素材以上の長さのファイルを選んでください。');
@@ -35,4 +43,4 @@ async function hydrateProject(project, inspect, present) {
   return validateProject({ ...project, assets });
 }
 
-module.exports = { assertReplacement, hydrateProject, isLocalProjectPath };
+module.exports = { parseProjectJson, assertReplacement, hydrateProject, isLocalProjectPath };
