@@ -31,14 +31,15 @@ async function inspectMedia(file, cacheDir) {
   const duration = kind === 'image' ? 5 : Number(info.format.duration || video?.duration || sound?.duration);
   if (!Number.isFinite(duration) || duration <= 0) throw new Error('素材の長さを取得できません。');
   let playbackPath = file;
-  const compatible = kind === 'image' || (kind === 'audio' && /\.(mp3|wav|m4a|ogg|aac|flac)$/i.test(file)) || (kind === 'video' && ['h264', 'vp8', 'vp9', 'av1'].includes(video.codec_name) && /\.(mp4|m4v|webm|mov)$/i.test(file) && (!sound || ['aac', 'mp3', 'opus', 'vorbis'].includes(sound.codec_name)));
+  const compatible = (kind === 'image' && !/\.tiff?$/i.test(file)) || (kind === 'audio' && /\.(mp3|wav|m4a|ogg|aac|flac)$/i.test(file)) || (kind === 'video' && ['h264', 'vp8', 'vp9', 'av1'].includes(video.codec_name) && /\.(mp4|m4v|webm|mov)$/i.test(file) && (!sound || ['aac', 'mp3', 'opus', 'vorbis'].includes(sound.codec_name)));
   if (!compatible) {
-    playbackPath = path.join(cacheDir, `${id}-proxy.${kind === 'audio' ? 'm4a' : 'mp4'}`);
+    playbackPath = path.join(cacheDir, `${id}-proxy.${kind === 'image' ? 'png' : kind === 'audio' ? 'm4a' : 'mp4'}`);
     try { await fs.access(playbackPath); } catch {
       const temp = playbackPath.replace(/(\.[^.]+)$/, '.tmp$1');
       const args = ['-y', '-i', file];
       if (kind === 'video') args.push('-vf', 'scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p');
-      args.push('-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', temp);
+      if (kind === 'image') args.push('-frames:v', '1', temp);
+      else args.push('-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', temp);
       try { await run(ffmpeg, args); await fs.rename(temp, playbackPath); } finally { await fs.rm(temp, { force: true }).catch(() => {}); }
     }
   }

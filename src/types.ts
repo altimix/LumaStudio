@@ -80,6 +80,8 @@ export interface DesktopAPI {
   resetProjectPath(keepRecovery?: boolean): Promise<void>;
   clearRecovery(expectedSavedAt?: string): Promise<void>;
   setDirty(dirty: boolean): Promise<void>;
+  onPrepareClose(cb: (requestId: number) => void): () => void;
+  finishPrepareClose(requestId: number, dirty: boolean, canClose: boolean): Promise<void>;
   onSaveBeforeClose(cb: (requestId: number) => void): () => void;
   finishSaveBeforeClose(requestId: number, saved: boolean): Promise<void>;
   exportProject(project: Project, settings: ExportSettings, titles: Record<string, string>): Promise<string | null>;

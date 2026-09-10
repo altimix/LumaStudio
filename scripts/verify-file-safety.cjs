@@ -30,6 +30,16 @@ const digest = data => createHash('sha256').update(data).digest('hex');
     await page.getByRole('button', { name: 'プロジェクトを保存 (Ctrl+S)', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.toast[role="status"]')?.textContent.includes('プロジェクトを保存しました'));
     const previousDigest = digest(await fs.readFile(previousProject));
+    const forgedPath = path.join(profile, '未登録の映像.mp4'); await fs.copyFile(original, forgedPath);
+    for (const patch of [{ path: forgedPath }, { revision: 'unregistered-revision' }]) {
+      const forged = JSON.parse(await fs.readFile(previousProject, 'utf8')); Object.assign(forged.assets[0], patch);
+      const message = await page.evaluate(async project => {
+        try { await window.luma.exportProject(project, { width: 1280, height: 720, fps: 30, quality: 'draft', encoder: 'cpu' }, {}); return ''; }
+        catch (error) { return error.message; }
+      }, forged);
+      assert.match(message, /未登録または変更された素材/);
+    }
+
     // Exercise the real save IPC with a transient Windows replacement refusal.
     await app.evaluate(async (_electron, destination) => {
       const files = process.getBuiltinModule('fs/promises'), rename = files.rename;

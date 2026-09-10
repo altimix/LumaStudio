@@ -86,6 +86,13 @@ export default function App() {
     }, 1500);
     return () => clearTimeout(timer);
   }, [p, dirty, ready]);
+  useEffect(() => {
+    const desktop = window.luma;
+    return desktop?.onPrepareClose(async requestId => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      await desktop.finishPrepareClose(requestId, useEditor.getState().dirty, !projectBusyRef.current);
+    });
+  }, []);
   const save = useCallback(async (saveAs = false) => {
     if (!beginProjectOperation('プロジェクトを保存しています')) return false;
     try {
@@ -93,8 +100,8 @@ export default function App() {
       if (window.luma) {
         const target = await window.luma.saveProject(snapshot, saveAs); if (!target) return false;
         const unchanged = useEditor.getState().project === snapshot;
-        if (unchanged) { await window.luma.clearRecovery(); setRecovery(null); }
         useEditor.setState({ savedPath: target, dirty: !unchanged });
+        if (unchanged) { await window.luma.clearRecovery(); setRecovery(null); }
       } else { downloadJSON(snapshot); useEditor.setState({ dirty: false }); }
       useEditor.getState().notify('プロジェクトを保存しました'); return true;
     } catch (e) { useEditor.getState().notify(errorText(e)); return false; }

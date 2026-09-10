@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld('luma', {
   resetProjectPath: keepRecovery => ipcRenderer.invoke('reset-project-path', keepRecovery),
   clearRecovery: expectedSavedAt => ipcRenderer.invoke('clear-recovery', expectedSavedAt),
   setDirty: dirty => ipcRenderer.invoke('dirty', dirty),
+  onPrepareClose: cb => listen('prepare-close', cb),
+  finishPrepareClose: (requestId, dirty, canClose) => ipcRenderer.invoke('finish-prepare-close', requestId, dirty, canClose),
   onSaveBeforeClose: cb => listen('save-before-close', cb),
   finishSaveBeforeClose: (requestId, saved) => ipcRenderer.invoke('finish-save-before-close', requestId, saved),
   exportProject: (p, settings, titles) => ipcRenderer.invoke('export', p, settings, titles),

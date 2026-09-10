@@ -39,7 +39,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }
 ]);
 let window; let exportController; let projectPath = null; let projectPathGeneration = 0; let dirty = false; let importing = false;
-let pendingCloseId = null; let nextCloseId = 0; let allowClose = false;
+let pendingCloseId = null; let preparingCloseId = null; let rendererGone = false; let nextCloseId = 0; let allowClose = false;
 const mediaFiles = new Map(); const completedExports = new Set();
 const registeredAssets = new Map(); let aiController;
 let audioPrepareController;
@@ -276,6 +276,21 @@ function installIPC() {
     if (keepRecovery !== true) await recoveryFiles.clear();
   });
   handle('dirty', value => { dirty = !!value; });
+  handle('finish-prepare-close', (requestId, edited, canClose) => {
+    if (preparingCloseId === null || requestId !== preparingCloseId || typeof edited !== 'boolean' || typeof canClose !== 'boolean') throw new Error('終了要求が一致しません。');
+    preparingCloseId = null; dirty = edited;
+    if (!canClose) return;
+    if (exportController && !exportController.signal.aborted) {
+      const answer = dialog.showMessageBoxSync(window, { type: 'question', buttons: ['編集を続ける', '書き出しを中止して終了'], defaultId: 0, cancelId: 0, title: '書き出し中です', message: '動画の書き出しを中止して終了しますか？' });
+      if (answer === 0) return; exportController.abort();
+    }
+    if (dirty && (!process.env.LUMA_TEST_DATA || process.env.LUMA_TEST_CLOSE === '1')) {
+      const answer = dialog.showMessageBoxSync(window, { type: 'question', buttons: ['編集を続ける', '保存せずに終了', '保存して終了'], defaultId: 0, cancelId: 0, noLink: true, title: 'Luma Studio', message: '未保存の変更があります。保存して終了しますか？', detail: '「保存して終了」はプロジェクトを保存してから終了します。保存先の選択をキャンセルすると編集に戻ります。最新の自動保存は、次回起動時に復元できます。' });
+      if (answer !== 1 && answer !== 2) return;
+      if (answer === 2) { pendingCloseId = ++nextCloseId; window.webContents.send('save-before-close', pendingCloseId); return; }
+    }
+    allowClose = true; window.close();
+  });
   handle('finish-save-before-close', (requestId, saved) => {
     if (requestId !== pendingCloseId || pendingCloseId === null || typeof saved !== 'boolean') throw new Error('終了要求が一致しません。');
     pendingCloseId = null;
@@ -284,6 +299,7 @@ function installIPC() {
   handle('export', async (p, settings, titleImages) => {
     if (exportController) throw new Error('書き出しはすでに実行中です。');
     validateProject(p);
+    for (const asset of p.assets) registered(asset);
     validateEncoder(settings?.encoder);
     const result = await dialog.showSaveDialog(window, { title: '動画を書き出す', defaultPath: `${p.name.replace(/[<>:"/\\|?*]/g, '_')}.mp4`, filters: [{ name: 'H.264 / AAC', extensions: ['mp4'] }] });
     if (result.canceled) return null;
@@ -353,23 +369,13 @@ app.whenReady().then(async () => {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => { if (!url.startsWith('luma://app/') && !url.startsWith(process.env.LUMA_DEV_URL || 'luma://app/')) event.preventDefault(); });
   window.on('close', event => {
-    if (allowClose) return;
-    if (pendingCloseId !== null) { event.preventDefault(); return; }
-    if (exportController && !exportController.signal.aborted) {
-      const answer = dialog.showMessageBoxSync(window, { type: 'question', buttons: ['編集を続ける', '書き出しを中止して終了'], defaultId: 0, cancelId: 0, title: '書き出し中です', message: '動画の書き出しを中止して終了しますか？' });
-      if (answer === 0) { event.preventDefault(); return; } exportController.abort();
-    }
-    if (dirty && (!process.env.LUMA_TEST_DATA || process.env.LUMA_TEST_CLOSE === '1')) {
-      const answer = dialog.showMessageBoxSync(window, { type: 'question', buttons: ['編集を続ける', '保存せずに終了', '保存して終了'], defaultId: 0, cancelId: 0, noLink: true, title: 'Luma Studio', message: '未保存の変更があります。保存して終了しますか？', detail: '「保存して終了」はプロジェクトを保存してから終了します。保存先の選択をキャンセルすると編集に戻ります。最新の自動保存は、次回起動時に復元できます。' });
-      if (answer === 1) return;
-      event.preventDefault();
-      if (answer === 2) {
-        pendingCloseId = ++nextCloseId;
-        window.webContents.send('save-before-close', pendingCloseId);
-      }
-    }
+    if (allowClose || rendererGone) return;
+    event.preventDefault();
+    if (pendingCloseId !== null || preparingCloseId !== null) return;
+    preparingCloseId = ++nextCloseId;
+    window.webContents.send('prepare-close', preparingCloseId);
   });
-  window.webContents.on('render-process-gone', () => { pendingCloseId = null; });
+  window.webContents.on('render-process-gone', () => { pendingCloseId = null; preparingCloseId = null; rendererGone = true; });
   window.once('ready-to-show', () => window.show());
   await window.loadURL(process.env.LUMA_DEV_URL || 'luma://app/');
 });
