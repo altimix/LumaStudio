@@ -116,3 +116,17 @@ test('Windows hydration never probes a persisted POSIX path', { skip: process.pl
   const result = await hydrateProject(p, () => { inspected = true; return p.assets[0]; }, a => a);
   assert.equal(inspected, false); assert.equal(result.assets[0].offline, true); assert.deepEqual(result.clips, p.clips);
 });
+
+test('rejects title IDs that overwrite an asset source', () => {
+  const p = fixture();
+  p.clips.push({ ...p.clips[0], id: p.assets[0].id, kind: 'title', text: 'Title', color: '#ffffff', fontSize: 32 });
+  assert.throws(() => validateProject(p), /テロップIDと素材IDが重複/);
+});
+test('accepts the marker limit and rejects the first extra marker', () => {
+  const { MAX_MARKERS } = require('../shared/time.mjs');
+  const p = fixture();
+  p.markers = Array.from({ length: MAX_MARKERS }, (_, i) => ({ id: `m${i}`, time: i, label: 'M' }));
+  assert.equal(validateProject(p), p);
+  p.markers.push({ id: 'extra', time: 1, label: 'extra' });
+  assert.throws(() => validateProject(p), /マーカーは2000個まで/);
+});

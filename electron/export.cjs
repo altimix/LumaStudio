@@ -10,7 +10,7 @@ const { validateVolumeKeys } = require('../shared/volume-automation.mjs');
 const { writeFilterScript } = require('./filter-script.cjs');
 const { validateYoutube } = require('../shared/youtube.mjs');
 const { number, clipAudioFilter, mixAudioFilter } = require('./audio-render.cjs');
-const { MAX_MEDIA_SECONDS } = require('../shared/time.mjs');
+const { MAX_MEDIA_SECONDS, MAX_MARKERS } = require('../shared/time.mjs');
 const { validateTextStyle } = require('../shared/text-style.mjs');
 const { validateTextBox } = require('../shared/text-box.mjs');
 const { validateGraphic } = require('../shared/graphics.mjs');
@@ -23,6 +23,7 @@ const finite = (x, lo, hi, label) => { if (!Number.isFinite(x) || x < lo || x > 
 function validateProject(p, { allowForeignPaths = false } = {}) {
   if (!p || p.version !== 1 || typeof p.id !== 'string' || typeof p.name !== 'string' || !Array.isArray(p.assets) || !Array.isArray(p.tracks) || !Array.isArray(p.clips) || !Array.isArray(p.markers)) throw new Error('対応していないプロジェクト形式です。');
   if (p.clips.length > 2000 || p.assets.length > 2000 || p.tracks.length > 24) throw new Error('プロジェクトが大きすぎます。');
+  if (p.markers.length > MAX_MARKERS) throw new Error(`マーカーは${MAX_MARKERS}個までです。`);
   finite(p.width, 128, 7680, '幅'); finite(p.height, 128, 4320, '高さ'); finite(p.fps, 1, 120, 'フレームレート');
   if(!Number.isInteger(p.fps)||!Number.isInteger(p.width)||!Number.isInteger(p.height)||p.width%2||p.height%2) throw new Error('フレームサイズは偶数、FPSは整数で指定してください。');
   const ids = new Set();
@@ -48,6 +49,7 @@ function validateProject(p, { allowForeignPaths = false } = {}) {
   const clipIds = new Set();
   for (const c of p.clips) {
     if (!c || typeof c.id !== 'string' || typeof c.name !== 'string' || clipIds.has(c.id) || !ids.has(c.trackId) || !['video', 'audio', 'image', 'title'].includes(c.kind)) throw new Error('クリップが不正です。');
+    if (c.kind === 'title' && assetIds.has(c.id)) throw new Error('テロップIDと素材IDが重複しています。');
     clipIds.add(c.id);
     finite(c.start, 0, MAX_MEDIA_SECONDS, '開始時間'); finite(c.duration, 1 / p.fps - 0.000001, MAX_MEDIA_SECONDS, '長さ'); finite(c.in, 0, MAX_MEDIA_SECONDS, '素材の開始時間');
     finite(c.speed, 0.25, 4, '速度'); finite(c.scale, 0.1, 3, '拡大率'); finite(c.x, -200, 200, 'X座標'); finite(c.y, -200, 200, 'Y座標'); finite(c.rotation, -180, 180, '回転');

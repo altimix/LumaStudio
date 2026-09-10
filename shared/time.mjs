@@ -1,5 +1,6 @@
 // Numeric precision guard (milliseconds), not an editing duration limit.
 export const MAX_MEDIA_SECONDS = Number.MAX_SAFE_INTEGER / 1000;
+export const MAX_MARKERS = 2000;
 export const MAX_TIMELINE_PIXELS = 10_000_000;
 export function timelineLength(duration) { return Math.max(30, Math.ceil((duration + 5) / 5) * 5); }
 export function timelineZoomBounds(duration) {

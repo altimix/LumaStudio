@@ -10,7 +10,7 @@ import { validateOpacityKeys, windowOpacity } from '../shared/opacity.mjs';
 import { retimeVolume, validateVolumeKeys } from '../shared/volume-automation.mjs';
 import { validateTextStyle } from '../shared/text-style.mjs';
 import { validateGraphic, SHAPE_NAMES } from '../shared/graphics.mjs';
-import { boundedZoom, MAX_MEDIA_SECONDS } from '../shared/time.mjs';
+import { boundedZoom, MAX_MEDIA_SECONDS, MAX_MARKERS } from '../shared/time.mjs';
 import { applyTransition, pruneTransitions } from '../shared/transitions.mjs';
 import { linkedIds, clipsLocked, cloneLinkedClips, syncLinkedEdits } from '../shared/clip-links.mjs';
 import { separateAudio, relinkAudio, patchAudio } from './linked-editing';
@@ -256,7 +256,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     s.notify(`「${track.name}」を削除しました。Ctrl+Zで戻せます。`);return true;
   },
   addTrack: kind => { const s = get(); if (s.project.tracks.length >= 24) { s.notify('トラックは最大24本です'); return; } const t = makeTrack(kind, kind === 'video' ? '映像トラック' : '音声トラック'); s.commit({ ...s.project, tracks: kind === 'video' ? [t, ...s.project.tracks] : [...s.project.tracks, t] }); },
-  addMarker: () => { const s = get(); s.commit({ ...s.project, markers: [...s.project.markers, { id: uid(), time: s.playhead, label: `マーカー ${s.project.markers.length + 1}` }] }); s.notify('マーカーを追加しました'); },
+  addMarker: () => { const s = get(); if (s.project.markers.length >= MAX_MARKERS) { s.notify(`マーカーは${MAX_MARKERS}個までです。`); return; } s.commit({ ...s.project, markers: [...s.project.markers, { id: uid(), time: s.playhead, label: `マーカー ${s.project.markers.length + 1}` }] }); s.notify('マーカーを追加しました'); },
   removeMarker: id => { const s = get(); s.commit({ ...s.project, markers: s.project.markers.filter(m => m.id !== id) }); },
   notify: toast => { clearTimeout(toastTimer); set({ toast }); toastTimer = setTimeout(() => set({ toast: '' }), 4500); }
 }));
