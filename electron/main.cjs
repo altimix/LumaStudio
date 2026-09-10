@@ -131,6 +131,12 @@ function installIPC() {
     await assertMediaRevision(known);
     return known;
   };
+  const validateExportSources = async p => {
+    for (const asset of exportAssets(p)) {
+      if (asset.offline) throw new Error(`素材がオフラインです。再リンクしてください: ${asset.name}`);
+      await registered(asset);
+    }
+  };
   const preparedAudioPaths = async (p, signal) => {
     const result = {};
     for (const c of audioClips(p)) if (c.audioTreatment) {
@@ -300,12 +306,12 @@ function installIPC() {
   handle('export', async (p, settings, titleImages) => {
     if (exportController) throw new Error('書き出しはすでに実行中です。');
     validateProject(p);
-    for (const asset of exportAssets(p)) await registered(asset);
+    await validateExportSources(p);
     validateEncoder(settings?.encoder);
     const result = await dialog.showSaveDialog(window, { title: '動画を書き出す', defaultPath: `${p.name.replace(/[<>:"/\\|?*]/g, '_')}.mp4`, filters: [{ name: 'H.264 / AAC', extensions: ['mp4'] }] });
     if (result.canceled) return null;
     const output = result.filePath;
-    for (const asset of exportAssets(p)) await registered(asset);
+    await validateExportSources(p);
     await assertDestination(output, '.mp4', [...p.assets.map(a => a.path),...startupProtectedPaths]);
     exportController = new AbortController();
     try {
