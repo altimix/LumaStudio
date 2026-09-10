@@ -114,6 +114,7 @@ async function verify() {
     assert.equal(saved.clips.filter(c=>c.kind==='video')[0].saturation,0.78);
     await app.evaluate(({dialog},target)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[target]});},savePath);
     await page.keyboard.press('Control+o');
+    await page.getByRole('dialog',{name:'プロジェクトを開いています',exact:true}).waitFor({state:'hidden'});
     await page.waitForFunction(()=>document.querySelector('.inspector-count').textContent.includes('1 選択'));
     assert.equal(await page.locator('.timeline-clip.title').count(),2);
     // Malformed metadata for an offline asset must be rejected before it reaches the timeline.
@@ -121,6 +122,7 @@ async function verify() {
     const corruptPath=path.join(profile,'壊れたプロジェクト.luma');await fs.writeFile(corruptPath,JSON.stringify(corrupt));
     await app.evaluate(({dialog},target)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[target]});},corruptPath);
     await page.keyboard.press('Control+o');
+    await page.getByRole('dialog',{name:'プロジェクトを開いています',exact:true}).waitFor({state:'hidden'});
     await page.waitForFunction(()=>document.querySelector('.toast[role="status"]')?.textContent.includes('波形データが不正'));
     assert.equal(await page.locator('.timeline-clip.title').count(),2);
     const output=path.join(results,'Luma-Studio-検証.mp4');
