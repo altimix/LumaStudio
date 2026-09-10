@@ -71,8 +71,8 @@ export interface DesktopAPI {
   readAudioChunk(url: string, index: number, treatment?: Clip['audioTreatment']): Promise<Float32Array>;
   readWaveform(url: string, start: number, end: number, bins: number, options?:{absolute?:boolean;treatment?:'speech'|'normalize'}, requestId?:string): Promise<Float32Array>;
   cancelWaveform(requestId:string):Promise<void>;
-  importMedia(paths?: string[]): Promise<{ assets: Asset[]; errors: string[] }>;
-  droppedPaths(files: File[]): string[];
+  importMedia(): Promise<{ assets: Asset[]; errors: string[] }>;
+  importDroppedFiles(files: File[]): Promise<{ assets: Asset[]; errors: string[] }>;
   relink(asset: Asset): Promise<Asset | null>;
   saveProject(project: Project, saveAs?: boolean): Promise<string | null>;
   openProject(): Promise<{ project: Project; path: string } | null>;

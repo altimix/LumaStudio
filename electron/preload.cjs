@@ -25,8 +25,16 @@ contextBridge.exposeInMainWorld('luma', {
   prepareAudio: (p, id, treatment, requestId) => ipcRenderer.invoke('audio-prepare', p, id, treatment, requestId),
   onAudioPrepareProgress: cb => listen('audio-prepare-progress', cb),
   cancelAudioPrepare: () => ipcRenderer.invoke('audio-prepare-cancel'),
-  importMedia: paths => ipcRenderer.invoke('import', paths),
-  droppedPaths: files => files.map(file => webUtils.getPathForFile(file)),
+  importMedia: (...args) => {
+    if (args.length) throw new Error('素材はファイル選択またはドロップで読み込んでください。');
+    return ipcRenderer.invoke('import');
+  },
+  importDroppedFiles: files => {
+    if (!Array.isArray(files) || !files.length || files.length > 100) throw new Error('ドロップしたファイルが不正です。');
+    const paths = files.map(file => webUtils.getPathForFile(file));
+    if (paths.some(file => !file)) throw new Error('実際のファイルをドロップしてください。');
+    return ipcRenderer.invoke('import-dropped', paths);
+  },
   relink: asset => ipcRenderer.invoke('relink', asset),
   saveProject: (p, saveAs) => ipcRenderer.invoke('save-project', p, saveAs),
   openProject: () => ipcRenderer.invoke('open-project'),

@@ -50,8 +50,9 @@ async function verify() {
 
     if (treatment) {
       const cancelAsset=demo.assets.find(a=>a.hasAudio&&a.id!==asset.id);
+      await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},cancelAsset.path);
       const cancellation=await page.evaluate(async originalAsset=>{
-        const imported=await window.luma.importMedia([originalAsset.path]);const a=imported.assets[0];
+        const imported=await window.luma.importMedia();const a=imported.assets[0];
         const requestId=crypto.randomUUID(),options={absolute:true,treatment:'normalize'};
         const result=window.luma.readWaveform(a.url,0,Math.min(a.duration,5),300,options,requestId).then(()=>false,()=>true);
         await window.luma.cancelWaveform(requestId);
@@ -59,6 +60,7 @@ async function verify() {
         const retry=await window.luma.readWaveform(a.url,0,Math.min(a.duration,5),300,options,crypto.randomUUID());
         return {cancelled,bins:retry.length};
       },cancelAsset);
+      await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},projectFile);
       assert.deepEqual(cancellation,{cancelled:true,bins:300});checks.push('native waveform cancellation releases treatment work and permits retry');
       const audioClip = page.locator('.timeline-clip[data-clip-id="'+sound.id+'"]'); await audioClip.focus(); await page.keyboard.press('Enter');
       await page.locator('.inspector-tabs').getByRole('button',{name:'オーディオ',exact:true}).click();

@@ -225,7 +225,7 @@ function installIPC() {
     } catch {}
     return { assets, recovery, startupProject, startupError, version: app.getVersion() };
   });
-  handle('import', async (paths) => {
+  const importFiles = async paths => {
     if (importing) throw new Error('前の素材を読み込み中です。');
     if (!paths) {
       const result = await dialog.showOpenDialog(window, { title: '素材を読み込む', properties: ['openFile', 'multiSelections'], filters: [{ name: '動画・音声・画像', extensions: ['mp4','mov','mkv','avi','webm','m4v','mxf','mp3','wav','aac','m4a','flac','ogg','png','jpg','jpeg','webp','bmp','gif','tif','tiff'] }] });
@@ -241,6 +241,11 @@ function installIPC() {
       }
       return { assets, errors };
     } finally { importing = false; }
+  };
+  handle('import', () => importFiles());
+  handle('import-dropped', paths => {
+    if (!Array.isArray(paths) || !paths.length) throw new Error('ドロップしたファイルが不正です。');
+    return importFiles(paths);
   });
   handle('relink', async (asset) => {
     const result = await dialog.showOpenDialog(window, { title: `素材を再リンク: ${asset.name}`, properties: ['openFile'] });

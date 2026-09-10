@@ -42,7 +42,19 @@ const digest = data => createHash('sha256').update(data).digest('hex');
 
     const sourceProject = JSON.parse(await fs.readFile(previousProject, 'utf8'));
     const changedSource = path.join(profile, '外部変更される素材.mp4'); await fs.copyFile(original, changedSource);
-    const imported = await page.evaluate(file => window.luma.importMedia([file]), changedSource);
+    const rejectedImports = await page.evaluate(async file => {
+      const messages = [];
+      for (const run of [() => window.luma.importMedia([file]), () => window.luma.importDroppedFiles([new File(['fake'], 'fake.mp4')])]) {
+        try { await run(); messages.push(''); } catch (error) { messages.push(error.message); }
+      }
+      return messages;
+    }, changedSource);
+    assert.match(rejectedImports[0], /ファイル選択またはドロップ/);
+    assert.match(rejectedImports[1], /実際のファイル/);
+    await page.evaluate(() => { const input = document.createElement('input'); input.id = 'genuine-drop'; input.type = 'file'; input.hidden = true; document.body.appendChild(input); });
+    await page.locator('#genuine-drop').setInputFiles(changedSource);
+    const imported = await page.locator('#genuine-drop').evaluate(input => window.luma.importDroppedFiles([...input.files]));
+    await page.locator('#genuine-drop').evaluate(input => input.remove());
     const replacedId = sourceProject.assets[0].id; sourceProject.assets[0] = imported.assets[0];
     sourceProject.clips = sourceProject.clips.map(c => c.assetId === replacedId ? { ...c, assetId: imported.assets[0].id } : c);
     const originalStat = await fs.stat(changedSource);
