@@ -18,10 +18,17 @@ function run(binary, args, options = {}) {
 async function probe(file) {
   return JSON.parse((await run(ffprobe, ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', file])).toString());
 }
+function mediaRevision(file, stat) {
+  return createHash('sha256').update(path.resolve(file) + stat.size + stat.mtimeMs).digest('hex').slice(0, 24);
+}
+async function assertMediaRevision(asset) {
+  const stat = await fs.stat(asset.path).catch(() => null);
+  if (!stat?.isFile() || mediaRevision(asset.path, stat) !== (asset.revision || asset.id)) throw new Error('素材が変更または削除されています。素材を再リンクしてください。');
+}
 async function inspectMedia(file, cacheDir) {
   const stat = await fs.stat(file);
   if (!stat.isFile()) throw new Error('ファイルを選択してください。');
-  const id = createHash('sha256').update(path.resolve(file) + stat.size + stat.mtimeMs).digest('hex').slice(0, 24);
+  const id = mediaRevision(file, stat);
   const info = await probe(file);
   const video = info.streams.find(s => s.codec_type === 'video' && !s.disposition?.attached_pic);
   const sound = info.streams.find(s => s.codec_type === 'audio');
@@ -60,4 +67,4 @@ async function inspectMedia(file, cacheDir) {
   const fpsParts = String(video?.avg_frame_rate || '0/1').split('/').map(Number);
   return { id, name: path.basename(file), path: file, playbackPath, thumbnailPath, kind, duration, width: video?.width || 0, height: video?.height || 0, fps: fpsParts[1] ? fpsParts[0] / fpsParts[1] : 0, hasAudio: !!sound, waveform, size: stat.size, codec: video?.codec_name || sound?.codec_name, proxy: !compatible };
 }
-module.exports = { ffmpeg, ffprobe, run, probe, inspectMedia };
+module.exports = { ffmpeg, ffprobe, run, probe, inspectMedia, assertMediaRevision };

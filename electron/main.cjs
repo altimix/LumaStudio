@@ -8,7 +8,7 @@ const { createReadStream } = require('node:fs');
 const { Readable } = require('node:stream');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { inspectMedia, probe } = require('./media.cjs');
+const { inspectMedia, probe, assertMediaRevision } = require('./media.cjs');
 const { createBgmLibrary } = require('./bgm.cjs');
 const { createAudioReader, decodeAudioChunk } = require('./audio.cjs');
 const { createWaveformReader } = require('./waveform.cjs');
@@ -125,15 +125,16 @@ function installIPC() {
     catch (e) { if (aiController.signal.aborted) throw new Error('AI処理を中止しました。'); throw e; }
     finally { aiController = undefined; }
   };
-  const registered = a => {
-    const known = registeredAssets.get(a.id);
+  const registered = async a => {
+    const known = registeredAssets.get(a?.id);
     if (!known || known.path !== a.path || (a.revision || a.id) !== (known.revision || known.id)) throw new Error('未登録または変更された素材です。素材を読み込み直してください。');
+    await assertMediaRevision(known);
     return known;
   };
   const preparedAudioPaths = async (p, signal) => {
     const result = {};
     for (const c of audioClips(p)) if (c.audioTreatment) {
-      const a = registered(p.assets.find(a => a.id === c.assetId));
+      const a = await registered(p.assets.find(a => a.id === c.assetId));
       result[c.id] = (await audioProcessor.get(a.path, c.audioTreatment, signal)).file;
     }
     return result;
@@ -143,7 +144,7 @@ function installIPC() {
     if (requestId !== undefined && (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(requestId))) throw new Error('音声処理の要求IDが不正です。');
     const clip = p.clips.find(c => c.id === id), asset = p.assets.find(a => a.id === clip?.assetId);
     if (!treatment || !clip || !hasClipAudio(clip,asset) || asset.offline || p.tracks.find(t => t.id === clip.trackId)?.locked) throw new Error('音声のある、ロックされていないクリップを選択してください。');
-    const source = registered(asset); if (audioPrepareController) throw new Error('前の音声処理が終わるまでお待ちください。');
+    const source = await registered(asset); if (audioPrepareController) throw new Error('前の音声処理が終わるまでお待ちください。');
     const controller = new AbortController(); audioPrepareController = controller;
     const recipient = window.webContents;
     try {
@@ -169,7 +170,7 @@ function installIPC() {
     return result.canceled ? credentials.status() : credentials.importEnv(result.filePaths[0]);
   });
   handle('ai-transcribe', (p, vocabulary) => job(async signal => {
-    validateProject(p); for (const c of audioClips(p)) registered(p.assets.find(a => a.id === c.assetId));
+    validateProject(p); for (const c of audioClips(p)) await registered(p.assets.find(a => a.id === c.assetId));
     await credentials.get(); return transcribeTimeline(p, vocabulary, ai, signal, progress, await preparedAudioPaths(p, signal));
   }));
   handle('ai-metadata', p => job(signal => { progress({ progress: 0, message: 'タイトル・概要欄・検索ワードを生成中' }); return generateMetadata(p, ai, signal); }));
@@ -182,7 +183,7 @@ function installIPC() {
   handle('ai-save-output', async (p, format) => {
     validateProject(p); if (!['srt', 'vtt', 'txt', 'jpg'].includes(format) || !p.youtube) throw new Error('保存する投稿素材がありません。');
     let contents;
-    if (format === 'jpg') { const a = p.assets.find(a => a.id === p.youtube.thumbnailAssetId); if (!a || registered(a).kind !== 'image') throw new Error('サムネイルを生成してください。'); contents = await fs.readFile(a.path); }
+    if (format === 'jpg') { const a = p.assets.find(a => a.id === p.youtube.thumbnailAssetId); if (!a || (await registered(a)).kind !== 'image') throw new Error('サムネイルを生成してください。'); contents = await fs.readFile(a.path); }
     else contents = format === 'txt' ? youtubeText(p.youtube, totalTime(p)) : subtitleFile(p.youtube.cues, format);
     const result = await dialog.showSaveDialog(window, { title: 'YouTube投稿素材を保存', defaultPath: `${p.name.replace(/[<>:"/\\|?*]/g, '_')}.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] });
     if (result.canceled) return null;
@@ -299,11 +300,12 @@ function installIPC() {
   handle('export', async (p, settings, titleImages) => {
     if (exportController) throw new Error('書き出しはすでに実行中です。');
     validateProject(p);
-    for (const asset of p.assets) registered(asset);
+    for (const asset of p.assets) await registered(asset);
     validateEncoder(settings?.encoder);
     const result = await dialog.showSaveDialog(window, { title: '動画を書き出す', defaultPath: `${p.name.replace(/[<>:"/\\|?*]/g, '_')}.mp4`, filters: [{ name: 'H.264 / AAC', extensions: ['mp4'] }] });
     if (result.canceled) return null;
     const output = result.filePath;
+    for (const asset of p.assets) await registered(asset);
     await assertDestination(output, '.mp4', [...p.assets.map(a => a.path),...startupProtectedPaths]);
     exportController = new AbortController();
     try {

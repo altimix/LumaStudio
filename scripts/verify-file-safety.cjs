@@ -40,6 +40,18 @@ const digest = data => createHash('sha256').update(data).digest('hex');
       assert.match(message, /未登録または変更された素材/);
     }
 
+    const sourceProject = JSON.parse(await fs.readFile(previousProject, 'utf8'));
+    const changedSource = path.join(profile, '外部変更される素材.mp4'); await fs.copyFile(original, changedSource);
+    const imported = await page.evaluate(file => window.luma.importMedia([file]), changedSource);
+    const replacedId = sourceProject.assets[0].id; sourceProject.assets[0] = imported.assets[0];
+    sourceProject.clips = sourceProject.clips.map(c => c.assetId === replacedId ? { ...c, assetId: imported.assets[0].id } : c);
+    const originalStat = await fs.stat(changedSource);
+    await fs.utimes(changedSource, originalStat.atime, new Date(originalStat.mtimeMs + 2000));
+    const changedMessage = await page.evaluate(async project => {
+      try { await window.luma.exportProject(project, { width: 1280, height: 720, fps: 30, quality: 'draft', encoder: 'cpu' }, {}); return ''; }
+      catch (error) { return error.message; }
+    }, sourceProject);
+    assert.match(changedMessage, /変更または削除/);
     // Exercise the real save IPC with a transient Windows replacement refusal.
     await app.evaluate(async (_electron, destination) => {
       const files = process.getBuiltinModule('fs/promises'), rename = files.rename;
