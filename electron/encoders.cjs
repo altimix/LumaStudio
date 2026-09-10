@@ -29,7 +29,7 @@ function createEncoderDetector(probe = async id => {
       const encoders=await Promise.all(ENCODERS.map(async e=>{
         if(e.id==='cpu')return {...e,available:true};
         try{await probe(e.id);return {...e,available:true};}
-        catch{return {...e,available:false,reason:'このPCでは初期化できません。GPUの搭載状況とドライバーをご確認ください。'};}
+        catch{return {...e,available:false,reason:'この方式は同梱FFmpegまたはこのPCでは利用できません。公開版1.0.0はCPU方式をご利用ください。'};}
       }));
       cached={encoders,recommended:encoders.find(e=>e.available).id};expires=Date.now()+60000;return cached;
     })().finally(()=>{pending=undefined;});
