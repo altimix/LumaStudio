@@ -31,8 +31,12 @@ contextBridge.exposeInMainWorld('luma', {
   },
   importDroppedFiles: files => {
     if (!Array.isArray(files) || !files.length || files.length > 100) throw new Error('ドロップしたファイルが不正です。');
-    const paths = files.map(file => webUtils.getPathForFile(file));
-    if (paths.some(file => !file)) throw new Error('実際のファイルをドロップしてください。');
+    const paths = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = webUtils.getPathForFile(files[i]);
+      if (!file) throw new Error('実際のファイルをドロップしてください。');
+      paths.push(file);
+    }
     return ipcRenderer.invoke('import-dropped', paths);
   },
   relink: asset => ipcRenderer.invoke('relink', asset),
