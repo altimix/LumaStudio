@@ -38,7 +38,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'luma', privileges: { standard: true, secure: true, supportFetchAPI: true } },
   { scheme: 'media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }
 ]);
-let window; let exportController; let projectPath = null; let dirty = false; let importing = false;
+let window; let exportController; let projectPath = null; let projectPathGeneration = 0; let dirty = false; let importing = false;
 let pendingCloseId = null; let nextCloseId = 0; let allowClose = false;
 const mediaFiles = new Map(); const completedExports = new Set();
 const registeredAssets = new Map(); let aiController;
@@ -244,13 +244,14 @@ function installIPC() {
   });
   handle('save-project', async (p, saveAs = false) => {
     const contents = serialize(p);
+    const pathGeneration = projectPathGeneration;
     let target = projectPath;
     if (!target || saveAs) {
       const result = await dialog.showSaveDialog(window, { title: 'プロジェクトを保存', defaultPath: target || `${p.name.replace(/[<>:"/\\|?*]/g, '_')}.luma`, filters: [{ name: 'Luma Studio Project', extensions: ['luma'] }] });
       if (result.canceled) return null; target = result.filePath;
     }
     await assertDestination(target, '.luma', [...p.assets.map(a => a.path),...startupProtectedPaths]);
-    await atomicWrite(target, contents); projectPath = target;
+    await atomicWrite(target, contents); if (pathGeneration === projectPathGeneration) projectPath = target;
     return target;
   });
   handle('open-project', async () => {
@@ -259,7 +260,7 @@ function installIPC() {
     const target = result.filePaths[0];
     if ((await fs.stat(target)).size > 15 * 1024 * 1024) throw new Error('プロジェクトファイルが大きすぎます。');
     const p = await hydrate(JSON.parse(await fs.readFile(target, 'utf8')));
-    await recoveryFiles.clear(); projectPath = target; dirty = false;
+    await recoveryFiles.clear(); projectPathGeneration++; projectPath = target; dirty = false;
     return { project: p, path: target };
   });
   handle('autosave', (p) => {
@@ -271,7 +272,7 @@ function installIPC() {
     return recoveryFiles.clear(expectedSavedAt);
   });
   handle('reset-project-path', async (keepRecovery = false) => {
-    projectPath = null; dirty = keepRecovery === true;
+    projectPathGeneration++; projectPath = null; dirty = keepRecovery === true;
     if (keepRecovery !== true) await recoveryFiles.clear();
   });
   handle('dirty', value => { dirty = !!value; });

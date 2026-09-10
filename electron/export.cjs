@@ -69,7 +69,8 @@ function validateProject(p, { allowForeignPaths = false } = {}) {
     }
     if (p.tracks.find(t => t.id === c.trackId).kind === 'audio' && c.kind !== 'audio') throw new Error('音声トラックに映像は置けません。');
   }
-  for (const m of p.markers) { if (!m || typeof m.label !== 'string') throw new Error('マーカーが不正です。'); finite(m.time, 0, MAX_MEDIA_SECONDS, 'マーカー位置'); }
+  const markerIds = new Set();
+  for (const m of p.markers) { if (!m || typeof m.id !== 'string' || !m.id.trim() || markerIds.has(m.id) || typeof m.label !== 'string') throw new Error('マーカーが不正です。'); markerIds.add(m.id); finite(m.time, 0, MAX_MEDIA_SECONDS, 'マーカー位置'); }
   validateClipLinks(p); validateYoutube(p.youtube); validateTransitions(p);
   return p;
 }

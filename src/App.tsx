@@ -79,6 +79,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [p, dirty, ready]);
   const save = useCallback(async (saveAs = false) => {
+    if (!beginProjectOperation('プロジェクトを保存しています')) return false;
     try {
       const snapshot = useEditor.getState().project;
       if (window.luma) {
@@ -89,6 +90,7 @@ export default function App() {
       } else { downloadJSON(snapshot); useEditor.setState({ dirty: false }); }
       useEditor.getState().notify('プロジェクトを保存しました'); return true;
     } catch (e) { useEditor.getState().notify(errorText(e)); return false; }
+    finally { endProjectOperation(); }
   }, []);
   useEffect(() => {
     const desktop = window.luma;
@@ -125,7 +127,10 @@ export default function App() {
   };
   const relink = async (a: Asset) => {
     if (!window.luma) { useEditor.getState().notify('素材の再リンクはデスクトップアプリでご利用ください'); return; }
-    try { const fresh = await window.luma.relink(a); if (fresh) { const s = useEditor.getState(); s.commit({ ...s.project, assets: s.project.assets.map(asset => asset.id === a.id ? fresh : asset) }); } } catch (e) { useEditor.getState().notify(errorText(e)); }
+    if (!beginProjectOperation('素材を再リンクしています')) return;
+    const relinkProject = useEditor.getState().project;
+    try { const fresh = await window.luma.relink(a); if (useEditor.getState().project !== relinkProject) return; if (fresh) { const s = useEditor.getState(); s.commit({ ...s.project, assets: s.project.assets.map(asset => asset.id === a.id ? fresh : asset) }); } } catch (e) { useEditor.getState().notify(errorText(e)); }
+    finally { endProjectOperation(); }
   };
   const showExport = () => { useEditor.getState().stop(); const project = useEditor.getState().project; setSettings({ width: project.width, height: project.height, fps: project.fps, quality: 'standard', encoder: 'auto' }); setPreset('match'); setProgress(null); setRenderError(''); setModal('export'); };
   const startExport = async () => {
@@ -207,7 +212,7 @@ export default function App() {
     </Modal> : null}
 
     <input ref={importInput} hidden type="file" multiple accept="video/*,audio/*,image/*" onChange={e => { void browserImport(e.target.files); e.target.value = ''; }}/><input ref={openInput} hidden type="file" accept=".luma" onChange={async e => { const file = e.target.files?.[0]; if (file) { try { const project = JSON.parse(await file.text()) as Project; if (project.version !== 1 || !Array.isArray(project.clips) || !Array.isArray(project.assets)) throw new Error('プロジェクト形式が不正です'); validateTransitions(project); project.clips.forEach(c => { validateGraphic(c); validateVolumeKeys(c); validateTextBox(c); if (c.kind === 'title') validateTextStyle(c); }); project.assets = project.assets.map(a => a.url.startsWith('blob:') ? { ...a, offline: true, url: '' } : a); useEditor.getState().load(project); } catch (error) { useEditor.getState().notify(errorText(error)); } } e.target.value = ''; }}/>
-    {projectBusy ? <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-label={projectBusy} tabIndex={-1} ref={element => { element?.focus(); }}><div className="modal-heading"><h2>{projectBusy}</h2></div><p role="status"><LoaderCircle size={16} className="spin"/> 処理が終わるまでお待ちください。</p></section></div> : null}
+    {projectBusy && !savingOnClose ? <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-label={projectBusy} tabIndex={-1} ref={element => { element?.focus(); }}><div className="modal-heading"><h2>{projectBusy}</h2></div><p role="status"><LoaderCircle size={16} className="spin"/> 処理が終わるまでお待ちください。</p></section></div> : null}
     {savingOnClose ? <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-label="プロジェクトを保存しています" tabIndex={-1} ref={element => { element?.focus(); }} onKeyDown={e => { e.preventDefault(); e.stopPropagation(); }}><div className="modal-heading"><h2>プロジェクトを保存しています</h2></div><p role="status"><LoaderCircle size={16} className="spin"/> 保存が完了すると終了します。</p></section></div> : null}
   </div>;
 }

@@ -82,3 +82,15 @@ test('Windows media paths hydrate offline on macOS without filesystem access', {
     assert.equal(validateProject(result), result);
   }
 });
+
+test('invalid or duplicate marker IDs are rejected before hydration', async () => {
+  for (const id of [undefined, null, 1, '', '  ']) {
+    const p = fixture(); p.markers = [{ id, time: 1, label: 'marker' }];
+    assert.throws(() => validateProject(p), /マーカーが不正/);
+  }
+  const p = fixture(); p.markers = [{ id: 'same', time: 1, label: 'A' }, { id: 'same', time: 2, label: 'B' }];
+  let inspected = false;
+  await assert.rejects(hydrateProject(p, () => { inspected = true; }, a => a), /マーカーが不正/);
+  assert.equal(inspected, false);
+  p.markers[1].id = 'other'; assert.equal(validateProject(p), p);
+});
