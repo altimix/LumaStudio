@@ -1,0 +1,7 @@
+.monitor-snap-guides{position:absolute;inset:0;pointer-events:none;z-index:999999;overflow:hidden}
+.monitor-snap-guide{position:absolute;display:block;background:#65eaff;box-shadow:0 0 2px 1px #10252f;pointer-events:none}
+.monitor-snap-guide.vertical{top:0;bottom:0;width:2px;transform:translateX(-50%)}
+.monitor-snap-guide.horizontal{left:0;right:0;height:2px;transform:translateY(-50%)}
+.monitor-snap-guide[data-snap-x=start],.monitor-snap-guide[data-snap-y=start]{transform:none}
+.monitor-snap-guide[data-snap-x=end]{transform:translateX(-100%)}
+.monitor-snap-guide[data-snap-y=end]{transform:translateY(-100%)}

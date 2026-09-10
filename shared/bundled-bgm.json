@@ -1,0 +1,22 @@
+[
+  {
+    "name": "bgm001.mp3",
+    "sha256": "e018d7768a9528a3540da3ae6fcaaadc085c927555b5565b7e7823a85701097e"
+  },
+  {
+    "name": "bgm002.mp3",
+    "sha256": "6a948171af9bc0ef7fadc00e22496969d9176a7be5ace8203bffc758e2952388"
+  },
+  {
+    "name": "bgm003.mp3",
+    "sha256": "fa4e0cef47bad079e1f0e694476ff277a8dacbcb0a9cd926667317fe0ad04ba8"
+  },
+  {
+    "name": "bgm004.mp3",
+    "sha256": "560b7f41ca0b976aaec8340a34dec2a8fea4ec1352bf945c649213e3965398a2"
+  },
+  {
+    "name": "bgm005.mp3",
+    "sha256": "4e2982cd58d14cc9edd29fdce39882d669a7fb026f160164cc310bf3505340ad"
+  }
+]

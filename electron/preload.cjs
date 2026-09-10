@@ -1,0 +1,59 @@
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
+const listen = (channel, cb) => { const listener = (_event, data) => cb(data); ipcRenderer.on(channel, listener); return () => ipcRenderer.removeListener(channel, listener); };
+contextBridge.exposeInMainWorld('luma', {
+  copyText: text => ipcRenderer.invoke('copy-text', text),
+  listBgm: () => ipcRenderer.invoke('bgm-list'),
+  chooseBgmFolder: () => ipcRenderer.invoke('bgm-choose'),
+  loadBgm: id => ipcRenderer.invoke('bgm-load', id),
+  soundAsset: (id,minimumDuration=0) => ipcRenderer.invoke('sound-asset', id,minimumDuration),
+  loadFont: (family, weight) => ipcRenderer.invoke('font-load', family, weight),
+  aiStatus: () => ipcRenderer.invoke('ai-status'),
+  aiSetKey: key => ipcRenderer.invoke('ai-set-key', key),
+  aiImportEnv: () => ipcRenderer.invoke('ai-import-env'),
+  aiClearKey: () => ipcRenderer.invoke('ai-clear-key'),
+  aiTranscribe: (p, vocabulary) => ipcRenderer.invoke('ai-transcribe', p, vocabulary),
+  aiMetadata: p => ipcRenderer.invoke('ai-metadata', p),
+  aiThumbnail: (p, prompt) => ipcRenderer.invoke('ai-thumbnail', p, prompt),
+  aiSaveOutput: (p, format) => ipcRenderer.invoke('ai-save-output', p, format),
+  aiCancel: () => ipcRenderer.invoke('ai-cancel'),
+  onAIProgress: cb => listen('ai-progress', cb),
+  blackVideo: (width,height) => ipcRenderer.invoke('black-video',width,height),
+  bootstrap: () => ipcRenderer.invoke('bootstrap'),
+  readAudioChunk: (url, index, treatment) => ipcRenderer.invoke('audio-chunk', url, index, treatment),
+  readWaveform: (url, start, end, bins, options, requestId) => ipcRenderer.invoke('waveform-read', url, start, end, bins, options, requestId),
+  cancelWaveform: requestId => ipcRenderer.invoke('waveform-cancel', requestId),
+  prepareAudio: (p, id, treatment, requestId) => ipcRenderer.invoke('audio-prepare', p, id, treatment, requestId),
+  onAudioPrepareProgress: cb => listen('audio-prepare-progress', cb),
+  cancelAudioPrepare: () => ipcRenderer.invoke('audio-prepare-cancel'),
+  importMedia: (...args) => {
+    if (args.length) throw new Error('素材はファイル選択またはドロップで読み込んでください。');
+    return ipcRenderer.invoke('import');
+  },
+  importDroppedFiles: files => {
+    if (!Array.isArray(files) || !files.length || files.length > 100) throw new Error('ドロップしたファイルが不正です。');
+    const paths = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = webUtils.getPathForFile(files[i]);
+      if (!file) throw new Error('実際のファイルをドロップしてください。');
+      paths.push(file);
+    }
+    return ipcRenderer.invoke('import-dropped', paths);
+  },
+  relink: asset => ipcRenderer.invoke('relink', asset),
+  saveProject: (p, saveAs) => ipcRenderer.invoke('save-project', p, saveAs),
+  openProject: () => ipcRenderer.invoke('open-project'),
+  autosave: p => ipcRenderer.invoke('autosave', p),
+  resetProjectPath: keepRecovery => ipcRenderer.invoke('reset-project-path', keepRecovery),
+  clearRecovery: expectedSavedAt => ipcRenderer.invoke('clear-recovery', expectedSavedAt),
+  setDirty: dirty => ipcRenderer.invoke('dirty', dirty),
+  onPrepareClose: cb => listen('prepare-close', cb),
+  finishPrepareClose: (requestId, dirty, canClose) => ipcRenderer.invoke('finish-prepare-close', requestId, dirty, canClose),
+  onSaveBeforeClose: cb => listen('save-before-close', cb),
+  finishSaveBeforeClose: (requestId, saved) => ipcRenderer.invoke('finish-save-before-close', requestId, saved),
+  exportProject: (p, settings, titles) => ipcRenderer.invoke('export', p, settings, titles),
+  exportEncoders: (refresh = false) => ipcRenderer.invoke('export-encoders', refresh),
+  cancelExport: () => ipcRenderer.invoke('cancel-export'),
+  reveal: file => ipcRenderer.invoke('reveal', file),
+  onExportProgress: cb => listen('export-progress', cb),
+  onImportProgress: cb => listen('import-progress', cb)
+});

@@ -1,0 +1,85 @@
+name: Windows CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-ci:
+    name: windows-ci
+    runs-on: windows-2022
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2
+        with:
+          msystem: MINGW64
+          path-type: inherit
+          install: make mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf mingw-w64-x86_64-nasm
+      - name: Build redistributable media tools from pinned sources
+        shell: msys2 {0}
+        run: bash scripts/build-media.sh
+      - name: Verify bundled demo checksums
+        run: npm run verify:demo
+      - name: Verify HTML guide and every shortcut binding
+        run: npm run verify:readme
+      - name: Test editing model and real FFmpeg output
+        run: npm test
+      - name: Build and package Windows x64
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run package
+      - name: Verify packaged editing, export and recovery
+        run: npm run verify:packaged
+      - name: Create distribution checksums
+        run: npm run checksums
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-test-evidence-${{ github.sha }}
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload verified Windows build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Luma-Studio-Windows-${{ github.sha }}
+          path: |
+            release/Luma-Studio-*-Windows.exe
+            release/SHA256SUMS.txt
+            README.md
+            README.html
+            README-Mac.txt
+            README-Windows.txt
+            LICENSE
+            THIRD_PARTY_NOTICES.md
+            COPYRIGHT
+            BGM-LICENSE.txt
+            vendor/media/
+            release/media-sources/
+            scripts/build-media.sh
+            shared/media-sources.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

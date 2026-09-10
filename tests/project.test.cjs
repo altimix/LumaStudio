@@ -1,0 +1,168 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const { assertReplacement, hydrateProject, isLocalProjectPath } = require('../electron/project.cjs');
+const { validateProject, exportAssets } = require('../electron/export.cjs');
+
+function fixture() {
+  const asset = { id: 'saved', name: 'clip.mp4', path: path.resolve('clip.mp4'), kind: 'video', duration: 8, width: 1280, height: 720, fps: 30, hasAudio: true, waveform: [], size: 1, codec: 'h264' };
+  return { version: 1, id: 'p', name: 'Saved project', width: 1280, height: 720, fps: 30, assets: [asset], tracks: [{ id: 'track', kind: 'video' }], markers: [], clips: [{ id: 'clip', assetId: 'saved', trackId: 'track', name: 'clip', kind: 'video', start: 0, in: 2, duration: 3, speed: 2, scale: 1, x: 0, y: 0, rotation: 0, opacity: 1, volume: 1, exposure: 0, contrast: 1, saturation: 1, fadeIn: 0, fadeOut: 0 }] };
+}
+
+for (const [label, patch] of [['different kind', { kind: 'audio' }], ['shorter source', { duration: 4 }], ['invalid refreshed metadata', { waveform: null }]]) {
+  test(`opening a ${label} replacement preserves a valid, relinkable offline edit`, async () => {
+    const p = fixture(); let registered = false;
+    const result = await hydrateProject(p, async () => ({ ...p.assets[0], ...patch }), a => { registered = true; return a; });
+    assert.equal(registered, false);
+    assert.equal(result.assets[0].offline, true);
+    assert.equal(result.assets[0].duration, 8);
+    assert.deepEqual(result.clips, p.clips);
+    assert.equal(validateProject(result), result);
+  });
+}
+test('a valid replacement refreshes metadata while retaining persisted asset references', async () => {
+  const p = fixture();p.assets[0].name='日本語の表示名';
+  const result = await hydrateProject(p, async () => ({ ...p.assets[0], id: 'fresh', name:'internal-file.mp4', width: 1920, duration: 10 }), a => ({ ...a, url: 'media://local/asset/saved' }));
+  assert.equal(result.assets[0].id, 'saved'); assert.equal(result.assets[0].revision, 'fresh');
+  assert.equal(result.assets[0].name,'日本語の表示名');assert.equal(result.assets[0].path,p.assets[0].path);
+  assert.equal(result.assets[0].width, 1920); assert.equal(result.assets[0].offline, undefined);
+  assert.equal(validateProject(result), result);
+});
+
+test('relink does not shorten a source even within the old duration tolerance', () => {
+  const saved = fixture().assets[0];
+  assert.throws(() => assertReplacement(saved, { ...saved, duration: 7.98 }), /元の素材以上/);
+  assert.doesNotThrow(() => assertReplacement(saved, { ...saved }));
+});
+test('a silent replacement cannot invalidate an audio-treated project or discard its soundtrack', async () => {
+  const p = fixture(); p.clips[0].audioTreatment = 'speech';
+  const replacement = { ...p.assets[0], hasAudio:false };
+  assert.throws(() => assertReplacement(p.assets[0],replacement), /音声を含む/);
+  const result = await hydrateProject(p,async()=>replacement,()=>{throw Error('Must not expose silent replacement');});
+  assert.equal(result.assets[0].offline,true); assert.equal(result.assets[0].hasAudio,true);
+  assert.equal(result.clips[0].audioTreatment,'speech'); assert.equal(validateProject(result),result);
+});
+
+test('hydration validates cross-asset transitions only on the complete project',async()=>{
+  for(const missing of [false,true]){const p=fixture();p.assets.push({...p.assets[0],id:'second',path:path.resolve('second.mp4')});p.clips.push({...p.clips[0],id:'second-clip',assetId:'second',start:2});p.transitions=[{id:'transition',fromId:'clip',toId:'second-clip',video:'pagePeel',audio:'constantPower'}];
+    const result=await hydrateProject(p,async file=>{const asset=p.assets.find(a=>a.path===file);if(missing&&asset.id==='second')throw Error('missing');return {...asset,id:asset.id+'-refreshed'};},a=>({...a,url:'media://local/asset/'+a.id}));
+    assert.equal(result.assets[0].offline,undefined);assert.equal(!!result.assets[1].offline,missing);assert.deepEqual(result.transitions,p.transitions);assert.equal(validateProject(result),result);
+  }
+});
+
+
+test('malformed track flags and names are rejected before reading media', async () => {
+  for (const field of ['muted', 'hidden', 'locked', 'solo']) {
+    for (const value of ['false', 'true', 0, 1, null, {}, []]) {
+      const p = fixture(); p.tracks[0][field] = value;
+      let inspected = false;
+      await assert.rejects(hydrateProject(p, async () => { inspected = true; return p.assets[0]; }, a => a), /トラック/);
+      assert.equal(inspected, false);
+    }
+  }
+  for (const value of [null, 12, {}, []]) {
+    const p = fixture(); p.tracks[0].name = value;
+    assert.throws(() => validateProject(p), /トラック名/);
+  }
+  assert.doesNotThrow(() => validateProject(fixture()), 'legacy omitted flags remain supported');
+  const p = fixture(); Object.assign(p.tracks[0], { name: '日本語トラック', muted: false, hidden: false, locked: true, solo: false });
+  assert.equal(validateProject(p), p);
+});
+
+test('Windows media paths hydrate offline on macOS without filesystem access', { skip: process.platform === 'win32' }, async () => {
+  for (const file of [String.raw`C:\Users\me\日本語 clip.mp4`, String.raw`\\server\share\clip.mp4`]) {
+    const p = fixture(); p.assets[0].path = file;
+    assert.throws(() => validateProject(p), /絶対パス/);
+    let inspected = false; let registered = false;
+    const result = await hydrateProject(p, () => { inspected = true; throw new Error('missing'); }, a => { registered = true; return a; });
+    assert.equal(inspected, false); assert.equal(registered, false);
+    assert.equal(result.assets[0].offline, true);
+    assert.equal(result.assets[0].path, file);
+    assert.deepEqual(result.clips, p.clips);
+    assert.equal(validateProject(result), result);
+  }
+});
+
+test('invalid or duplicate marker IDs are rejected before hydration', async () => {
+  for (const id of [undefined, null, 1, '', '  ']) {
+    const p = fixture(); p.markers = [{ id, time: 1, label: 'marker' }];
+    assert.throws(() => validateProject(p), /マーカーが不正/);
+  }
+  const p = fixture(); p.markers = [{ id: 'same', time: 1, label: 'A' }, { id: 'same', time: 2, label: 'B' }];
+  let inspected = false;
+  await assert.rejects(hydrateProject(p, () => { inspected = true; }, a => a), /マーカーが不正/);
+  assert.equal(inspected, false);
+  p.markers[1].id = 'other'; assert.equal(validateProject(p), p);
+});
+
+test('export source validation excludes unused and fully hidden/muted media', () => {
+  const p = fixture(); p.assets.push({ ...p.assets[0], id: 'unused', offline: true });
+  assert.deepEqual(exportAssets(p).map(a => a.id), ['saved']);
+  p.tracks[0].hidden = true; assert.equal(exportAssets(p).length, 1, 'visible audio still consumes the source');
+  p.tracks[0].muted = true; assert.deepEqual(exportAssets(p), []);
+  p.tracks[0].hidden = false; assert.equal(exportAssets(p).length, 1, 'muted video still consumes the source');
+  p.clips[0].kind = 'audio'; p.tracks[0].kind = 'audio'; assert.deepEqual(exportAssets(p), []);
+});
+test('persisted paths are native only to their original operating system', () => {
+  assert.equal(isLocalProjectPath('/Users/me/clip.mp4', 'win32'), false);
+  assert.equal(isLocalProjectPath('/Users/me/clip.mp4', 'darwin'), true);
+  for (const file of [String.raw`C:\Users\me\clip.mp4`, 'C:/Users/me/clip.mp4', String.raw`\\server\share\clip.mp4`]) {
+    assert.equal(isLocalProjectPath(file, 'win32'), true);
+    assert.equal(isLocalProjectPath(file, 'darwin'), false);
+  }
+});
+test('Windows hydration never probes a persisted POSIX path', { skip: process.platform !== 'win32' }, async () => {
+  const p = fixture(); p.assets[0].path = '/Users/me/clip.mp4'; let inspected = false;
+  const result = await hydrateProject(p, () => { inspected = true; return p.assets[0]; }, a => a);
+  assert.equal(inspected, false); assert.equal(result.assets[0].offline, true); assert.deepEqual(result.clips, p.clips);
+});
+
+test('rejects title IDs that overwrite an asset source', () => {
+  const p = fixture();
+  p.clips.push({ ...p.clips[0], id: p.assets[0].id, kind: 'title', text: 'Title', color: '#ffffff', fontSize: 32 });
+  assert.throws(() => validateProject(p), /テロップIDと素材IDが重複/);
+});
+test('accepts the marker limit and rejects the first extra marker', () => {
+  const { MAX_MARKERS } = require('../shared/time.mjs');
+  const p = fixture();
+  p.markers = Array.from({ length: MAX_MARKERS }, (_, i) => ({ id: `m${i}`, time: i, label: 'M' }));
+  assert.equal(validateProject(p), p);
+  p.markers.push({ id: 'extra', time: 1, label: 'extra' });
+  assert.throws(() => validateProject(p), /マーカーは2000個まで/);
+});
+test('rejects asset IDs that cannot be used as media URL keys', () => {
+  for (const id of ['', 'a?b', 'a#b', 'a/b', '..', 'a%20b']) {
+    const p = fixture(); p.assets[0].id = id; p.clips[0].assetId = id;
+    assert.throws(() => validateProject(p), /素材IDが不正/);
+  }
+});
+test('rejects reserved and unsafe identifiers in every project namespace', () => {
+  for (const id of ['__proto__', 'constructor', 'prototype', '', 'a?b']) {
+    for (const namespace of ['project', 'asset', 'track', 'clip', 'marker']) {
+      const p = fixture();
+      if (namespace === 'project') p.id = id;
+      if (namespace === 'asset') { p.assets[0].id = id; p.clips[0].assetId = id; }
+      if (namespace === 'track') { p.tracks[0].id = id; p.clips[0].trackId = id; }
+      if (namespace === 'clip') p.clips[0].id = id;
+      if (namespace === 'marker') p.markers = [{ id, time: 0, label: 'M' }];
+      assert.throws(() => validateProject(p), undefined, `${namespace}: ${id}`);
+    }
+  }
+});
+
+test('preserves Japanese project identifiers used by existing projects', () => {
+  const p = fixture(); p.id = 'つなぎ目の描画 1'; assert.equal(validateProject(p), p);
+});
+
+test('invalid project JSON reports a concrete Japanese format error', () => {
+  const { parseProjectJson } = require('../electron/project.cjs');
+  for (const text of ['', '{', 'not json']) assert.throws(() => parseProjectJson(text), /プロジェクトのJSONが不正/);
+  assert.deepEqual(parseProjectJson(JSON.stringify(fixture())), fixture());
+});
+test('refuses serialized projects above the matching load limit', () => {
+  const { serializeProject, MAX_PROJECT_BYTES } = require('../electron/project.cjs');
+  const p = fixture(); p.extra = 'あ'.repeat(Math.ceil(MAX_PROJECT_BYTES / 3));
+  assert.throws(() => serializeProject(p), /15 MiB/);
+  delete p.extra; assert.deepEqual(JSON.parse(serializeProject(p)), p);
+  p.tracks[0].name = 'x'.repeat(257); assert.throws(() => serializeProject(p), /トラック名/);
+});

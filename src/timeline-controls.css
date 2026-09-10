@@ -1,0 +1,36 @@
+/* Larger hit targets for ranges and ordinary panel scrollbars. */
+input[type=range]{height:24px!important;background:linear-gradient(#454c57,#454c57) center/100% 6px no-repeat!important;min-width:48px;touch-action:none}
+input.property-slider[type=range]{background:linear-gradient(to right,#839374 var(--fill),#343a43 var(--fill)) center/100% 6px no-repeat!important}
+input[type=range]::-webkit-slider-thumb{width:20px;height:20px;border:2px solid #20242a;box-shadow:0 0 0 1px #aebacd}
+::-webkit-scrollbar{width:16px;height:16px}
+::-webkit-scrollbar-thumb{min-height:36px;min-width:36px;background:#667181;border:3px solid #181a1e;border-radius:10px}
+.timeline-tracks{position:relative;padding-bottom:26px;padding-right:26px}
+.timeline-scroll::-webkit-scrollbar{width:0;height:0}
+.timeline-navigation{position:absolute;background:#222830;border:1px solid #46505c;border-radius:12px;touch-action:none;z-index:12}
+.timeline-navigation.horizontal{height:22px;bottom:2px;left:190px;right:28px}
+.timeline-navigation.vertical{width:22px;right:2px;top:2px;bottom:28px}
+.timeline-navigation-thumb{position:absolute;background:#626f80;border:1px solid #8795a8;border-radius:12px;cursor:grab;min-width:20px;min-height:20px;outline-offset:1px;touch-action:none}
+.horizontal .timeline-navigation-thumb{height:20px;top:0}.vertical .timeline-navigation-thumb{width:20px;left:0}
+.timeline-navigation-handle{position:absolute;width:20px;height:20px;min-width:20px;min-height:20px;padding:0;border-radius:50%;border:2px solid #69788d;background:#d5deea;touch-action:none}
+.horizontal .timeline-navigation-handle{top:-1px;cursor:ew-resize}.horizontal .start{left:-1px}.horizontal .end{right:-1px}
+.vertical .timeline-navigation-handle{left:-1px;cursor:ns-resize}.vertical .start{top:-1px}.vertical .end{bottom:-1px}
+.timeline-navigation-handle:hover,.timeline-navigation-handle:focus-visible{background:#fff;border-color:#73bbff}
+.timeline-tracks .track-label,.timeline-tracks .track-lane{height:var(--track-height,80px)}
+.timeline-tracks .timeline-clip{height:calc(var(--track-height,80px) - 10px)}
+.timeline-tracks .detailed-waveform{height:calc(100% - 24px)}
+.timeline-tracks .clip-volume-line{height:calc(100% - 22px);z-index:6}
+.volume-line-hit{stroke-width:14px;cursor:ns-resize}
+.volume-node{stroke-width:5px;stroke:#f9cf7855}
+.volume-node.active,.volume-node:focus{fill:#fff;stroke:#62b4ff;stroke-width:4px}
+
+.waveform-status{position:absolute;left:8px;top:0;font-size:10px;color:#cbd4e0;background:#1c222ed9;border-radius:3px;padding:1px 4px;pointer-events:none;z-index:7}.waveform-status button{pointer-events:auto;font:inherit;border:0;padding:0;background:none;color:inherit;text-decoration:underline}
+.timeline-tracks .timeline-clip .trim-handle{z-index:7}
+
+/* Keep marker geometry at the real time; only the invisible pointer target grows. */
+.timeline-tracks .volume-node{fill:transparent;stroke:transparent;stroke-width:18px}
+.volume-node-visual{fill:#f9cf78;stroke:#f9cf7855;stroke-width:3px;pointer-events:none;vector-effect:non-scaling-stroke}
+.volume-node:hover + .volume-node-visual{stroke:#fff7d4}
+.volume-node.active + .volume-node-visual,.volume-node:focus + .volume-node-visual{fill:#fff;stroke:#62b4ff;stroke-width:4px}
+/* Audio gain occupies the lower band; trimming stays available in the title band. */
+.timeline-tracks .timeline-clip:has(.clip-volume-line) .trim-handle{height:18px;bottom:auto}
+.timeline-tracks .timeline-clip:has(.clip-volume-line){overflow:clip;overflow-clip-margin:border-box}

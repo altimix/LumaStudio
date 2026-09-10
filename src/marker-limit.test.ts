@@ -1,0 +1,20 @@
+import { expect, it } from 'vitest';
+import { useEditor } from './store';
+import { emptyProject } from './model';
+import { MAX_MARKERS } from '../shared/time.mjs';
+it('allows the final marker, rejects overflow without history and allows removal/undo', () => {
+  const project = emptyProject();
+  project.markers = Array.from({ length: MAX_MARKERS - 1 }, (_, i) => ({ id: `m${i}`, time: i, label: 'M' }));
+  useEditor.getState().load(project);
+  useEditor.getState().addMarker();
+  const full = useEditor.getState().project;
+  expect(full.markers).toHaveLength(MAX_MARKERS);
+  useEditor.getState().addMarker();
+  expect(useEditor.getState().project).toBe(full);
+  useEditor.getState().undo();
+  expect(useEditor.getState().project.markers).toHaveLength(MAX_MARKERS - 1);
+  useEditor.getState().redo();
+  useEditor.getState().removeMarker('m0');
+  useEditor.getState().addMarker();
+  expect(useEditor.getState().project.markers).toHaveLength(MAX_MARKERS);
+});

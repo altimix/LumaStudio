@@ -1,0 +1,33 @@
+name: 機能・改善の仕様
+description: 利用者の目的、動作、完成の判定を定義します
+title: "[機能] "
+body:
+  - type: textarea
+    id: purpose
+    attributes:
+      label: 目的
+      description: 誰がどんな操作をできるようにするか
+    validations:
+      required: true
+  - type: textarea
+    id: specification
+    attributes:
+      label: 仕様と対象範囲
+      description: 操作、期待結果、保存や書き出しへの反映、対象外を記載
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 受け入れ条件
+      description: 自動テストまたは具体的な操作で完成を判定できるチェックリスト
+      value: "- [ ] "
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: 検証方法
+      description: テスト素材、解像度、FPS、操作手順、必要な性能条件
+    validations:
+      required: true

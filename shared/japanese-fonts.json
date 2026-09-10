@@ -1,0 +1,665 @@
+[
+  {
+    "family": "Aoboshi One",
+    "label": "Aoboshi One",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "BIZ UDGothic",
+    "label": "BIZ UDGothic",
+    "weights": [
+      400,
+      700
+    ],
+    "variable": false
+  },
+  {
+    "family": "BIZ UDMincho",
+    "label": "BIZ UDMincho",
+    "weights": [
+      400,
+      700
+    ],
+    "variable": false
+  },
+  {
+    "family": "BIZ UDPGothic",
+    "label": "BIZ UDPGothic",
+    "weights": [
+      400,
+      700
+    ],
+    "variable": false
+  },
+  {
+    "family": "BIZ UDPMincho",
+    "label": "BIZ UDPMincho",
+    "weights": [
+      400,
+      700
+    ],
+    "variable": false
+  },
+  {
+    "family": "Cherry Bomb One",
+    "label": "Cherry Bomb One",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Chokokutai",
+    "label": "Chokokutai",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Darumadrop One",
+    "label": "Darumadrop One",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Dela Gothic One",
+    "label": "Dela Gothic One",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "DotGothic16",
+    "label": "DotGothic16",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Hachi Maru Pop",
+    "label": "Hachi Maru Pop",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Hina Mincho",
+    "label": "Hina Mincho",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "IBM Plex Sans JP",
+    "label": "IBM Plex Sans JP",
+    "weights": [
+      100,
+      200,
+      300,
+      400,
+      500,
+      600,
+      700
+    ],
+    "variable": false
+  },
+  {
+    "family": "Kaisei Decol",
+    "label": "Kaisei Decol",
+    "weights": [
+      400,
+      500,
+      700
+    ],
+    "variable": false
+  },
+  {
+    "family": "Kaisei HarunoUmi",
+    "label": "Kaisei HarunoUmi",
+    "weights": [
+      400,
+      500,
+      700
+    ],
+    "variable": false
+  },
+  {
+    "family": "Kaisei Opti",
+    "label": "Kaisei Opti",
+    "weights": [
+      400,
+      500,
+      700
+    ],
+    "variable": false
+  },
+  {
+    "family": "Kaisei Tokumin",
+    "label": "Kaisei Tokumin",
+    "weights": [
+      400,
+      500,
+      700,
+      800
+    ],
+    "variable": false
+  },
+  {
+    "family": "Kapakana",
+    "label": "Kapakana",
+    "weights": [
+      300,
+      400
+    ],
+    "variable": true
+  },
+  {
+    "family": "Kiwi Maru",
+    "label": "Kiwi Maru",
+    "weights": [
+      300,
+      400,
+      500
+    ],
+    "variable": false
+  },
+  {
+    "family": "Klee One",
+    "label": "Klee One",
+    "weights": [
+      400,
+      600
+    ],
+    "variable": false
+  },
+  {
+    "family": "Kosugi",
+    "label": "Kosugi",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Kosugi Maru",
+    "label": "Kosugi Maru",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "LINE Seed JP",
+    "label": "LINE Seed JP",
+    "weights": [
+      100,
+      400,
+      700,
+      800
+    ],
+    "variable": false
+  },
+  {
+    "family": "M PLUS 1",
+    "label": "M PLUS 1",
+    "weights": [
+      100,
+      200,
+      300,
+      400,
+      500,
+      600,
+      700,
+      800,
+      900
+    ],
+    "variable": true
+  },
+  {
+    "family": "M PLUS 1 Code",
+    "label": "M PLUS 1 Code",
+    "weights": [
+      100,
+      200,
+      300,
+      400,
+      500,
+      600,
+      700
+    ],
+    "variable": true
+  },
+  {
+    "family": "M PLUS 1p",
+    "label": "M PLUS 1p",
+    "weights": [
+      100,
+      300,
+      400,
+      500,
+      700,
+      800,
+      900
+    ],
+    "variable": false
+  },
+  {
+    "family": "M PLUS 2",
+    "label": "M PLUS 2",
+    "weights": [
+      100,
+      200,
+      300,
+      400,
+      500,
+      600,
+      700,
+      800,
+      900
+    ],
+    "variable": true
+  },
+  {
+    "family": "M PLUS Rounded 1c",
+    "label": "M PLUS Rounded 1c",
+    "weights": [
+      100,
+      300,
+      400,
+      500,
+      700,
+      800,
+      900
+    ],
+    "variable": false
+  },
+  {
+    "family": "M PLUS U",
+    "label": "M PLUS U",
+    "weights": [
+      100,
+      200,
+      300,
+      400,
+      500,
+      600,
+      700,
+      800,
+      900
+    ],
+    "variable": true
+  },
+  {
+    "family": "Mochiy Pop One",
+    "label": "Mochiy Pop One",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Mochiy Pop P One",
+    "label": "Mochiy Pop P One",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Monomaniac One",
+    "label": "Monomaniac One",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Murecho",
+    "label": "Murecho",
+    "weights": [
+      100,
+      200,
+      300,
+      400,
+      500,
+      600,
+      700,
+      800,
+      900
+    ],
+    "variable": true
+  },
+  {
+    "family": "New Tegomin",
+    "label": "New Tegomin",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Noto Sans JP",
+    "label": "Noto Sans Japanese",
+    "weights": [
+      100,
+      200,
+      300,
+      400,
+      500,
+      600,
+      700,
+      800,
+      900
+    ],
+    "variable": true
+  },
+  {
+    "family": "Noto Serif JP",
+    "label": "Noto Serif Japanese",
+    "weights": [
+      200,
+      300,
+      400,
+      500,
+      600,
+      700,
+      800,
+      900
+    ],
+    "variable": true
+  },
+  {
+    "family": "Palette Mosaic",
+    "label": "Palette Mosaic",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Potta One",
+    "label": "Potta One",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Rampart One",
+    "label": "Rampart One",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Reggae One",
+    "label": "Reggae One",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Rock 3D",
+    "label": "Rock 3D",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "RocknRoll One",
+    "label": "RocknRoll One",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Sawarabi Gothic",
+    "label": "Sawarabi Gothic",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Sawarabi Mincho",
+    "label": "Sawarabi Mincho",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Shippori Antique",
+    "label": "Shippori Antique",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Shippori Antique B1",
+    "label": "Shippori Antique B1",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Shippori Mincho",
+    "label": "Shippori Mincho",
+    "weights": [
+      400,
+      500,
+      600,
+      700,
+      800
+    ],
+    "variable": false
+  },
+  {
+    "family": "Shippori Mincho B1",
+    "label": "Shippori Mincho B1",
+    "weights": [
+      400,
+      500,
+      600,
+      700,
+      800
+    ],
+    "variable": false
+  },
+  {
+    "family": "Shizuru",
+    "label": "Shizuru",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Slackside One",
+    "label": "Slackside One",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Stick",
+    "label": "Stick",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Train One",
+    "label": "Train One",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Tsukimi Rounded",
+    "label": "Tsukimi Rounded",
+    "weights": [
+      300,
+      400,
+      500,
+      600,
+      700
+    ],
+    "variable": false
+  },
+  {
+    "family": "WDXL Lubrifont JP N",
+    "label": "WDXL Lubrifont JP N",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Yomogi",
+    "label": "Yomogi",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Yuji Boku",
+    "label": "Yuji Boku",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Yuji Hentaigana Akari",
+    "label": "Yuji Hentaigana Akari",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Yuji Hentaigana Akebono",
+    "label": "Yuji Hentaigana Akebono",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Yuji Mai",
+    "label": "Yuji Mai",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Yuji Syuku",
+    "label": "Yuji Syuku",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Yusei Magic",
+    "label": "Yusei Magic",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Zen Antique",
+    "label": "Zen Antique",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Zen Antique Soft",
+    "label": "Zen Antique Soft",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Zen Kaku Gothic Antique",
+    "label": "Zen Kaku Gothic Antique",
+    "weights": [
+      300,
+      400,
+      500,
+      700,
+      900
+    ],
+    "variable": false
+  },
+  {
+    "family": "Zen Kaku Gothic New",
+    "label": "Zen Kaku Gothic New",
+    "weights": [
+      300,
+      400,
+      500,
+      700,
+      900
+    ],
+    "variable": false
+  },
+  {
+    "family": "Zen Kurenaido",
+    "label": "Zen Kurenaido",
+    "weights": [
+      400
+    ],
+    "variable": false
+  },
+  {
+    "family": "Zen Maru Gothic",
+    "label": "Zen Maru Gothic",
+    "weights": [
+      300,
+      400,
+      500,
+      700,
+      900
+    ],
+    "variable": false
+  },
+  {
+    "family": "Zen Old Mincho",
+    "label": "Zen Old Mincho",
+    "weights": [
+      400,
+      500,
+      600,
+      700,
+      900
+    ],
+    "variable": false
+  }
+]

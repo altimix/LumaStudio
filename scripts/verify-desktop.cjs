@@ -1,0 +1,143 @@
+const { _electron: electron } = require('playwright');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const { probe, ffmpeg, run } = require('../electron/media.cjs');
+const root = path.join(__dirname, '..');
+async function verify() {
+  const results = path.join(root, 'test-results'); await fs.mkdir(results, { recursive: true });
+  await fs.mkdir(path.join(root,'.local'),{recursive:true});
+  const profile = await fs.mkdtemp(path.join(root,'.local','verify-profile-'));
+  const env = { ...process.env, LUMA_DEMO_FIXTURE: '1', LUMA_TEST_DATA: profile }; delete env.ELECTRON_RUN_AS_NODE;
+  const executablePath=process.env.LUMA_VERIFY_EXE;
+  const app = await electron.launch({ executablePath, args: executablePath ? [] : [root], env, timeout:60000 });
+  const page = await app.firstWindow(); const errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+  try {
+    await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});
+    await page.locator('.media-card').first().waitFor();
+    assert.equal(await page.locator('.media-card').count(),4);
+    assert.equal(await page.locator('.timeline-clip').count(),5);
+    // Merely focusing an inspector field must not make a clean project dirty.
+    const nameInput=page.getByRole('textbox',{name:'クリップ名',exact:true});
+    await nameInput.focus();await nameInput.blur();
+    assert.equal(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),true);
+    const originalName=await nameInput.inputValue();
+    await nameInput.fill('名前の履歴テスト');await nameInput.blur();
+    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();
+    await page.locator('.timeline-clip.video').first().click();
+    assert.equal(await nameInput.inputValue(),originalName);
+    assert.equal(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),true);
+    await page.waitForFunction(()=>{ const c=document.querySelector('.canvas-wrap canvas');const ctx=c.getContext('2d');const d=ctx.getImageData(c.width*.2,c.height*.5,2,2).data;return d[0]>40 && d[1]>30; },null,{timeout:15000});
+    await page.screenshot({path:path.join(results,'editor-desktop.png')});
+    // Source in-points retain sub-frame precision when a rounded display is only focused.
+    const sourceIn=page.getByRole('spinbutton',{name:'素材の開始位置',exact:true});
+    await sourceIn.fill('0.06666666666666667');await sourceIn.blur();
+    await sourceIn.focus();await sourceIn.blur();
+    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();
+    await page.locator('.timeline-clip.video').first().click();
+    assert.equal(Number(await sourceIn.inputValue()),0);
+    assert.equal(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),true);
+    // Exercise pointer movement and resize handles, including undo to restore the source.
+    const firstVideo=page.locator('.timeline-clip.video').first();
+    let box=await firstVideo.boundingBox();
+    await page.mouse.move(box.x+70,box.y+18);await page.mouse.down();await page.mouse.move(box.x+118,box.y+18,{steps:8});await page.mouse.up();
+    await page.waitForFunction(()=>document.querySelector('.timeline-clip.video').getAttribute('aria-label').includes('開始 1.00 秒'));
+    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();
+    box=await firstVideo.boundingBox();
+    const trim=await firstVideo.locator('.trim-handle.right').boundingBox();
+    await page.mouse.move(trim.x+trim.width/2,trim.y+trim.height/2);await page.mouse.down();await page.mouse.move(trim.x+trim.width/2-48,trim.y+trim.height/2,{steps:8});await page.mouse.up();
+    await page.waitForFunction(()=>document.querySelector('.timeline-clip.video').getAttribute('aria-label').includes('長さ 7.00 秒'));
+    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();
+    // An empty selection must not turn the keyboard shortcut into a split-all operation.
+    assert.equal(await page.locator('.timeline-clip.selected').count(),1);
+    await page.locator('.track-lane').last().click({position:{x:500,y:20}});
+    assert.equal(await page.locator('.timeline-clip.selected').count(),0);
+    await page.keyboard.press('Control+b');
+    assert.equal(await page.locator('.timeline-clip').count(),5);
+    // FPS changes must not round protected clips to different frame boundaries.
+    await firstVideo.click();
+    await page.getByRole('spinbutton',{name:'長さ',exact:true}).fill('7.97');
+    await page.getByRole('spinbutton',{name:'長さ',exact:true}).blur();
+    await page.waitForFunction(()=>document.querySelector('.timeline-clip.video').getAttribute('aria-label').includes('長さ 7.97 秒'));
+    const protectedClip=await firstVideo.getAttribute('aria-label');
+    await page.getByRole('button',{name:'メイン映像 ロック',exact:true}).click();
+    assert.equal(await nameInput.isDisabled(),true);
+    await page.getByRole('button',{name:'シーケンス',exact:true}).click();
+    await page.getByLabel('シーケンスのフレームレート',{exact:true}).selectOption('24');
+    await page.getByRole('button',{name:'設定を適用',exact:true}).click();
+    await page.getByRole('dialog').getByRole('alert').filter({hasText:'ロックを解除'}).waitFor();
+    assert.ok(await page.getByRole('dialog').isVisible());
+    assert.equal(await firstVideo.getAttribute('aria-label'),protectedClip);
+    assert.match(await page.locator('.preview-panel .panel-heading').textContent(),/30 fps/);
+    await page.screenshot({path:path.join(results,'locked-fps-protection.png')});
+    await page.getByRole('button',{name:'キャンセル',exact:true}).click();
+    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();
+    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.timeline-clip.video').getAttribute('aria-label').includes('長さ 8.00 秒'));
+    await firstVideo.click();
+    await page.getByRole('button',{name:'再生 (Space)',exact:true}).click();
+    const before=await page.locator('.preview-meta .timecode').first().textContent();
+    await page.waitForFunction(()=>Number.isFinite(Number.parseFloat(document.querySelector('.meter-reading').textContent)));
+    await page.getByRole('button',{name:'一時停止 (Space)',exact:true}).click();
+    const after=await page.locator('.preview-meta .timecode').first().textContent();assert.notEqual(before,after);
+    // A real user command splits the selected clip, then history restores it.
+    // Slow CI can advance past this clip while waiting for the audio meter.
+    await page.getByRole('button',{name:'先頭へ (Home)',exact:true}).click();
+    await page.keyboard.press('Shift+ArrowRight');
+    await page.waitForFunction(()=>document.querySelector('.preview-meta .timecode')?.textContent==='00:00:00:10');
+    await page.getByRole('button',{name:'選択クリップを分割 (Ctrl+B)',exact:true}).click();
+    assert.equal(await page.locator('.timeline-clip').count(),6);
+    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();assert.equal(await page.locator('.timeline-clip').count(),5);
+    await page.getByRole('button',{name:'やり直す (Ctrl+Shift+Z)',exact:true}).click();assert.equal(await page.locator('.timeline-clip').count(),6);
+    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();
+    await page.locator('.timeline-clip.video').first().click();
+    await page.getByRole('button',{name:'カラー',exact:true}).first().click();
+    await page.getByRole('button',{name:'Cinematic 深い陰影、映画のように'}).click();
+    await page.waitForFunction(()=>document.querySelector('#prop-saturation')?.value==='78');
+    await page.getByRole('button',{name:'テキスト',exact:true}).first().click();
+    await page.getByRole('button',{name:/YOUR STORY/}).click();
+    await page.getByRole('textbox',{name:'テロップのテキスト',exact:true}).fill('日本語テロップ\nWindowsで動画編集');
+    await page.getByRole('textbox',{name:'テロップのテキスト',exact:true}).blur();
+    await page.getByLabel('スタイル',{exact:true}).selectOption('subtitle');
+    await page.getByRole('spinbutton',{name:'位置 Y',exact:true}).fill('33');
+    await page.getByRole('spinbutton',{name:'位置 Y',exact:true}).blur();
+    assert.equal(await page.locator('.timeline-clip.title').count(),2);
+    await page.screenshot({path:path.join(results,'editor-title.png')});
+    // Native import and native save dialogs are deterministically answered only in this test process.
+    const savePath=path.join(results,'検証プロジェクト.luma');
+    await app.evaluate(({dialog},target)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:target});},savePath);
+    await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.toast[role="status"]')?.textContent.includes('プロジェクトを保存しました'));
+    const saved=JSON.parse(await fs.readFile(savePath,'utf8'));assert.ok(saved.clips.some(c=>c.text.includes('日本語テロップ')));
+    assert.equal(saved.clips.filter(c=>c.kind==='video')[0].saturation,0.78);
+    await app.evaluate(({dialog},target)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[target]});},savePath);
+    await page.keyboard.press('Control+o');
+    await page.getByRole('dialog',{name:'プロジェクトを開いています',exact:true}).waitFor({state:'hidden'});
+    await page.waitForFunction(()=>document.querySelector('.inspector-count').textContent.includes('1 選択'));
+    assert.equal(await page.locator('.timeline-clip.title').count(),2);
+    // Malformed metadata for an offline asset must be rejected before it reaches the timeline.
+    const corrupt=structuredClone(saved);corrupt.assets[0].path=path.join(profile,'missing.mp4');delete corrupt.assets[0].waveform;
+    const corruptPath=path.join(profile,'壊れたプロジェクト.luma');await fs.writeFile(corruptPath,JSON.stringify(corrupt));
+    await app.evaluate(({dialog},target)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[target]});},corruptPath);
+    await page.keyboard.press('Control+o');
+    await page.getByRole('dialog',{name:'プロジェクトを開いています',exact:true}).waitFor({state:'hidden'});
+    await page.waitForFunction(()=>document.querySelector('.toast[role="status"]')?.textContent.includes('波形データが不正'));
+    assert.equal(await page.locator('.timeline-clip.title').count(),2);
+    const output=path.join(results,'Luma-Studio-検証.mp4');
+    await app.evaluate(({dialog},target)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:target});},output);
+    await page.getByRole('button',{name:'書き出し',exact:true}).click();
+    await page.getByLabel('書き出しサイズ',{exact:true}).selectOption('720');
+    await page.getByLabel('品質',{exact:true}).selectOption('draft');
+    await page.getByRole('button',{name:'保存先を選んで書き出す',exact:true}).click();
+    await page.getByText('書き出しが完了しました',{exact:true}).waitFor({timeout:300000});
+    const info=await probe(output);assert.equal(info.streams.find(s=>s.codec_type==='video').width,1280);assert.ok(Math.abs(Number(info.format.duration)-24)<0.12);
+    await page.screenshot({path:path.join(results,'export-complete.png')});
+    await run(ffmpeg,['-y','-ss','4.5','-i',output,'-frames:v','1',path.join(results,'export-frame.png')]);
+    assert.deepEqual(errors,[]);
+    await fs.writeFile(path.join(results,'desktop-verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,assertions:['native app launch','name focus / edit / undo protection','source-time precision on focus / blur','demo media import','canvas video decode','pointer drag / trim / undo','empty selection shortcut protection','locked track FPS protection','transport and audio output','split / undo / redo','color preset','Japanese text editing','native project save / open','corrupt offline metadata rejection','native 720p MP4 export'],output,duration:info.format.duration,video:info.streams.find(s=>s.codec_type==='video').codec_name,audio:info.streams.find(s=>s.codec_type==='audio').codec_name,consoleErrors:errors},null,2));
+    console.log('Desktop verification passed:',output);
+  } catch(e) { await page.screenshot({path:path.join(results,'failure.png')}).catch(()=>{});console.log('Renderer errors:',errors);console.log('Media state:',await page.evaluate(()=>[...document.querySelectorAll('video,audio')].map(el=>({src:el.src,ready:el.readyState,time:el.currentTime,duration:el.duration,paused:el.paused,seeking:el.seeking,error:el.error?.message}))));throw e; } finally { await app.close(); }
+}
+verify().catch(e=>{console.error(e);process.exitCode=1;});

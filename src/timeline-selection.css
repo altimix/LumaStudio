@@ -1,0 +1,2 @@
+.timeline-selection-rect{position:absolute;z-index:6;border:1px solid #c0df9e;background:#b9dc952d;pointer-events:none;box-shadow:0 0 0 1px #1b291c66;user-select:none}
+.timeline-scroll.select .track-lane{touch-action:none}
