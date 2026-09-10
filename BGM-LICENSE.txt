@@ -1,0 +1,17 @@
+Bundled BGM: bgm001.mp3, bgm002.mp3, bgm003.mp3, bgm004.mp3, bgm005.mp3
+Copyright (C) 2026 altimix
+
+Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0).
+https://creativecommons.org/licenses/by/4.0/
+Legal terms: https://creativecommons.org/licenses/by/4.0/legalcode
+
+You may copy, redistribute, adapt and use these recordings commercially under
+CC BY 4.0. Credit altimix, link to the license and indicate changes when applicable.
+These recordings are separate assets; the application's GPL-3.0-only license
+does not replace this music license. Videos containing the music do not need to
+be released under the GPL solely because they contain this music.
+
+この5曲はaltimixの制作物で、CC BY 4.0で提供します。動画への組込み、編集、
+再配布、商用利用を認めます。altimixのクレジット、ライセンスへのリンク、
+必要に応じた変更の明示をお願いします。説明欄等への表記で構いません。
+表記例: BGM: altimix / CC BY 4.0 https://creativecommons.org/licenses/by/4.0/
