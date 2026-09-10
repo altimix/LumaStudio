@@ -371,7 +371,8 @@ app.whenReady().then(async () => {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => { if (!url.startsWith('luma://app/') && !url.startsWith(process.env.LUMA_DEV_URL || 'luma://app/')) event.preventDefault(); });
   window.on('close', event => {
-    if (allowClose || rendererGone) return;
+    // Dedicated close tests opt in; other isolated test apps must clean up without a user response.
+    if (allowClose || rendererGone || (process.env.LUMA_TEST_DATA && process.env.LUMA_TEST_CLOSE !== '1')) return;
     event.preventDefault();
     if (pendingCloseId !== null || preparingCloseId !== null) return;
     preparingCloseId = ++nextCloseId;
