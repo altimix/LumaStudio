@@ -143,7 +143,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     try { validateOpacityKeys(normalized); validateVolumeKeys(normalized); validateGraphic(normalized); if (normalized.kind === 'title') validateTextStyle(normalized); } catch (e) { s.notify((e as Error).message); return; }
     s.commit({ ...s.project, clips: s.project.clips.map(c => c.id === id ? normalized : c) }, patch.volumeKeyframes !== undefined ? '音量ポイントを変更' : patch.opacityKeyframes !== undefined ? '不透明度キーフレームを変更' : patch.speed !== undefined ? '再生速度を変更' : 'クリップのプロパティを変更');
   },
-  updateTrack: (id, patch) => { const s = get(); s.commit({ ...s.project, tracks: s.project.tracks.map(t => t.id === id ? { ...t, ...patch } : t) }, patch.locked !== undefined ? (patch.locked ? 'トラックをロック' : 'トラックのロックを解除') : 'トラックを変更'); },
+  updateTrack: (id, patch) => { const s = get(); const track = s.project.tracks.find(t => t.id === id); if (!track || (track.locked && patch.name !== undefined)) return; s.commit({ ...s.project, tracks: s.project.tracks.map(t => t.id === id ? { ...t, ...patch } : t) }, patch.locked !== undefined ? (patch.locked ? 'トラックをロック' : 'トラックのロックを解除') : 'トラックを変更'); },
   importAssets: assets => { const s = get(); const known = new Set(s.project.assets.map(a => a.id)); const fresh = assets.filter(a => { if (known.has(a.id)) return false; known.add(a.id); return true; }); if (!capacity(s.project.assets.length, fresh.length, '素材')) return; if (fresh.length) s.commit({ ...s.project, assets: [...s.project.assets, ...fresh] }, '素材を読み込み'); s.notify(`${assets.length} 件の素材を読み込みました`); },
   removeAsset: (id, removeUsed = false) => {
     const s = get(), asset = s.project.assets.find(a => a.id === id);
