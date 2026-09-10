@@ -20,7 +20,7 @@ const { encodingArgs, exportEncoders, validateEncoder, ENCODERS } = require('./e
 const { validateTransitions, transitionPlan, audioEnvelopes, mediaWindow } = require('../shared/transitions.mjs');
 const { compositeVisuals } = require('./video-transitions.cjs');
 const finite = (x, lo, hi, label) => { if (!Number.isFinite(x) || x < lo || x > hi) throw new Error(`${label}が範囲外です。`); return x; };
-const validId = id => typeof id === 'string' && /^[A-Za-z0-9_-]+$/.test(id) && !['__proto__', 'constructor', 'prototype'].includes(id);
+const validId = id => typeof id === 'string' && !!id.trim() && /^[\p{L}\p{N}_ -]+$/u.test(id) && !['__proto__', 'constructor', 'prototype'].includes(id);
 function validateProject(p, { allowForeignPaths = false } = {}) {
   if (!p || p.version !== 1 || !validId(p.id) || typeof p.name !== 'string' || !Array.isArray(p.assets) || !Array.isArray(p.tracks) || !Array.isArray(p.clips) || !Array.isArray(p.markers)) throw new Error('対応していないプロジェクト形式です。');
   if (p.clips.length > 2000 || p.assets.length > 2000 || p.tracks.length > 24) throw new Error('プロジェクトが大きすぎます。');
@@ -40,7 +40,7 @@ function validateProject(p, { allowForeignPaths = false } = {}) {
   }
   const assetIds = new Set();
   for (const a of p.assets) {
-    if (!a || !validId(a.id)) throw new Error('素材IDが不正です。英数字・ハイフン・アンダースコアを使用してください。');
+    if (!a || !validId(a.id) || !/^[A-Za-z0-9_-]+$/.test(a.id)) throw new Error('素材IDが不正です。英数字・ハイフン・アンダースコアを使用してください。');
     if (typeof a.name !== 'string' || typeof a.path !== 'string' || !(path.isAbsolute(a.path) || ((allowForeignPaths || a.offline === true) && path.win32.isAbsolute(a.path))) || !['video', 'image', 'audio'].includes(a.kind) || assetIds.has(a.id)) throw new Error('素材が不正です。ローカルファイルの絶対パスが必要です。');
     if (typeof a.hasAudio !== 'boolean' || typeof a.codec !== 'string') throw new Error('素材のメタデータが不正です。');
     if (!Array.isArray(a.waveform) || a.waveform.length > 4096 || a.waveform.some(v => !Number.isFinite(v) || v < 0 || v > 1)) throw new Error('素材の波形データが不正です。');

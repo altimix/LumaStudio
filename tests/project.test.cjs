@@ -149,3 +149,7 @@ test('rejects reserved and unsafe identifiers in every project namespace', () =>
     }
   }
 });
+
+test('preserves Japanese project identifiers used by existing projects', () => {
+  const p = fixture(); p.id = 'つなぎ目の描画 1'; assert.equal(validateProject(p), p);
+});
