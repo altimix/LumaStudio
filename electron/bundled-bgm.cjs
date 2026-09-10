@@ -11,10 +11,8 @@ async function prepareBundledBgm(source, destination) {
   for (const entry of entries) {
     const target = path.join(destination, entry.name);
     const existing = await fs.readFile(target).catch(error => { if (error.code !== 'ENOENT') throw error; return null; });
-    if (existing) {
-      if (digest(existing) !== entry.sha256) throw new Error('初期BGMが変更されています: ' + entry.name);
-      continue;
-    }
+    if (existing && digest(existing) === entry.sha256) continue;
+    // These are app-owned copies. Repair only from a verified packaged source.
     const bytes = await fs.readFile(path.join(source, entry.name));
     if (digest(bytes) !== entry.sha256) throw new Error('初期BGMが破損しています: ' + entry.name);
     await atomicWrite(target, bytes);
