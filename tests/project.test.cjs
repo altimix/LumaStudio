@@ -136,3 +136,16 @@ test('rejects asset IDs that cannot be used as media URL keys', () => {
     assert.throws(() => validateProject(p), /素材IDが不正/);
   }
 });
+test('rejects reserved and unsafe identifiers in every project namespace', () => {
+  for (const id of ['__proto__', 'constructor', 'prototype', '', 'a?b']) {
+    for (const namespace of ['project', 'asset', 'track', 'clip', 'marker']) {
+      const p = fixture();
+      if (namespace === 'project') p.id = id;
+      if (namespace === 'asset') { p.assets[0].id = id; p.clips[0].assetId = id; }
+      if (namespace === 'track') { p.tracks[0].id = id; p.clips[0].trackId = id; }
+      if (namespace === 'clip') p.clips[0].id = id;
+      if (namespace === 'marker') p.markers = [{ id, time: 0, label: 'M' }];
+      assert.throws(() => validateProject(p), undefined, `${namespace}: ${id}`);
+    }
+  }
+});
