@@ -37,6 +37,8 @@ export default function App() {
   const [savingOnClose, setSavingOnClose] = useState(false);
   const [projectBusy, setProjectBusy] = useState('');
   const projectBusyRef = useRef(false);
+  const saveInFlight = useRef(false);
+  const saveFinished = useRef<Promise<void>>(Promise.resolve());
   const projectOperationFocus = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     if (!projectBusy) {
@@ -89,23 +91,29 @@ export default function App() {
   useEffect(() => {
     const desktop = window.luma;
     return desktop?.onPrepareClose(async requestId => {
+      await saveFinished.current;
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-      await desktop.finishPrepareClose(requestId, useEditor.getState().dirty, !projectBusyRef.current);
+      await desktop.finishPrepareClose(requestId, useEditor.getState().dirty, !projectBusyRef.current && !saveInFlight.current);
     });
   }, []);
   const save = useCallback(async (saveAs = false) => {
-    if (!beginProjectOperation('プロジェクトを保存しています')) return false;
+    if (saveInFlight.current || projectBusyRef.current) return false;
+    saveInFlight.current = true;
+    let completeSave!: () => void;
+    saveFinished.current = new Promise<void>(resolve => { completeSave = resolve; });
+    const generation = useEditor.getState().projectGeneration;
     try {
       const snapshot = useEditor.getState().project;
       if (window.luma) {
         const target = await window.luma.saveProject(snapshot, saveAs); if (!target) return false;
+        if (useEditor.getState().projectGeneration !== generation) { useEditor.getState().notify('以前のプロジェクトを保存しました'); return true; }
         const unchanged = useEditor.getState().project === snapshot;
         useEditor.setState({ savedPath: target, dirty: !unchanged });
         if (unchanged) { await window.luma.clearRecovery(); setRecovery(null); }
       } else { downloadJSON(snapshot); useEditor.setState({ dirty: false }); }
       useEditor.getState().notify('プロジェクトを保存しました'); return true;
     } catch (e) { useEditor.getState().notify(errorText(e)); return false; }
-    finally { endProjectOperation(); }
+    finally { saveInFlight.current = false; completeSave(); }
   }, []);
   useEffect(() => {
     const desktop = window.luma;

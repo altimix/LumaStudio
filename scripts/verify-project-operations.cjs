@@ -26,7 +26,7 @@ const root = path.join(__dirname, '..');
     assert.equal(await input.isDisabled(), true);
     await page.getByRole('button', { name: `${track.name} ロック解除`, exact: true }).click();
     await input.fill('取り消す名前'); await input.press('Escape'); assert.equal((await save()).tracks[0].name, track.name);
-    const next = { ...before, id: 'loaded-project', name: '遅い読込の検証', assets: before.assets.map(a => ({ ...a, offline: true })) };
+    let next = { ...before, id: 'loaded-project', name: '遅い読込の検証', assets: before.assets.map(a => ({ ...a, offline: true })) };
     await app.evaluate(({ ipcMain }, result) => {
       ipcMain.removeHandler('open-project'); ipcMain.handle('open-project', () => new Promise(resolve => { globalThis.releaseOpen = () => resolve(result); }));
     }, { project: next, path: file });
@@ -55,11 +55,15 @@ const root = path.join(__dirname, '..');
       });
     });
     await page.getByRole('button', { name: 'プロジェクトを保存 (Ctrl+S)', exact: true }).click();
-    await page.getByRole('dialog', { name: 'プロジェクトを保存しています', exact: true }).waitFor();
-    await page.keyboard.press('Control+n'); await page.keyboard.press('Control+o');
+    for (let i = 0; i < 200 && !(await app.evaluate(() => !!globalThis.releaseSave)); i++) await new Promise(r => setTimeout(r, 25));
+    next = { ...next, name: '保存中に開いたプロジェクト' }; // Same persisted ID, new load generation.
+    await app.evaluate(({ ipcMain }, result) => { ipcMain.removeHandler('open-project'); ipcMain.handle('open-project', () => result); }, { project: next, path: file });
+    await page.keyboard.press('Control+o');
+    await page.getByRole('button', { name: next.name, exact: true }).waitFor();
     await app.evaluate(() => globalThis.releaseSave());
-    await page.getByRole('dialog', { name: 'プロジェクトを保存しています', exact: true }).waitFor({ state: 'hidden' });
-    assert.equal((await save()).id, next.id);
+    await page.waitForFunction(() => !document.querySelector('.unsaved-dot'));
+    await page.locator('.toast').filter({ hasText: '以前のプロジェクトを保存しました' }).waitFor();
+    assert.equal((await save()).name, next.name);
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('relink'); ipcMain.handle('relink', () => new Promise(resolve => { globalThis.releaseRelink = () => resolve(null); }));
     });
