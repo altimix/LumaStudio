@@ -367,10 +367,12 @@
       <h3>ソースから起動する</h3>
       <p>Node.js 22.12以上を使い、リポジトリで次を実行します。</p>
       <pre><code>npm ci
+npm run prepare:media
+npm run prepare:bgm
 npm run verify:demo
 npm run build
 npm start</code></pre>
-      <p>開発用は <code>npm run dev</code>。ブラウザーの画面確認は <code>npm run dev:web</code> です。ネイティブのMP4出力などはWindowsアプリで利用します。</p>
+      <p>開発用は <code>npm run dev</code>。ブラウザーの画面確認は <code>npm run dev:web</code> です。ネイティブのMP4出力などはWindows・Macアプリで利用します。</p>
       <p>ガイドのコマンドとキー割り当ては <code>npm run verify:readme</code> で実装と照合できます。通常の検証は <code>npm test</code>、<code>npm run build</code>。操作仕様とレビュー記録は <a href="https://github.com/altimix/LumaStudio">GitHubリポジトリ</a>で管理します。</p>
     </section>
     <footer><p>Luma Studio v1.0.0 · README.html · 2026年9月10日更新<br>外部フォント・画像・CDNを使わない単体HTMLです。検索はこのページ内で行います。印刷では絞り込みにかかわらず全一覧を出力します。</p><a href="#top">ページの先頭へ戻る</a></footer>

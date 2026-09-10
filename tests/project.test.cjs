@@ -49,3 +49,22 @@ test('hydration validates cross-asset transitions only on the complete project',
     assert.equal(result.assets[0].offline,undefined);assert.equal(!!result.assets[1].offline,missing);assert.deepEqual(result.transitions,p.transitions);assert.equal(validateProject(result),result);
   }
 });
+
+
+test('malformed track flags and names are rejected before reading media', async () => {
+  for (const field of ['muted', 'hidden', 'locked', 'solo']) {
+    for (const value of ['false', 'true', 0, 1, null, {}, []]) {
+      const p = fixture(); p.tracks[0][field] = value;
+      let inspected = false;
+      await assert.rejects(hydrateProject(p, async () => { inspected = true; return p.assets[0]; }, a => a), /トラック/);
+      assert.equal(inspected, false);
+    }
+  }
+  for (const value of [null, 12, {}, []]) {
+    const p = fixture(); p.tracks[0].name = value;
+    assert.throws(() => validateProject(p), /トラック名/);
+  }
+  assert.doesNotThrow(() => validateProject(fixture()), 'legacy omitted flags remain supported');
+  const p = fixture(); Object.assign(p.tracks[0], { name: '日本語トラック', muted: false, hidden: false, locked: true, solo: false });
+  assert.equal(validateProject(p), p);
+});

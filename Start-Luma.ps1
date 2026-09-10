@@ -11,7 +11,12 @@ if (Test-Path -LiteralPath $lumaUnpacked) {
     Push-Location -LiteralPath $lumaRoot
     try {
         if (-not (Test-Path -LiteralPath 'node_modules\electron')) { npm.cmd ci }
-        if (-not (Test-Path -LiteralPath 'vendor\media\win32-x64\ffmpeg.exe')) {
+        $lumaMediaReady = $false
+        try {
+            node.exe scripts/check-media.cjs *> $null
+            $lumaMediaReady = ($LASTEXITCODE -eq 0)
+        } catch { $lumaMediaReady = $false }
+        if (-not $lumaMediaReady) {
             npm.cmd run prepare:media
             if ($LASTEXITCODE -ne 0) { throw 'メディアツールの準備に失敗しました。' }
         }

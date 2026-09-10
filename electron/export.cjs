@@ -26,7 +26,16 @@ function validateProject(p) {
   finite(p.width, 128, 7680, '幅'); finite(p.height, 128, 4320, '高さ'); finite(p.fps, 1, 120, 'フレームレート');
   if(!Number.isInteger(p.fps)||!Number.isInteger(p.width)||!Number.isInteger(p.height)||p.width%2||p.height%2) throw new Error('フレームサイズは偶数、FPSは整数で指定してください。');
   const ids = new Set();
-  for (const t of p.tracks) { if (!t || typeof t.id !== 'string' || !['video', 'audio'].includes(t.kind) || ids.has(t.id)) throw new Error('トラックが不正です。'); ids.add(t.id); }
+  for (const t of p.tracks) {
+    if (!t || typeof t.id !== 'string' || !['video', 'audio'].includes(t.kind) || ids.has(t.id)) throw new Error('トラックが不正です。');
+    // Older/minimal projects may omit optional display/flag fields. Missing
+    // flags retain their false behavior; explicitly malformed values are errors.
+    if (t.name !== undefined && typeof t.name !== 'string') throw new Error('トラック名が不正です。');
+    for (const [field, label] of Object.entries({ muted: 'ミュート', hidden: '非表示', locked: 'ロック', solo: 'ソロ' })) {
+      if (t[field] !== undefined && typeof t[field] !== 'boolean') throw new Error(`トラックの${label}は真偽値で指定してください。`);
+    }
+    ids.add(t.id);
+  }
   const assetIds = new Set();
   for (const a of p.assets) {
     if (!a || typeof a.id !== 'string' || typeof a.name !== 'string' || typeof a.path !== 'string' || !path.isAbsolute(a.path) || !['video', 'image', 'audio'].includes(a.kind) || assetIds.has(a.id)) throw new Error('素材が不正です。ローカルファイルの絶対パスが必要です。');
