@@ -99,3 +99,9 @@ test('an older Windows retry cannot overwrite a newer queued save', { skip: proc
   assert.equal(denied, true); assert.deepEqual(published, ['older', 'newer']); assert.equal(await fs.readFile(target, 'utf8'), 'newer');
   assert.ok(!(await fs.readdir(dir)).some(name => /^\.luma-.*\.tmp$/.test(name)));
 });
+test('inaccessible offline sources do not block saves but destinations remain strict', async t => {
+  const realpath = fs.realpath.bind(fs), source = path.join(dir, 'offline', 'clip.mp4'), output = path.join(dir, 'edit.luma');
+  t.mock.method(fs, 'realpath', async file => { if (file === source) throw Object.assign(new Error('permission'), { code: 'EACCES' }); return realpath(file); });
+  await assertDestination(output, '.luma', [source]);
+  await assert.rejects(assertDestination(source, '.mp4', []), /permission/);
+});

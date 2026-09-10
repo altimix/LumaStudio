@@ -2,10 +2,10 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 
-async function canonical(file) {
+async function canonical(file, source = false) {
   let absolute;
   try { absolute = await fs.realpath(file); }
-  catch (error) { if (error.code !== 'ENOENT') throw error; absolute = path.resolve(file); }
+  catch (error) { if (error.code !== 'ENOENT' && !(source && ['EACCES', 'EPERM', 'ENOTDIR'].includes(error.code))) throw error; absolute = path.resolve(file); }
   return process.platform === 'win32' ? absolute.toLowerCase() : absolute;
 }
 
@@ -13,7 +13,7 @@ async function assertDestination(file, extension, sourcePaths) {
   if (typeof file !== 'string' || !path.isAbsolute(file)) throw new Error('保存先が不正です。');
   const target = await canonical(file);
   for (const source of sourcePaths) {
-    if (await canonical(source) === target) throw new Error('元の素材を保存先に指定することはできません。');
+    if (await canonical(source, true) === target) throw new Error('元の素材を保存先に指定することはできません。');
   }
   if (path.extname(file).toLowerCase() !== extension) throw new Error(`保存先の拡張子は ${extension} にしてください。`);
 }

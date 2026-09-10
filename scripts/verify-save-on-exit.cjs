@@ -76,7 +76,14 @@ const root=path.join(__dirname,'..'),results=path.join(root,'test-results');
     await page.getByRole('button',{name:'書き出し',exact:true}).click();await page.getByLabel('書き出しサイズ',{exact:true}).selectOption('4k');await page.getByLabel('書き出し方式',{exact:true}).selectOption('cpu');await page.getByRole('button',{name:'保存先を選んで書き出す',exact:true}).click();
     await page.waitForFunction(()=>Number(document.querySelector('.export-progress progress')?.value)>0,{},{timeout:120000});
     const duringExport=await remain(0);assert.equal(duringExport.title,'書き出し中です');assert.deepEqual(duringExport.buttons,['編集を続ける','書き出しを中止して終了']);
-    await app.evaluate(()=>{globalThis.__exportChoice=1;});const afterAbort=await remain(0);assert.deepEqual(afterAbort.buttons,options.buttons);assert.ok(!page.isClosed());await page.locator('.export-error').filter({hasText:/キャンセル|中止/}).waitFor({timeout:30000});await finish(2);assert.ok((await saved()).clips.some(c=>c.name==='書き出し中の編集'));
+    await app.evaluate(()=>{const files=process.getBuiltinModule('fs/promises'),rm=files.rm;globalThis.__restoreExportRm=()=>{files.rm=rm;};files.rm=async(file,...args)=>{if(typeof file==='string'&&/[/\\]\.luma-.*\.mp4$/.test(file)){globalThis.__partialPath=file;await new Promise(resolve=>{globalThis.__releaseExportCleanup=resolve;});}return rm(file,...args);};globalThis.__exportChoice=1;});
+    await requestClose(0);await poll(async()=>await app.evaluate(()=>!!globalThis.__releaseExportCleanup));
+    assert.ok(!page.isClosed(),'window stays open while export cleanup is pending');
+    const partial=await app.evaluate(()=>globalThis.__partialPath);await fs.access(partial);
+    await app.evaluate(()=>{globalThis.__restoreExportRm();globalThis.__releaseExportCleanup();});
+    await poll(async()=>await app.evaluate(()=>globalThis.__exitDialogs.at(-1)?.title==='Luma Studio'));
+    await assert.rejects(fs.access(partial));
+    const afterAbort=await app.evaluate(()=>globalThis.__exitDialogs.at(-1));assert.deepEqual(afterAbort.buttons,options.buttons);assert.ok(!page.isClosed());await page.locator('.export-error').filter({hasText:/キャンセル|中止/}).waitFor({timeout:30000});await finish(2);assert.ok((await saved()).clips.some(c=>c.name==='書き出し中の編集'));
     checks.push('continuing during export keeps it running; aborting export then presents all three unsaved-edit choices and allows saving');
     assert.deepEqual(errors,[]);await fs.writeFile(path.join(results,'save-on-exit-verification.json'),JSON.stringify({passed:true,packaged:true,checks,dialog:options,consoleErrors:errors},null,2));console.log(`Save-on-exit verified: ${checks.length} checks.`);
   }catch(e){if(page&&!page.isClosed())await page.screenshot({path:path.join(results,'save-on-exit-failure.png')}).catch(()=>{});await fs.writeFile(path.join(results,'save-on-exit-failure.json'),JSON.stringify({checks,error:String(e)},null,2));throw e;}

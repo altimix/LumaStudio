@@ -22,7 +22,7 @@ const { compositeVisuals } = require('./video-transitions.cjs');
 const finite = (x, lo, hi, label) => { if (!Number.isFinite(x) || x < lo || x > hi) throw new Error(`${label}が範囲外です。`); return x; };
 const validId = id => typeof id === 'string' && !!id.trim() && /^[\p{L}\p{N}_ -]+$/u.test(id) && !['__proto__', 'constructor', 'prototype'].includes(id);
 function validateProject(p, { allowForeignPaths = false } = {}) {
-  if (!p || p.version !== 1 || !validId(p.id) || typeof p.name !== 'string' || !Array.isArray(p.assets) || !Array.isArray(p.tracks) || !Array.isArray(p.clips) || !Array.isArray(p.markers)) throw new Error('対応していないプロジェクト形式です。');
+  if (!p || p.version !== 1 || !validId(p.id) || typeof p.name !== 'string' || p.name.length > 256 || !Array.isArray(p.assets) || !Array.isArray(p.tracks) || !Array.isArray(p.clips) || !Array.isArray(p.markers)) throw new Error('対応していないプロジェクト形式です。');
   if (p.clips.length > 2000 || p.assets.length > 2000 || p.tracks.length > 24) throw new Error('プロジェクトが大きすぎます。');
   if (p.markers.length > MAX_MARKERS) throw new Error(`マーカーは${MAX_MARKERS}個までです。`);
   finite(p.width, 128, 7680, '幅'); finite(p.height, 128, 4320, '高さ'); finite(p.fps, 1, 120, 'フレームレート');
@@ -32,7 +32,7 @@ function validateProject(p, { allowForeignPaths = false } = {}) {
     if (!t || !validId(t.id) || !['video', 'audio'].includes(t.kind) || ids.has(t.id)) throw new Error('トラックが不正です。');
     // Older/minimal projects may omit optional display/flag fields. Missing
     // flags retain their false behavior; explicitly malformed values are errors.
-    if (t.name !== undefined && typeof t.name !== 'string') throw new Error('トラック名が不正です。');
+    if (t.name !== undefined && (typeof t.name !== 'string' || t.name.length > 256)) throw new Error('トラック名が不正です。');
     for (const [field, label] of Object.entries({ muted: 'ミュート', hidden: '非表示', locked: 'ロック', solo: 'ソロ' })) {
       if (t[field] !== undefined && typeof t[field] !== 'boolean') throw new Error(`トラックの${label}は真偽値で指定してください。`);
     }
@@ -41,7 +41,7 @@ function validateProject(p, { allowForeignPaths = false } = {}) {
   const assetIds = new Set();
   for (const a of p.assets) {
     if (!a || !validId(a.id) || !/^[A-Za-z0-9_-]+$/.test(a.id)) throw new Error('素材IDが不正です。英数字・ハイフン・アンダースコアを使用してください。');
-    if (typeof a.name !== 'string' || typeof a.path !== 'string' || !(path.isAbsolute(a.path) || ((allowForeignPaths || a.offline === true) && path.win32.isAbsolute(a.path))) || !['video', 'image', 'audio'].includes(a.kind) || assetIds.has(a.id)) throw new Error('素材が不正です。ローカルファイルの絶対パスが必要です。');
+    if (typeof a.name !== 'string' || a.name.length > 1024 || typeof a.path !== 'string' || !(path.isAbsolute(a.path) || ((allowForeignPaths || a.offline === true) && path.win32.isAbsolute(a.path))) || !['video', 'image', 'audio'].includes(a.kind) || assetIds.has(a.id)) throw new Error('素材が不正です。ローカルファイルの絶対パスが必要です。');
     if (typeof a.hasAudio !== 'boolean' || typeof a.codec !== 'string') throw new Error('素材のメタデータが不正です。');
     if (!Array.isArray(a.waveform) || a.waveform.length > 4096 || a.waveform.some(v => !Number.isFinite(v) || v < 0 || v > 1)) throw new Error('素材の波形データが不正です。');
     finite(a.width, 0, 65536, '素材の幅'); finite(a.height, 0, 65536, '素材の高さ');
@@ -50,7 +50,7 @@ function validateProject(p, { allowForeignPaths = false } = {}) {
   }
   const clipIds = new Set();
   for (const c of p.clips) {
-    if (!c || !validId(c.id) || typeof c.name !== 'string' || clipIds.has(c.id) || !ids.has(c.trackId) || !['video', 'audio', 'image', 'title'].includes(c.kind)) throw new Error('クリップが不正です。');
+    if (!c || !validId(c.id) || typeof c.name !== 'string' || c.name.length > 1024 || clipIds.has(c.id) || !ids.has(c.trackId) || !['video', 'audio', 'image', 'title'].includes(c.kind)) throw new Error('クリップが不正です。');
     if (c.kind === 'title' && assetIds.has(c.id)) throw new Error('テロップIDと素材IDが重複しています。');
     clipIds.add(c.id);
     finite(c.start, 0, MAX_MEDIA_SECONDS, '開始時間'); finite(c.duration, 1 / p.fps - 0.000001, MAX_MEDIA_SECONDS, '長さ'); finite(c.in, 0, MAX_MEDIA_SECONDS, '素材の開始時間');
@@ -74,7 +74,7 @@ function validateProject(p, { allowForeignPaths = false } = {}) {
     if (p.tracks.find(t => t.id === c.trackId).kind === 'audio' && c.kind !== 'audio') throw new Error('音声トラックに映像は置けません。');
   }
   const markerIds = new Set();
-  for (const m of p.markers) { if (!m || !validId(m.id) || markerIds.has(m.id) || typeof m.label !== 'string') throw new Error('マーカーが不正です。'); markerIds.add(m.id); finite(m.time, 0, MAX_MEDIA_SECONDS, 'マーカー位置'); }
+  for (const m of p.markers) { if (!m || !validId(m.id) || markerIds.has(m.id) || typeof m.label !== 'string' || m.label.length > 1024) throw new Error('マーカーが不正です。'); markerIds.add(m.id); finite(m.time, 0, MAX_MEDIA_SECONDS, 'マーカー位置'); }
   validateClipLinks(p); validateYoutube(p.youtube); validateTransitions(p);
   return p;
 }

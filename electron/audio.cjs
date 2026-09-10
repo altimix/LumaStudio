@@ -17,20 +17,20 @@ async function decodeAudioChunk(file, index, signal) {
   return new Float32Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
 }
 
-function createAudioReader(decode = decodeAudioChunk) {
+function createAudioReader(decode = decodeAudioChunk, validate) {
   const assets = new Map(); const pending = new Map(); const queue = [];
   const controllers = new Set(); let active = 0; let closed = false;
   function pump() {
     while (!closed && active < 2 && queue.length) {
       const job = queue.shift(); const controller = new AbortController(); controllers.add(controller); active++;
       const timeout = job.treatment ? undefined : setTimeout(() => controller.abort(), 30000);
-      Promise.resolve().then(() => decode(job.file, job.index, controller.signal, job.treatment)).then(job.resolve, job.reject).finally(() => {
+      Promise.resolve().then(async () => { if (validate) await validate(job.asset); return decode(job.file, job.index, controller.signal, job.treatment); }).then(job.resolve, job.reject).finally(() => {
         clearTimeout(timeout); controllers.delete(controller); active--; pending.delete(job.key); pump();
       });
     }
   }
   return {
-    register(url, asset) { assets.set(url, { file: asset.path, duration: asset.duration, hasAudio: asset.hasAudio }); },
+    register(url, asset) { assets.set(url, { ...asset, file: asset.path }); },
     read(url, index, treatment) {
       try { validateTreatment(treatment); } catch (error) { return Promise.reject(error); }
       const asset = typeof url === 'string' && assets.get(url);
@@ -40,7 +40,7 @@ function createAudioReader(decode = decodeAudioChunk) {
       const key = `${url}:${index}:${treatment || 'original'}`;
       if (pending.has(key)) return pending.get(key);
       if (pending.size >= 32) return Promise.reject(new Error('音声の読み込みが混雑しています。停止してから再生してください。'));
-      const result = new Promise((resolve, reject) => { queue.push({ key, file: asset.file, index, treatment, resolve, reject }); });
+      const result = new Promise((resolve, reject) => { queue.push({ key, asset, file: asset.file, index, treatment, resolve, reject }); });
       pending.set(key, result); pump(); return result;
     },
     close() {

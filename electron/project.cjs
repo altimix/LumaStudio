@@ -1,6 +1,14 @@
 const path = require('node:path');
 const { validateProject } = require('./export.cjs');
 
+const MAX_PROJECT_BYTES = 15 * 1024 * 1024;
+function serializeProject(p) {
+  validateProject(p);
+  const contents = JSON.stringify({ ...p, assets: p.assets.map(({ url, thumbnail, offline, playbackPath, thumbnailPath, ...a }) => a) }, null, 2);
+  if (Buffer.byteLength(contents, 'utf8') > MAX_PROJECT_BYTES) throw new Error('プロジェクトファイルが大きすぎます。15 MiB以内にしてください。');
+  return contents;
+}
+
 function parseProjectJson(text) {
   try { return JSON.parse(text); }
   catch (error) {
@@ -43,4 +51,4 @@ async function hydrateProject(project, inspect, present) {
   return validateProject({ ...project, assets });
 }
 
-module.exports = { parseProjectJson, assertReplacement, hydrateProject, isLocalProjectPath };
+module.exports = { MAX_PROJECT_BYTES, serializeProject, parseProjectJson, assertReplacement, hydrateProject, isLocalProjectPath };

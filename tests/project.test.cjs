@@ -159,3 +159,10 @@ test('invalid project JSON reports a concrete Japanese format error', () => {
   for (const text of ['', '{', 'not json']) assert.throws(() => parseProjectJson(text), /プロジェクトのJSONが不正/);
   assert.deepEqual(parseProjectJson(JSON.stringify(fixture())), fixture());
 });
+test('refuses serialized projects above the matching load limit', () => {
+  const { serializeProject, MAX_PROJECT_BYTES } = require('../electron/project.cjs');
+  const p = fixture(); p.extra = 'あ'.repeat(Math.ceil(MAX_PROJECT_BYTES / 3));
+  assert.throws(() => serializeProject(p), /15 MiB/);
+  delete p.extra; assert.deepEqual(JSON.parse(serializeProject(p)), p);
+  p.tracks[0].name = 'x'.repeat(257); assert.throws(() => serializeProject(p), /トラック名/);
+});

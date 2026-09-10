@@ -57,6 +57,23 @@ const digest = data => createHash('sha256').update(data).digest('hex');
     await page.locator('#genuine-drop').evaluate(input => input.remove());
     const replacedId = sourceProject.assets[0].id; sourceProject.assets[0] = imported.assets[0];
     sourceProject.clips = sourceProject.clips.map(c => c.assetId === replacedId ? { ...c, assetId: imported.assets[0].id } : c);
+    const relinkedPath = path.join(profile, '再リンク先.mp4'); await fs.copyFile(original, relinkedPath);
+    await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, relinkedPath);
+    const relinked = await page.evaluate(asset => window.luma.relink(asset), imported.assets[0]);
+    await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, changedSource);
+    const returnedOriginal = await page.evaluate(() => window.luma.importMedia());
+    assert.notEqual(relinked.url, returnedOriginal.assets[0].url);
+    assert.equal(await page.evaluate(async url => (await fetch(url)).status, relinked.url), 200);
+    const relinkedProject = { ...sourceProject, assets: sourceProject.assets.map(a => a.id === relinked.id ? relinked : a) };
+    await app.evaluate(({ dialog }) => { dialog.showSaveDialog = async () => ({ canceled: true }); });
+    assert.equal(await page.evaluate(p => window.luma.exportProject(p, { width: 1280, height: 720, fps: 30, quality: 'draft', encoder: 'cpu' }, {}), relinkedProject), null);
+    // The imported source stays protected even though it is absent from this project.
+    await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }); }, changedSource);
+    const protectionMessage = await page.evaluate(async p => {
+      try { await window.luma.exportProject(p, { width: 1280, height: 720, fps: 30, quality: 'draft', encoder: 'cpu' }, {}); return ''; } catch (e) { return e.message; }
+    }, JSON.parse(await fs.readFile(previousProject, 'utf8')));
+    assert.match(protectionMessage, /元の素材/);
+    await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }); }, previousProject);
     const originalStat = await fs.stat(changedSource);
     await fs.utimes(changedSource, originalStat.atime, new Date(originalStat.mtimeMs + 2000));
     const changedMessage = await page.evaluate(async project => {
@@ -64,6 +81,11 @@ const digest = data => createHash('sha256').update(data).digest('hex');
       catch (error) { return error.message; }
     }, sourceProject);
     assert.match(changedMessage, /変更または削除/);
+    assert.equal(await page.evaluate(async url => (await fetch(url)).status, imported.assets[0].url), 410);
+    const audioMessage = await page.evaluate(async url => { try { await window.luma.readAudioChunk(url, 0); return ''; } catch (e) { return e.message; } }, imported.assets[0].url);
+    assert.match(audioMessage, /変更または削除/);
+    assert.equal(await page.evaluate(async url => (await fetch(url)).status, relinked.url), 200);
+
     // Exercise the real save IPC with a transient Windows replacement refusal.
     await app.evaluate(async (_electron, destination) => {
       const files = process.getBuiltinModule('fs/promises'), rename = files.rename;

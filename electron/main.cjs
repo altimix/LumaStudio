@@ -20,7 +20,7 @@ const { exportEncoders, validateEncoder } = require('./encoders.cjs');
 const { validateTreatment } = require('../shared/audio-treatment.mjs');
 const { validateProject, exportProject, exportAssets } = require('./export.cjs');
 const { assertDestination, atomicWrite } = require('./persistence.cjs');
-const { assertReplacement, hydrateProject, parseProjectJson } = require('./project.cjs');
+const { assertReplacement, hydrateProject, parseProjectJson, serializeProject, MAX_PROJECT_BYTES } = require('./project.cjs');
 const { createRecoveryStore } = require('./recovery.cjs');
 const { createCredentials, createOpenAI } = require('./openai.cjs');
 const { audioClips, totalTime, transcribeTimeline, generateMetadata, generateThumbnail } = require('./youtube.cjs');
@@ -38,17 +38,20 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'luma', privileges: { standard: true, secure: true, supportFetchAPI: true } },
   { scheme: 'media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }
 ]);
+let exportFinished = Promise.resolve();
 let window; let exportController; let projectPath = null; let projectPathGeneration = 0; let dirty = false; let importing = false;
 let pendingCloseId = null; let preparingCloseId = null; let rendererGone = false; let nextCloseId = 0; let allowClose = false;
 const mediaFiles = new Map(); const completedExports = new Set();
-const registeredAssets = new Map(); let aiController;
+const registeredAssets = new Map(); const protectedSourcePaths = new Set();
+const assetKey = a => `${a.id}/${a.revision || a.id}`;
+let aiController;
 let audioPrepareController;
 const fontLibrary = createFontLibrary(() => path.join(cacheDir(), 'fonts'), (file, key) => { mediaFiles.set('font/' + key, file); return 'media://local/font/' + key; });
 const audioProcessor = createAudioProcessor(() => path.join(cacheDir(), 'audio-treatment'));
 const audioReader = createAudioReader(async (file, index, signal, treatment) => {
   const prepared = treatment ? await audioProcessor.get(file, treatment, signal) : { file };
   return decodeAudioChunk(prepared.file, index, AbortSignal.any([signal, AbortSignal.timeout(30000)]));
-});
+}, assertMediaRevision);
 const root = path.join(__dirname, '..');
 const demoDir = () => app.isPackaged ? process.env.LUMA_TEST_FIXTURES : path.join(root, 'public', 'demo');
 async function persistentDemoDir() {
@@ -64,21 +67,19 @@ const cacheDir = () => path.join(app.getPath('userData'), 'media-cache');
 const waveformReader = createWaveformReader(cacheDir,async(file,treatment,signal)=>(await audioProcessor.get(file,treatment,signal)).file);
 const autosavePath = () => path.join(app.getPath('userData'), 'autosave.luma');
 function present(a) {
-  registeredAssets.set(a.id, a);
-  if (a.playbackPath) mediaFiles.set(`asset/${a.id}`, a.playbackPath);
-  if (a.thumbnailPath) mediaFiles.set(`thumb/${a.id}`, a.thumbnailPath);
-  const url = `media://local/asset/${a.id}?v=${a.revision || a.id}`;
+  registeredAssets.set(assetKey(a), a);
+  protectedSourcePaths.add(a.path);
+  if (a.playbackPath) mediaFiles.set(`asset/${assetKey(a)}`, { file: a.playbackPath, asset: a });
+  if (a.thumbnailPath) mediaFiles.set(`thumb/${assetKey(a)}`, { file: a.thumbnailPath, asset: a });
+  const url = `media://local/asset/${assetKey(a)}`;
   audioReader.register(url, a);
   waveformReader.register(url, a);
-  return { ...a, url, thumbnail: a.thumbnailPath ? `media://local/thumb/${a.id}?v=${a.revision || a.id}` : '' };
+  return { ...a, url, thumbnail: a.thumbnailPath ? `media://local/thumb/${assetKey(a)}` : '' };
 }
 async function hydrate(p) {
   return hydrateProject(p, file => inspectMedia(file, cacheDir()), present);
 }
-function serialize(p) {
-  validateProject(p);
-  return JSON.stringify({ ...p, assets: p.assets.map(({ url, thumbnail, offline, playbackPath, thumbnailPath, ...a }) => a) }, null, 2);
-}
+const serialize = serializeProject;
 function handle(channel, fn) {
   ipcMain.handle(channel, async (event, ...args) => {
     if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('IPC sender rejected.');
@@ -126,7 +127,7 @@ function installIPC() {
     finally { aiController = undefined; }
   };
   const registered = async a => {
-    const known = registeredAssets.get(a?.id);
+    const known = a && registeredAssets.get(assetKey(a));
     if (!known || known.path !== a.path || (a.revision || a.id) !== (known.revision || known.id)) throw new Error('未登録または変更された素材です。素材を読み込み直してください。');
     await assertMediaRevision(known);
     return known;
@@ -193,7 +194,7 @@ function installIPC() {
     else contents = format === 'txt' ? youtubeText(p.youtube, totalTime(p)) : subtitleFile(p.youtube.cues, format);
     const result = await dialog.showSaveDialog(window, { title: 'YouTube投稿素材を保存', defaultPath: `${p.name.replace(/[<>:"/\\|?*]/g, '_')}.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] });
     if (result.canceled) return null;
-    await assertDestination(result.filePath, `.${format}`, [...p.assets.map(a => a.path), ...[...registeredAssets.values()].map(a => a.path),...startupProtectedPaths]);
+    await assertDestination(result.filePath, `.${format}`, [...p.assets.map(a => a.path), ...[...registeredAssets.values()].map(a => a.path),...startupProtectedPaths,...protectedSourcePaths]);
     await atomicWrite(result.filePath, contents); completedExports.add(result.filePath); return result.filePath;
   });
   handle('audio-chunk', (url, index, treatment) => audioReader.read(url, index, treatment));
@@ -262,7 +263,7 @@ function installIPC() {
       const result = await dialog.showSaveDialog(window, { title: 'プロジェクトを保存', defaultPath: target || `${p.name.replace(/[<>:"/\\|?*]/g, '_')}.luma`, filters: [{ name: 'Luma Studio Project', extensions: ['luma'] }] });
       if (result.canceled) return null; target = result.filePath;
     }
-    await assertDestination(target, '.luma', [...p.assets.map(a => a.path),...startupProtectedPaths]);
+    await assertDestination(target, '.luma', [...p.assets.map(a => a.path),...startupProtectedPaths,...protectedSourcePaths]);
     await atomicWrite(target, contents); if (pathGeneration === projectPathGeneration) projectPath = target;
     return target;
   });
@@ -270,7 +271,7 @@ function installIPC() {
     const result = await dialog.showOpenDialog(window, { title: 'プロジェクトを開く', properties: ['openFile'], filters: [{ name: 'Luma Studio Project', extensions: ['luma'] }] });
     if (result.canceled) return null;
     const target = result.filePaths[0];
-    if ((await fs.stat(target)).size > 15 * 1024 * 1024) throw new Error('プロジェクトファイルが大きすぎます。');
+    if ((await fs.stat(target)).size > MAX_PROJECT_BYTES) throw new Error('プロジェクトファイルが大きすぎます。');
     const p = await hydrate(parseProjectJson(await fs.readFile(target, 'utf8')));
     await recoveryFiles.clear(); projectPathGeneration++; projectPath = target; dirty = false;
     return { project: p, path: target };
@@ -288,13 +289,15 @@ function installIPC() {
     if (keepRecovery !== true) await recoveryFiles.clear();
   });
   handle('dirty', value => { dirty = !!value; });
-  handle('finish-prepare-close', (requestId, edited, canClose) => {
+  handle('finish-prepare-close', async (requestId, edited, canClose) => {
     if (preparingCloseId === null || requestId !== preparingCloseId || typeof edited !== 'boolean' || typeof canClose !== 'boolean') throw new Error('終了要求が一致しません。');
     preparingCloseId = null; dirty = edited;
     if (!canClose) return;
-    if (exportController && !exportController.signal.aborted) {
-      const answer = dialog.showMessageBoxSync(window, { type: 'question', buttons: ['編集を続ける', '書き出しを中止して終了'], defaultId: 0, cancelId: 0, title: '書き出し中です', message: '動画の書き出しを中止して終了しますか？' });
+    if (exportController) {
+      const answer = exportController.signal.aborted ? 1 : dialog.showMessageBoxSync(window, { type: 'question', buttons: ['編集を続ける', '書き出しを中止して終了'], defaultId: 0, cancelId: 0, title: '書き出し中です', message: '動画の書き出しを中止して終了しますか？' });
       if (answer === 0) return; exportController.abort();
+      preparingCloseId = requestId;
+      try { await exportFinished; } finally { preparingCloseId = null; }
     }
     if (dirty && (!process.env.LUMA_TEST_DATA || process.env.LUMA_TEST_CLOSE === '1')) {
       const answer = dialog.showMessageBoxSync(window, { type: 'question', buttons: ['編集を続ける', '保存せずに終了', '保存して終了'], defaultId: 0, cancelId: 0, noLink: true, title: 'Luma Studio', message: '未保存の変更があります。保存して終了しますか？', detail: '「保存して終了」はプロジェクトを保存してから終了します。保存先の選択をキャンセルすると編集に戻ります。最新の自動保存は、次回起動時に復元できます。' });
@@ -317,14 +320,15 @@ function installIPC() {
     if (result.canceled) return null;
     const output = result.filePath;
     await validateExportSources(p);
-    await assertDestination(output, '.mp4', [...p.assets.map(a => a.path),...startupProtectedPaths]);
+    await assertDestination(output, '.mp4', [...p.assets.map(a => a.path),...startupProtectedPaths,...protectedSourcePaths]);
     exportController = new AbortController();
+    let finishExport; exportFinished = new Promise(resolve => { finishExport = resolve; });
     try {
       if (!window.isDestroyed()) window.webContents.send('export-progress', { status: 'preparing', progress: 0, output });
       const audioPaths = await preparedAudioPaths(p, exportController.signal);
       const completed = await exportProject(p, settings, output, { titleImages, audioPaths, signal: exportController.signal, onProgress: progress => { if (!window.isDestroyed()) window.webContents.send('export-progress', progress); } });
       completedExports.add(completed); return completed;
-    } finally { exportController = null; }
+    } finally { exportController = null; finishExport(); }
   });
   handle('cancel-export', () => exportController?.abort());
   handle('export-encoders', (refresh = false) => exportEncoders.detect(refresh === true));
@@ -339,7 +343,11 @@ app.whenReady().then(async () => {
     return net.fetch(pathToFileURL(file).toString());
   });
   protocol.handle('media', async request => {
-    const url = new URL(request.url); const file = mediaFiles.get(url.pathname.slice(1));
+    const url = new URL(request.url); const entry = mediaFiles.get(url.pathname.slice(1));
+    const file = typeof entry === 'string' ? entry : entry?.file;
+    if (entry?.asset) {
+      try { await assertMediaRevision(entry.asset); } catch { return new Response('Source changed', { status: 410 }); }
+    }
     if (url.host !== 'local' || !file) return new Response('Not found', { status: 404 });
     const size = (await fs.stat(file)).size;
     const mime = { '.ttf':'font/ttf', '.mp4':'video/mp4', '.m4v':'video/mp4', '.mov':'video/quicktime', '.webm':'video/webm', '.wav':'audio/wav', '.mp3':'audio/mpeg', '.m4a':'audio/mp4', '.aac':'audio/aac', '.ogg':'audio/ogg', '.flac':'audio/flac', '.png':'image/png', '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.webp':'image/webp', '.gif':'image/gif', '.bmp':'image/bmp' }[path.extname(file).toLowerCase()] || 'application/octet-stream';
