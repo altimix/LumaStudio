@@ -1,0 +1,120 @@
+{
+  "name": "luma-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Luma Studio - Windows / macOS multitrack video editor",
+  "author": "altimix",
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/altimix/LumaStudio.git"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "node scripts/dev.cjs",
+    "dev:web": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "start": "electron .",
+    "demo": "node scripts/prepare-demo.cjs",
+    "test": "vitest run && node --test tests/*.test.cjs",
+    "test:desktop": "node scripts/verify-desktop.cjs",
+    "verify:demo": "node scripts/verify-demo.cjs",
+    "verify:readme": "node scripts/verify-readme.cjs",
+    "verify:packaged": "node scripts/verify-packaged.cjs",
+    "checksums": "node scripts/checksums.cjs",
+    "package": "npm run build && node scripts/package.cjs",
+    "prepare:bgm": "node scripts/prepare-bgm.cjs",
+    "prepare:media": "node scripts/prepare-media.cjs",
+    "build:media": "bash scripts/build-media.sh"
+  },
+  "dependencies": {
+    "lucide-react": "^0.577.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "electron": "44.2.0",
+    "electron-builder": "26.15.3",
+    "parse5": "8.0.0",
+    "playwright": "^1.58.2",
+    "typescript": "^5.9.3",
+    "vite": "8.2.2",
+    "vitest": "^4.0.18",
+    "yauzl": "3.4.0"
+  },
+  "build": {
+    "appId": "studio.luma.editor",
+    "productName": "Luma Studio",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "shared/**/*",
+      "package.json",
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.md",
+      "README.md",
+      "README.html",
+      "!.env",
+      "!.env.*",
+      "!dist/demo/**/*",
+      "VERIFICATION.md",
+      "COPYRIGHT",
+      "BGM-LICENSE.txt",
+      "vendor/media/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": ".local/bundled-bgm",
+        "to": "bgm",
+        "filter": [
+          "bgm001.mp3",
+          "bgm002.mp3",
+          "bgm003.mp3",
+          "bgm004.mp3",
+          "bgm005.mp3"
+        ]
+      }
+    ],
+    "asarUnpack": [
+      "vendor/media/**/*"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "signAndEditExecutable": true,
+      "artifactName": "Luma-Studio-${version}-Windows.${ext}",
+      "icon": "electron/luma.ico",
+      "signExecutable": false
+    },
+    "portable": {
+      "requestExecutionLevel": "user"
+    },
+    "mac": {
+      "target": [
+        "zip"
+      ],
+      "category": "public.app-category.video",
+      "artifactName": "Luma-Studio-${version}-macOS-${arch}.${ext}",
+      "identity": null,
+      "icon": "electron/luma.png"
+    },
+    "electronLanguages": [
+      "ja",
+      "en-US"
+    ],
+    "compression": "maximum"
+  },
+  "type": "module"
+}

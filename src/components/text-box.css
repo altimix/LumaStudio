@@ -1,0 +1,6 @@
+.text-box-handle{position:absolute;width:10px;height:10px;border:1px solid #182014;background:#d3f6af;z-index:6;transform:translate(-50%,-50%);pointer-events:auto;touch-action:none}
+.inline-text-surface{position:absolute;min-width:100px;min-height:55px;z-index:12;pointer-events:auto}
+.inline-text-surface textarea{display:block;width:100%;height:100%;resize:none;border:2px solid #d3f6af;border-radius:3px;background:#152019f5;color:#fff;padding:8px;font:16px/1.45 'Noto Sans JP',sans-serif;text-align:center;outline:none;overflow:auto}
+.inline-text-toolbar{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:#152019f5;border:1px solid #617c4f;padding:7px 10px;border-radius:5px;z-index:15;white-space:nowrap;pointer-events:auto;font-size:10px;color:#d8e5d0}
+.inline-text-toolbar button{padding:5px 8px;border-radius:3px;background:#c3dda2;color:#162310}.inline-text-toolbar button:last-child{background:#35422e;color:#edf5e7}
+.text-box-controls{border-top:1px solid #343e31;margin-top:12px;padding-top:9px}.text-box-controls>p{font-size:10px;line-height:1.65;color:#a9b7a0}.text-box-overflow{color:#ffcf85!important}.text-box-controls button{margin:6px 0}.title-drag-tip.overflow{background:#4b3315;color:#ffdfa6}

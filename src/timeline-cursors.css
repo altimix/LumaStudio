@@ -1,0 +1,21 @@
+:root{--cursor-trim:url('./assets/cursors/trim.svg') 16 16,ew-resize;--cursor-rate:url('./assets/cursors/rate.svg') 16 22,ew-resize;--cursor-razor:url('./assets/cursors/razor.svg') 16 8,crosshair}
+/* The clip edge stays reachable over its full height. Gain nodes keep priority
+   only over their own visible position and generous hit area. */
+.timeline-tracks .timeline-clip .trim-handle{width:min(12px,30%);height:auto;top:0;bottom:0;z-index:5;cursor:var(--cursor-trim)}
+.timeline-tracks .timeline-clip:has(.clip-volume-line) .trim-handle{height:auto;bottom:0}
+.timeline-scroll.select .timeline-clip{cursor:default}
+.timeline-scroll.select .trim-handle:hover{background:#d6ebaf70;box-shadow:inset 0 0 0 1px #e0f4bd}
+.timeline-scroll.rate .timeline-clip,.timeline-scroll.rate .trim-handle{cursor:var(--cursor-rate)}
+.timeline-scroll.rate .trim-handle:hover{background:#ffd17d80;box-shadow:inset 0 0 0 1px #ffe4a9}
+.timeline-scroll.razor .track-lane,.timeline-scroll.razor .timeline-clip,.timeline-scroll.razor .trim-handle{cursor:var(--cursor-razor)}
+.timeline-scroll.razor .trim-handle{pointer-events:none;background:none}
+.timeline-scroll.razor .clip-volume-line *,.timeline-scroll.rate .clip-volume-line *{pointer-events:none!important}
+.timeline-scroll .timeline-clip.editing-locked,.timeline-scroll .timeline-clip.editing-locked *,
+.timeline-scroll.rate .timeline-clip:not(.video):not(.audio),.timeline-scroll.rate .timeline-clip:not(.video):not(.audio) *{cursor:not-allowed!important}
+/* Gain edits affect only this audio source, even when its linked video is locked. */
+.timeline-scroll.select .timeline-clip.editing-locked:not(.locked) .volume-line-hit{cursor:ns-resize!important}
+.timeline-scroll.select .timeline-clip.editing-locked:not(.locked) .volume-node{cursor:move!important}
+html[data-timeline-gesture=move] *{cursor:grabbing!important}
+html[data-timeline-gesture=copy] *{cursor:copy!important}
+html[data-timeline-gesture=trim] *{cursor:var(--cursor-trim)!important}
+html[data-timeline-gesture=rate] *{cursor:var(--cursor-rate)!important}
