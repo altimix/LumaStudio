@@ -8,12 +8,19 @@ function assertReplacement(saved, fresh) {
   if (saved.hasAudio && !fresh.hasAudio) throw new Error('元の素材には音声があります。音声を含むファイルを選んでください。');
 }
 
+function isLocalProjectPath(file, platform = process.platform) {
+  // Windows treats /Users/... as current-drive rooted; persisted POSIX paths
+  // must instead remain offline until the user explicitly relinks them.
+  if (platform === 'win32') return /^[a-z]:[\\/]/i.test(file) || /^\\\\[^\\]+\\[^\\]+/.test(file);
+  return path.posix.isAbsolute(file);
+}
+
 async function hydrateProject(project, inspect, present) {
   validateProject(project, { allowForeignPaths: true });
   const assets = [];
   for (const saved of project.assets) {
     try {
-      if (!path.isAbsolute(saved.path)) throw new Error('別のOSの素材は再リンクしてください。');
+      if (!isLocalProjectPath(saved.path)) throw new Error('別のOSの素材は再リンクしてください。');
       const fresh = await inspect(saved.path);
       assertReplacement(saved, fresh);
       const candidate = { ...fresh, id: saved.id, name: saved.name, revision: fresh.id };
@@ -28,4 +35,4 @@ async function hydrateProject(project, inspect, present) {
   return validateProject({ ...project, assets });
 }
 
-module.exports = { assertReplacement, hydrateProject };
+module.exports = { assertReplacement, hydrateProject, isLocalProjectPath };

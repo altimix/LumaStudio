@@ -18,7 +18,7 @@ const { soundFile } = require('./sounds.cjs');
 const { SOUNDS } = require('../shared/sounds.mjs');
 const { exportEncoders, validateEncoder } = require('./encoders.cjs');
 const { validateTreatment } = require('../shared/audio-treatment.mjs');
-const { validateProject, exportProject } = require('./export.cjs');
+const { validateProject, exportProject, exportAssets } = require('./export.cjs');
 const { assertDestination, atomicWrite } = require('./persistence.cjs');
 const { assertReplacement, hydrateProject } = require('./project.cjs');
 const { createRecoveryStore } = require('./recovery.cjs');
@@ -300,12 +300,12 @@ function installIPC() {
   handle('export', async (p, settings, titleImages) => {
     if (exportController) throw new Error('書き出しはすでに実行中です。');
     validateProject(p);
-    for (const asset of p.assets) await registered(asset);
+    for (const asset of exportAssets(p)) await registered(asset);
     validateEncoder(settings?.encoder);
     const result = await dialog.showSaveDialog(window, { title: '動画を書き出す', defaultPath: `${p.name.replace(/[<>:"/\\|?*]/g, '_')}.mp4`, filters: [{ name: 'H.264 / AAC', extensions: ['mp4'] }] });
     if (result.canceled) return null;
     const output = result.filePath;
-    for (const asset of p.assets) await registered(asset);
+    for (const asset of exportAssets(p)) await registered(asset);
     await assertDestination(output, '.mp4', [...p.assets.map(a => a.path),...startupProtectedPaths]);
     exportController = new AbortController();
     try {

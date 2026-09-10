@@ -86,6 +86,17 @@ function colorFilter(c) {
   const matrix = [0.213, 0.715, 0.072].map((w, j) => [0, 1, 2].map(i => (i === j ? s : 0) + w * (1 - s)));
   return `lutrgb=r='${lut}':g='${lut}':b='${lut}',colorchannelmixer=rr=${number(matrix[0][0])}:rg=${number(matrix[1][0])}:rb=${number(matrix[2][0])}:gr=${number(matrix[0][1])}:gg=${number(matrix[1][1])}:gb=${number(matrix[2][1])}:br=${number(matrix[0][2])}:bg=${number(matrix[1][2])}:bb=${number(matrix[2][2])}`;
 }
+function exportAssets(p) {
+  const anySolo = p.tracks.some(t => t.solo), ids = new Set();
+  for (const c of p.clips) {
+    const track = p.tracks.find(t => t.id === c.trackId), asset = p.assets.find(a => a.id === c.assetId);
+    if (!track || !asset) continue;
+    const visual = c.kind !== 'audio' && !track.hidden;
+    const audio = hasClipAudio(c, asset) && !c.audioMuted && !track.muted && (!anySolo || track.solo) && c.volume > 0;
+    if (visual || audio) ids.add(asset.id);
+  }
+  return p.assets.filter(a => ids.has(a.id));
+}
 function buildExport(p, settings, sourcePaths, output, audioPaths = {}) {
   validateProject(p);
   if (settings.target === 'shorts' && p.width * 16 !== p.height * 9) throw new Error('Shortsは縦型9:16のシーケンスで書き出してください。シーケンス設定を確認してください。');
@@ -209,4 +220,4 @@ async function exportProject(p, settings, output, { titleImages = {}, audioPaths
     await fs.rm(tempDir, { recursive: true, force: true });
   }
 }
-module.exports = { validateProject, buildExport, exportProject, isEncoderFailure };
+module.exports = { validateProject, buildExport, exportProject, exportAssets, isEncoderFailure };

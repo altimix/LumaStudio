@@ -1,8 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { assertReplacement, hydrateProject } = require('../electron/project.cjs');
-const { validateProject } = require('../electron/export.cjs');
+const { assertReplacement, hydrateProject, isLocalProjectPath } = require('../electron/project.cjs');
+const { validateProject, exportAssets } = require('../electron/export.cjs');
 
 function fixture() {
   const asset = { id: 'saved', name: 'clip.mp4', path: path.resolve('clip.mp4'), kind: 'video', duration: 8, width: 1280, height: 720, fps: 30, hasAudio: true, waveform: [], size: 1, codec: 'h264' };
@@ -93,4 +93,26 @@ test('invalid or duplicate marker IDs are rejected before hydration', async () =
   await assert.rejects(hydrateProject(p, () => { inspected = true; }, a => a), /マーカーが不正/);
   assert.equal(inspected, false);
   p.markers[1].id = 'other'; assert.equal(validateProject(p), p);
+});
+
+test('export source validation excludes unused and fully hidden/muted media', () => {
+  const p = fixture(); p.assets.push({ ...p.assets[0], id: 'unused', offline: true });
+  assert.deepEqual(exportAssets(p).map(a => a.id), ['saved']);
+  p.tracks[0].hidden = true; assert.equal(exportAssets(p).length, 1, 'visible audio still consumes the source');
+  p.tracks[0].muted = true; assert.deepEqual(exportAssets(p), []);
+  p.tracks[0].hidden = false; assert.equal(exportAssets(p).length, 1, 'muted video still consumes the source');
+  p.clips[0].kind = 'audio'; p.tracks[0].kind = 'audio'; assert.deepEqual(exportAssets(p), []);
+});
+test('persisted paths are native only to their original operating system', () => {
+  assert.equal(isLocalProjectPath('/Users/me/clip.mp4', 'win32'), false);
+  assert.equal(isLocalProjectPath('/Users/me/clip.mp4', 'darwin'), true);
+  for (const file of [String.raw`C:\Users\me\clip.mp4`, 'C:/Users/me/clip.mp4', String.raw`\\server\share\clip.mp4`]) {
+    assert.equal(isLocalProjectPath(file, 'win32'), true);
+    assert.equal(isLocalProjectPath(file, 'darwin'), false);
+  }
+});
+test('Windows hydration never probes a persisted POSIX path', { skip: process.platform !== 'win32' }, async () => {
+  const p = fixture(); p.assets[0].path = '/Users/me/clip.mp4'; let inspected = false;
+  const result = await hydrateProject(p, () => { inspected = true; return p.assets[0]; }, a => a);
+  assert.equal(inspected, false); assert.equal(result.assets[0].offline, true); assert.deepEqual(result.clips, p.clips);
 });
