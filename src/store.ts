@@ -169,9 +169,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     if(!s.place(next, '素材をタイムラインに追加'))return; set(state => ({ activeVolumePoint:null, selected: [clip.id], playhead: clip.start, zoom: boundedZoom(state.zoom, endTime(state.project)), seekRevision: state.seekRevision + 1 }));
   },
   addTitle: (style = 'hero') => {
-    const s = get(); const track = s.project.tracks.find(t => t.kind === 'video' && !t.locked);
+    const s = get(); const track = s.project.tracks.find(t => t.kind === 'video' && !t.locked && !t.hidden);
     if (!capacity(s.project.clips.length, 1)) return;
-    if (!track) { s.notify('映像トラックのロックを解除してください'); return; }
+    if (!track) { s.notify('映像トラックを表示し、ロックを解除してください'); return; }
     const clip = { ...makeClip(track.id, s.playhead), textStyle: style, fontWeight: style === 'hero' ? 700 : 500, fontSize: style === 'subtitle' ? 58 : 94, y: style === 'subtitle' ? 33 : 0, name: style === 'subtitle' ? '字幕' : 'タイトル' };
     if(style==='subtitle')Object.assign(clip,captionStyle(s.project,clip.text));
     if(!s.place({ ...s.project, clips: [...s.project.clips, clip] }, 'テロップを追加'))return; set({ activeVolumePoint:null, selected: [clip.id], inspectorTab: 'video' });

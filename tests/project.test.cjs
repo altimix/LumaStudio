@@ -130,3 +130,9 @@ test('accepts the marker limit and rejects the first extra marker', () => {
   p.markers.push({ id: 'extra', time: 1, label: 'extra' });
   assert.throws(() => validateProject(p), /マーカーは2000個まで/);
 });
+test('rejects asset IDs that cannot be used as media URL keys', () => {
+  for (const id of ['', 'a?b', 'a#b', 'a/b', '..', 'a%20b']) {
+    const p = fixture(); p.assets[0].id = id; p.clips[0].assetId = id;
+    assert.throws(() => validateProject(p), /素材IDが不正/);
+  }
+});
