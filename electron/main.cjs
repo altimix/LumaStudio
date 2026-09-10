@@ -99,7 +99,7 @@ function installIPC() {
   const bundledBgm = path.join(app.getPath('userData'), 'bundled-bgm', 'v1');
   let preparingBgm;
   const bgm = createBgmLibrary({ configFile:path.join(app.getPath('userData'),'bgm-library.json'),
-    candidates:[process.env.PORTABLE_EXECUTABLE_DIR && path.join(process.env.PORTABLE_EXECUTABLE_DIR,'bgm'), app.isPackaged ? path.join(path.dirname(app.getPath('exe')),'bgm') : path.join(root,'bgm'), app.isPackaged && bundledBgm],
+    candidates:[process.env.PORTABLE_EXECUTABLE_DIR && path.join(process.env.PORTABLE_EXECUTABLE_DIR,'bgm'), app.isPackaged ? path.join(path.dirname(app.getPath('exe')),'bgm') : path.join(root,'bgm'), app.isPackaged ? bundledBgm : path.join(root,'.local','bundled-bgm')],
     probe, inspect:file=>inspectMedia(file,cacheDir()), present });
   handle('bgm-list', async () => {
     if (app.isPackaged) {
