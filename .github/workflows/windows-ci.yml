@@ -70,12 +70,14 @@ jobs:
             release/SHA256SUMS.txt
             README.md
             README.html
+            README-Mac.txt
+            README-Windows.txt
             LICENSE
             THIRD_PARTY_NOTICES.md
             COPYRIGHT
             BGM-LICENSE.txt
             vendor/media/
-            .local/media-sources/
+            release/media-sources/
             scripts/build-media.sh
             shared/media-sources.json
           if-no-files-found: error

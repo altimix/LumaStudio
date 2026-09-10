@@ -59,3 +59,6 @@ cp "$BUILD_DIR/zlib-1.3.1/LICENSE" "$DEST_DIR/zlib-LICENSE"
 "$DEST_DIR/ffmpeg$EXT" -version > "$DEST_DIR/BUILD.txt"
 "$DEST_DIR/ffmpeg$EXT" -L >> "$DEST_DIR/BUILD.txt" 2>&1
 node "$ROOT_DIR/scripts/check-media.cjs"
+
+mkdir -p "$ROOT_DIR/release/media-sources"
+cp "$SOURCE_DIR/ffmpeg-6.1.1.tar.xz" "$SOURCE_DIR/x264.tar.gz" "$SOURCE_DIR/lame-3.100.tar.gz" "$SOURCE_DIR/zlib-1.3.1.tar.gz" "$ROOT_DIR/release/media-sources/"

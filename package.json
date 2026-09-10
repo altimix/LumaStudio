@@ -71,7 +71,9 @@
       "VERIFICATION.md",
       "COPYRIGHT",
       "BGM-LICENSE.txt",
-      "vendor/media/**/*"
+      "vendor/media/**/*",
+      "README-Mac.txt",
+      "README-Windows.txt"
     ],
     "extraResources": [
       {
