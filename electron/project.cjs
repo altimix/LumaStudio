@@ -1,3 +1,4 @@
+const path = require('node:path');
 const { validateProject } = require('./export.cjs');
 
 function assertReplacement(saved, fresh) {
@@ -8,10 +9,11 @@ function assertReplacement(saved, fresh) {
 }
 
 async function hydrateProject(project, inspect, present) {
-  validateProject(project);
+  validateProject(project, { allowForeignPaths: true });
   const assets = [];
   for (const saved of project.assets) {
     try {
+      if (!path.isAbsolute(saved.path)) throw new Error('別のOSの素材は再リンクしてください。');
       const fresh = await inspect(saved.path);
       assertReplacement(saved, fresh);
       const candidate = { ...fresh, id: saved.id, name: saved.name, revision: fresh.id };

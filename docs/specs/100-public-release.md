@@ -8,3 +8,5 @@ Windows x64 / Mac arm64に対応し、素材・タイムラインは空で起動
 受け入れ条件: npm ci、verify:demo、verify:readme、npm test、build、両OSのpackageとverify:packaged成功。外部開発者が公開リポジトリと公開ビルド素材だけでビルドできること。公開ファイルに認証情報・個人データを含めないこと。
 
 初版の同梱FFmpegはNVENC・QSV・AMFを含まない。MP4はlibx264のCPU方式で出力し、自動選択もCPUになる。GPU書き出しは再配布可能な依存構成と対応ソースを整備した後に追加する。
+
+- Windowsの絶対パスを含む保存プロジェクトをMacで開いた場合、素材をオフラインとして保持し、編集内容を失わず再リンクできる。Mac上ではWindows形式のパスにファイルアクセスしない。

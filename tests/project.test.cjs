@@ -68,3 +68,17 @@ test('malformed track flags and names are rejected before reading media', async 
   const p = fixture(); Object.assign(p.tracks[0], { name: '日本語トラック', muted: false, hidden: false, locked: true, solo: false });
   assert.equal(validateProject(p), p);
 });
+
+test('Windows media paths hydrate offline on macOS without filesystem access', { skip: process.platform === 'win32' }, async () => {
+  for (const file of [String.raw`C:\Users\me\日本語 clip.mp4`, String.raw`\\server\share\clip.mp4`]) {
+    const p = fixture(); p.assets[0].path = file;
+    assert.throws(() => validateProject(p), /絶対パス/);
+    let inspected = false; let registered = false;
+    const result = await hydrateProject(p, () => { inspected = true; throw new Error('missing'); }, a => { registered = true; return a; });
+    assert.equal(inspected, false); assert.equal(registered, false);
+    assert.equal(result.assets[0].offline, true);
+    assert.equal(result.assets[0].path, file);
+    assert.deepEqual(result.clips, p.clips);
+    assert.equal(validateProject(result), result);
+  }
+});
