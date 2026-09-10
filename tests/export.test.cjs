@@ -96,3 +96,19 @@ test('rejects malformed, excessive, unsorted and non-title opacity keys',()=>{
  }
  const p=project();p.clips[0].opacityKeyframes=[{time:0,value:1}];assert.throws(()=>validateProject(p),/テロップ/);
 });
+
+test('animated GIFs have the same fixed first frame in preview and at every exported time', async () => {
+  const file = path.join(dir, 'animated.gif');
+  await run(ffmpeg, ['-v','error','-f','lavfi','-i','color=red:s=320x180:r=10:d=0.5','-f','lavfi','-i','color=blue:s=320x180:r=10:d=0.5','-filter_complex','[0:v][1:v]concat=n=2:v=1:a=0','-loop','0',file]);
+  const image = await inspectMedia(file, path.join(dir, 'image-cache'));
+  assert.equal(image.kind, 'image'); assert.match(image.playbackPath, /\.png$/);
+  const p = project(); p.assets = [image]; p.clips = [{ ...p.clips[0], assetId: image.id, kind: 'image', duration: 2 }];
+  const output = path.join(dir, 'frozen-image.mp4');
+  await exportProject(p, settings, output);
+  const pixel = async (source, time) => [...await run(ffmpeg, ['-v','error', ...(time === undefined ? [] : ['-ss', String(time)]), '-i',source,'-frames:v','1','-vf','scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1'])];
+  const preview = await pixel(image.playbackPath);
+  for (const time of [0, 0.7, 1.5]) {
+    const rendered = await pixel(output, time);
+    assert.ok(rendered.every((value, i) => Math.abs(value - preview[i]) < 8), `${time}: ${rendered} vs ${preview}`);
+  }
+});

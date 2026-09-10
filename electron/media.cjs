@@ -38,7 +38,7 @@ async function inspectMedia(file, cacheDir) {
   const duration = kind === 'image' ? 5 : Number(info.format.duration || video?.duration || sound?.duration);
   if (!Number.isFinite(duration) || duration <= 0) throw new Error('素材の長さを取得できません。');
   let playbackPath = file;
-  const compatible = (kind === 'image' && !/\.tiff?$/i.test(file)) || (kind === 'audio' && /\.(mp3|wav|m4a|ogg|aac|flac)$/i.test(file)) || (kind === 'video' && ['h264', 'vp8', 'vp9', 'av1'].includes(video.codec_name) && /\.(mp4|m4v|webm|mov)$/i.test(file) && (!sound || ['aac', 'mp3', 'opus', 'vorbis'].includes(sound.codec_name)));
+  const compatible = (kind === 'audio' && /\.(mp3|wav|m4a|ogg|aac|flac)$/i.test(file)) || (kind === 'video' && ['h264', 'vp8', 'vp9', 'av1'].includes(video.codec_name) && /\.(mp4|m4v|webm|mov)$/i.test(file) && (!sound || ['aac', 'mp3', 'opus', 'vorbis'].includes(sound.codec_name)));
   if (!compatible) {
     playbackPath = path.join(cacheDir, `${id}-proxy.${kind === 'image' ? 'png' : kind === 'audio' ? 'm4a' : 'mp4'}`);
     try { await fs.access(playbackPath); } catch {

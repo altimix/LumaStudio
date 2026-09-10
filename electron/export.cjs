@@ -4,7 +4,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
-const { ffmpeg } = require('./media.cjs');
+const { ffmpeg, run } = require('./media.cjs');
 const { validateOpacityKeys, opacityExpression } = require('../shared/opacity.mjs');
 const { validateVolumeKeys } = require('../shared/volume-automation.mjs');
 const { writeFilterScript } = require('./filter-script.cjs');
@@ -178,6 +178,12 @@ async function exportProject(p, settings, output, { titleImages = {}, audioPaths
   const partial = path.join(path.dirname(output), `.luma-${randomUUID()}.mp4`);
   try {
     const sources = Object.fromEntries(p.assets.map(a => [a.id, a.path]));
+    // Still images use their first frame in both preview and export, including GIF/APNG/WebP.
+    for (const a of exportAssets(p).filter(a => a.kind === 'image')) {
+      const file = path.join(tempDir, `${randomUUID()}.png`);
+      await run(ffmpeg, ['-v', 'error', '-i', a.path, '-frames:v', '1', file], { signal });
+      sources[a.id] = file;
+    }
     for (const c of p.clips.filter(c => c.kind === 'title' && !p.tracks.find(t => t.id === c.trackId)?.hidden)) {
       const data = titleImages[c.id];
       if (typeof data !== 'string' || !data.startsWith('data:image/png;base64,') || data.length > 24 * 1024 * 1024) throw new Error('テロップ画像を作成できませんでした。');
