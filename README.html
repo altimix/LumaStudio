@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="luma-version" content="1.3.0">
-  <meta name="description" content="Luma Studio 1.3.0 の日本語操作ガイド。全35コマンドのショートカット、マウス操作、字幕、BGM、YouTube制作、動画の書き出しを説明します。">
-  <title>Luma Studio 1.3.0 — 操作ガイド・全ショートカット一覧</title>
+  <meta name="luma-version" content="1.3.1">
+  <meta name="description" content="Luma Studio 1.3.1 の日本語操作ガイド。全35コマンドのショートカット、マウス操作、字幕、BGM、YouTube制作、動画の書き出しを説明します。">
+  <title>Luma Studio 1.3.1 — 操作ガイド・全ショートカット一覧</title>
   <style>
     :root{color-scheme:light;--ink:#182b35;--muted:#526570;--paper:#f5f7f5;--line:#d7e1dc;--accent:#235942;--soft:#e8f1e9}
     *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.85 "Yu Gothic UI","Meiryo",sans-serif}
@@ -29,10 +29,10 @@
 <body>
 <a class="skip" href="#main">本文へ移動</a>
 <header id="top"><div class="inner">
-  <div class="brand">LUMA STUDIO <span class="version">v1.3.0 / Windows・Mac</span></div>
+  <div class="brand">LUMA STUDIO <span class="version">v1.3.1 / Windows・Mac</span></div>
   <h1>編集を、迷わず進める。<br>操作ガイドと全ショートカット</h1>
   <p>素材の読み込みから字幕・BGM・YouTube用の投稿素材、MP4の書き出しまで。現在の実装に沿った日本語ガイドです。</p>
-  <p class="small">対応バージョン：1.3.0 · 更新日：2026年9月11日 · このHTMLはオフラインで閲覧できます。</p>
+  <p class="small">対応バージョン：1.3.1 · 更新日：2026年9月11日 · このHTMLはオフラインで閲覧できます。</p>
   <p class="small">Mac開発版ではCtrlをCommand（⌘）、Deleteをdeleteと読み替えてください。Windowsから移した素材は再リンクが必要です。</p>
   <div class="hero-actions"><a href="#commands">全コマンド・キー一覧へ</a><a class="secondary" href="#start">最初の動画を作る</a><button type="button" id="print" data-enhanced hidden>印刷 / PDFに保存</button></div>
 </div></header>
@@ -52,7 +52,7 @@
     <section id="start">
       <h2>起動と編集の流れ</h2>
       <p>1.0.0以降のWindows・Mac配布版は、素材・クリップ・マーカーが空の新規プロジェクトで起動します。初期設定は1920×1080・30fpsです。BGMライブラリにはbgm001.mp3〜bgm005.mp3の5曲を同梱し、必要な曲を選んで追加できます。「読み込み」から動画・画像・音声を追加してください。旧版の初期素材や外部「初期プロジェクト」は自動配置しません。保存済みプロジェクトは「開く」、自動保存は「復元する」で再開できます。</p>
-      <p>Windowsでは <code>Luma-Studio-1.3.0-Windows.exe</code> を起動します。Macでは配布ZIPを解凍し、<code>Luma Studio.app</code>を「アプリケーション」へ移動して起動します。Macの初回起動で開発元の確認が表示される場合は、別添のMac用手順を参照してください。Node.jsやFFmpegの別途インストールは不要です。MP4出力はCPUに加え、MacのVideoToolbox、WindowsのNVENC・Quick Sync・AMFに対応します。実際に使える方式はGPU・ドライバー・環境により異なります。</p>
+      <p>Windowsでは <code>Luma-Studio-1.3.1-Windows.exe</code> を起動します。Macでは配布ZIPを解凍し、<code>Luma Studio.app</code>を「アプリケーション」へ移動して起動します。Macの初回起動で開発元の確認が表示される場合は、別添のMac用手順を参照してください。Node.jsやFFmpegの別途インストールは不要です。MP4出力はCPUに加え、MacのVideoToolbox、WindowsのNVENC・Quick Sync・AMFに対応します。実際に使える方式はGPU・ドライバー・環境により異なります。</p>
       <ol>
         <li><strong>画面の向きを選ぶ：</strong>「ファイル → 新規プロジェクト」で横動画 <strong>1920×1080</strong> または Shorts <strong>1080×1920</strong> を選びます。初期値は30fps。後から「シーケンス」で変更できます。</li>
         <li><strong>素材を入れる：</strong>「読み込み」または <kbd>Ctrl</kbd> + <kbd>I</kbd>。動画・画像・音声のファイルをウィンドウへドラッグしても読み込めます。</li>
@@ -168,7 +168,7 @@
       <h3>概要欄の末尾にハッシュタグを付ける</h3>
       <p>「YouTube → タイトル・概要欄 → 投稿文を生成」で、内容に合う<strong>ハッシュタグ3個</strong>も生成します。「概要欄の末尾に付けるハッシュタグ」で編集でき、空白またはカンマ区切りで入力すると <code>#</code> を補います。空欄にすると付けません。検索ワード10個は別項目です。</p>
       <p>「コピーされる概要欄」で、<strong>本文 → チャプター → ハッシュタグ</strong>の順を確認できます。「概要欄をチャプター付きでコピー」「投稿素材を一括コピー」「テキスト保存」に反映します。短い動画などチャプター条件を満たさない場合も、タグは概要欄の最後に付きます。本文・チャプター・タグを合わせて5000文字以内です。以前の投稿文はそのまま開けます。タグを追加するには再生成するか、ハッシュタグ欄へ入力してください。</p>
-      <table><caption>v1.3.0 が使用するAPIモデル</caption><thead><tr><th scope="col">用途</th><th scope="col">設定値</th></tr></thead><tbody>
+      <table><caption>v1.3.1 が使用するAPIモデル</caption><thead><tr><th scope="col">用途</th><th scope="col">設定値</th></tr></thead><tbody>
         <tr><th scope="row">文字起こし本文</th><td data-label="設定値"><code>gpt-transcribe</code></td></tr><tr><th scope="row">単語・字幕の時刻取得</th><td data-label="設定値"><code>whisper-1</code></td></tr><tr><th scope="row">投稿文</th><td data-label="設定値"><code>gpt-6-astra</code>（GPT-6 Astra）</td></tr><tr><th scope="row">サムネイル画像</th><td data-label="設定値"><code>gpt-image-2</code></td></tr>
       </tbody></table>
       <p class="small">上記はアプリ内の設定値です。モデルの利用にはAPIアカウントの権限が必要です。認識と時刻取得は別々のAPI処理です。音声は16kHzモノラル・60秒単位で処理し、時刻が合わない区間だけ自動で細分化して再確認します。短い区間でも食い違う場合は時刻付き認識の本文を採用し、採用区間数を表示します。12時間の長さ制限はありません。字幕は最大10万件、制作データは12MiB以内で、作業用ディスク容量とAPI利用料が必要です。自動再試行では追加のAPI利用料が発生します。適用先には2000クリップ／24トラックの上限があります。</p>
@@ -182,7 +182,7 @@
       <p>書き出し方式「自動」は利用できるGPUを検出します。MacのVideoToolbox、WindowsのNVIDIA NVENC・Intel Quick Sync・AMD AMF、CPUに対応し、自動設定でGPUが失敗した場合はCPUで再試行します。GPUは主にH.264圧縮を担当し、合成・音声処理はCPUも使用します。</p>
       <p>進捗表示、中止、保存先を開く操作に対応します。新しい出力が完成するまで既存の出力は置き換えません。元の素材と同じ場所・ファイル名への書き出しはできません。</p>
     </section>
-    <section id="updates"><h2>ヘルプとアップデート</h2><p>ヘルプメニューから「初めての動画編集」「ショートカットキー一覧」「アップデート」を開けます。ショートカット一覧にはWindows / Macと修飾キーを切り替えられるキーボード図があります。</p><p>起動時にGitHubの最新安定版を確認し、対応する新しい配布版があると「更新あり」を表示します。「アップデート」から再確認とダウンロードページの表示ができます。自動でアプリを置き換える機能ではありません。編集を保存し、書き出しを終えてアプリを終了してから入れ替えてください。1.0.0からの初回更新は公式サイトから1.3.0を取得してください。</p></section><section id="commands">
+    <section id="updates"><h2>ヘルプとアップデート</h2><p>ヘルプメニューから「初めての動画編集」「ショートカットキー一覧」「アップデート」を開けます。ショートカット一覧にはWindows / Macと修飾キーを切り替えられるキーボード図があります。</p><p>起動時にGitHubの最新安定版を確認し、対応する新しい配布版があると「更新あり」を表示します。「アップデート」から再確認とダウンロードページの表示ができます。自動でアプリを置き換える機能ではありません。編集を保存し、書き出しを終えてアプリを終了してから入れ替えてください。1.0.0からの初回更新は公式サイトから1.3.1を取得してください。</p></section><section id="commands">
       <h2>全コマンド・ショートカット一覧</h2>
       <p><strong>通常のキー割り当ては全35コマンド。</strong>別キーも併記しています。続けて、特定の場所で使うキー、マウス操作、キー未割り当てのコマンドと操作場所を掲載しています。</p>
       <div class="note"><p><strong>キーが効く場所に注意：</strong>入力欄・日本語変換中・ダイアログやメニューの表示中は、通常の編集ショートカットを実行しません。音量ポイントなどにフォーカスがあると、その場所の操作が優先されます。Windows用のCtrl表記です。</p><p>コマ送り・ズームは押し続けて連続操作できます。削除・分割・J/Lの加速は押し直して操作します。<kbd>?</kbd> でアプリ内のショートカット検索を開けます。</p></div>
@@ -363,7 +363,7 @@
       <h2>対応範囲・開発用の確認</h2>
       <p>Windows用の日本語マルチトラック動画編集アプリです。編集と動画書き出しはローカルで処理し、AI機能の実行時はOpenAI APIへ送信します。追加フォントの初回取得にもインターネットを使います。</p>
       <p>Premiere Proのプロジェクト読込、After Effects連携、外部プラグイン、マルチカム、位置・回転のキーフレーム、汎用グラフエディター、モーショントラッキング、人物の自動リフレーム、HDRの色管理は未実装です。音量ラインとテロップの不透明度キーフレームは実装済みです。</p>
-      <p>このガイドはv1.3.0の実装を基準としています。長時間4K・大量素材の耐久性能は未確認です。動画素材の長さ制限を外したことは、メモリやディスク使用量が無制限という意味ではありません。</p>
+      <p>このガイドはv1.3.1の実装を基準としています。長時間4K・大量素材の耐久性能は未確認です。動画素材の長さ制限を外したことは、メモリやディスク使用量が無制限という意味ではありません。</p>
       <h3>ソースから起動する</h3>
       <p>Node.js 22.12以上を使い、リポジトリで次を実行します。</p>
       <pre><code>npm ci
@@ -375,7 +375,7 @@ npm start</code></pre>
       <p>開発用は <code>npm run dev</code>。ブラウザーの画面確認は <code>npm run dev:web</code> です。ネイティブのMP4出力などはWindows・Macアプリで利用します。</p>
       <p>ガイドのコマンドとキー割り当ては <code>npm run verify:readme</code> で実装と照合できます。通常の検証は <code>npm test</code>、<code>npm run build</code>。操作仕様とレビュー記録は <a href="https://github.com/altimix/LumaStudio">GitHubリポジトリ</a>で管理します。</p>
     </section>
-    <footer><p>Luma Studio v1.3.0 · README.html · 2026年9月11日更新<br>外部フォント・画像・CDNを使わない単体HTMLです。検索はこのページ内で行います。印刷では絞り込みにかかわらず全一覧を出力します。</p><a href="#top">ページの先頭へ戻る</a></footer>
+    <footer><p>Luma Studio v1.3.1 · README.html · 2026年9月11日更新<br>外部フォント・画像・CDNを使わない単体HTMLです。検索はこのページ内で行います。印刷では絞り込みにかかわらず全一覧を出力します。</p><a href="#top">ページの先頭へ戻る</a></footer>
   <p>トラック名の横のごみ箱からトラックを削除できます。素材がある場合は確認を表示します。元ファイルと別トラックの素材は残り、Ctrl+Zで戻せます。最後の1本とロック中のトラックは削除できません。</p><p>素材・図形・字幕の追加や移動で同じトラック内に重なる場合は、新しいトラックへ時間位置を保って自動配置します。ドラッグではマウスを離した時に整理します。Ctrl+Zで自動追加トラックも一緒に戻せます（最大24本）。</p></main>
 </div>
 <script>
