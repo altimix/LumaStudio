@@ -108,8 +108,9 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}) {
   const width = finite(settings.width, 128, 7680, '書き出し幅'); const height = finite(settings.height, 128, 4320, '書き出し高さ');
   if (width % 2 || height % 2) throw new Error('書き出しサイズは偶数で指定してください。');
   const fps = finite(settings.fps, 1, 120, '書き出しFPS');
-  const duration = Math.max(0, ...p.clips.map(c => c.start + c.duration));
-  if (!duration) throw new Error('書き出すクリップがありません。');
+  const authoredDuration = Math.max(0, ...p.clips.map(c => c.start + c.duration));
+  if (!authoredDuration) throw new Error('書き出すクリップがありません。');
+  const duration = Math.max(1,Math.round(authoredDuration*fps))/fps;
   const args = ['-hide_banner', '-y', '-filter_complex_threads', '2', '-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:r=${fps}:d=${number(duration)}`, '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${number(duration)}`];
   const visible = p.clips.filter(c => c.kind !== 'audio' && !p.tracks.find(t => t.id === c.trackId)?.hidden);
   const only = visible.length === 1 ? visible[0] : null, onlyAsset = p.assets.find(a => a.id === only?.assetId);
@@ -131,13 +132,13 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}) {
     if (!source) throw new Error(`素材が見つかりません: ${c.name}`);
     const videoWindow=mediaWindow(c,asset,plans,'video'),audioWindow=mediaWindow(c,asset,plans,'audio');
     const window=visual?videoWindow:audioWindow;
-    if (c.kind === 'image' || c.kind === 'title') args.push('-loop', '1', '-framerate', String(fps));
-    else args.push('-ss', number(window.sourceIn));
-    args.push('-t', number(window.sourceDuration), '-i', source);
-    const index = input++;
     if (visual) {
+      if (c.kind === 'image' || c.kind === 'title') args.push('-loop', '1', '-framerate', String(fps));
+      else args.push('-ss', number(window.sourceIn));
+      args.push('-t', number(window.sourceDuration), '-i', source);
+      const index = input++;
       const fitW = Math.max(2, Math.round(width * (c.graphic?1:c.scale) / 2) * 2); const fitH = Math.max(2, Math.round(height * (c.graphic?1:c.scale) / 2) * 2);
-      const f = [`[${index}:v]setpts=(PTS-STARTPTS)/${number(c.speed)}`, `fps=${fps}`, `scale=${fitW}:${fitH}:force_original_aspect_ratio=decrease:force_divisible_by=2`, 'setsar=1', ...(directVideo ? [`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`] : ['format=rgba'])];
+      const f = [`[${index}:v]setpts=(PTS-STARTPTS)/${number(c.speed)}`, `fps=${fps}:eof_action=pass`, `scale=${fitW}:${fitH}:force_original_aspect_ratio=decrease:force_divisible_by=2`, 'setsar=1', ...(directVideo ? [`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`] : ['format=rgba'])];
       f.push(`tpad=start_mode=clone:start_duration=${number(videoWindow.padBefore)}:stop_mode=clone:stop_duration=${number(videoWindow.padAfter+1/fps)}`,`trim=duration=${number(videoWindow.duration)}`,'setpts=PTS-STARTPTS');
       if (c.kind !== 'title' && (c.exposure !== 0 || c.contrast !== 1 || c.saturation !== 1)) f.push(colorFilter(c));
       if (c.rotation&&!c.graphic) { const angle = number(c.rotation * Math.PI / 180); f.push(`rotate=${angle}:ow=rotw(${angle}):oh=roth(${angle}):c=none`); }

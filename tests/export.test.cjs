@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { ffmpeg, run, probe, inspectMedia } = require('../electron/media.cjs');
-const { exportProject, validateProject } = require('../electron/export.cjs');
+const { exportProject, validateProject, buildExport } = require('../electron/export.cjs');
 let dir, asset, titlePNG;
 before(async()=>{
  dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-tests-'));
@@ -19,6 +19,20 @@ function project(){
  return {version:1,id:'p',name:'Export test',width:320,height:180,fps:10,assets:[asset],markers:[],tracks:[{id:'v2',name:'title',kind:'video',muted:false,hidden:false,locked:false,solo:false},{id:'v1',name:'video',kind:'video',muted:false,hidden:false,locked:false,solo:false}],clips:[clip,{...clip,id:'c2',start:1.5,duration:1,speed:2},{...clip,id:'title',assetId:undefined,trackId:'v2',kind:'title',start:0.2,duration:0.5}]};
 }
 const settings={width:320,height:180,fps:10,quality:'draft'};
+test('audio-only edits allocate one media input per clip',()=>{
+ const p=project();p.clips=Array.from({length:12},(_,i)=>({...p.clips[0],id:`audio${i}`,kind:'audio',start:i}));
+ const {args}=buildExport(p,settings,{[asset.id]:asset.path},path.join(dir,'audio-only.mp4'));
+ assert.equal(args.filter(arg=>arg==='-i').length,2+p.clips.length);
+});
+test('one-frame projects never gain a trailing black frame at a different export FPS',async()=>{
+ for(const fps of [1,10,25,30,60]){
+  const p=project();p.fps=24;p.clips=[{...p.clips[0],duration:1/24,audioMuted:true}];
+  const out=path.join(dir,`one-frame-${fps}.mp4`);await exportProject(p,{...settings,fps},out);
+  const pixels=await run(ffmpeg,['-v','error','-i',out,'-vf','scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
+  assert.equal(pixels.length,Math.max(1,Math.round(fps/24))*3);
+  for(let i=2;i<pixels.length;i+=3)assert.ok(pixels[i]>180,`black at ${fps} FPS frame ${(i-2)/3}`);
+ }
+});
 test('adjacent cuts keep every frame when source and sequence FPS differ',async()=>{
  for(const frames of [1,2,7,10]){
  const p=project();p.fps=30;
