@@ -12,6 +12,8 @@ Issue: #3
 
 1.0.0の公開済み配布物は変更しない。GPU対応Windowsメディアツールはこのソースから`npm run build:media`で構築する。既存の`prepare:media`が取得するmedia-tools-v1はCPU構成である。
 
+Windowsの新規MSYS2環境でも同じ手順で構築できるよう、依存ライブラリの構成判定に必要なdiffutilsを明示的に導入する。CMake・MinGW makeを含む導入コマンドは`docs/DEVELOPMENT.md`とWindows CIで一致させる。
+
 ## 実測例
 
 Apple M2 Pro、付属デモ映像8秒、単一無加工クリップ、30fps・標準品質。ほかのテストを止めて各1回計測。
