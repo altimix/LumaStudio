@@ -1,0 +1,17 @@
+{
+  "name": "lumastudio-website",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.131.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

@@ -1,4 +1,4 @@
-Luma Studio 1.0.0 — Mac公開版
+Luma Studio 1.1.0 — Mac公開版
 
 対応するMac
 ・Apple Silicon搭載Mac（M1以降）。Intel Macには対応していません。
@@ -6,7 +6,7 @@ Luma Studio 1.0.0 — Mac公開版
 ・Node.jsやFFmpegを別途インストールする必要はありません。
 
 インストールと初回起動
-1. Luma-Studio-1.0.0-macOS-arm64.zipを解凍します。
+1. Luma-Studio-1.1.0-macOS-arm64.zipを解凍します。
 2. Luma Studio.appを「アプリケーション」フォルダへ移動します。
 3. Luma Studio.appを開きます。
 4. 開発元を確認できない旨の警告で起動できない場合は、警告を閉じます。
@@ -45,3 +45,6 @@ https://support.apple.com/ja-jp/guide/mac-help/mh40616/mac
 
 公開元: https://github.com/altimix/LumaStudio
 コード: GPL-3.0-only。BGM: CC BY 4.0（利用時はaltimixのクレジットを記載）。
+
+1.1.0の追加機能: GPU書き出し（環境により利用可）、ヘルプのキーボード図、起動時の更新確認。更新は案内に従ってダウンロード・手動で入れ替えます。
+公式サイト: https://lumastudio.altimix.jp/

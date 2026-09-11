@@ -23,7 +23,7 @@ Sintel — © copyright Blender Foundation | https://www.sintel.org
 - LAME 3.100: LGPL-2.0-or-later. https://lame.sourceforge.io/
 - zlib 1.3.1: zlib license. https://zlib.net/
 
-Media-tool source archives, build instructions and dependency licenses are provided in the media-tools-v1 release. The build script is scripts/build-media.sh. Native Apple/Windows system libraries retain their own terms.
+For Luma Studio 1.1.0, media-tool source archives, build instructions and dependency licenses are provided in Luma-Studio-1.1.0-media-sources.zip in the v1.1.0 release. The media-tools-v1 release contains the earlier CPU-only Windows build. The build script is scripts/build-media.sh. Native Apple/Windows system libraries retain their own terms.
 
 The packaged application retains the dependencies' licenses and Electron/Chromium's bundled license files. Source code, the lockfile, build configuration and verification scripts are included in the workspace for reproducibility.
 
