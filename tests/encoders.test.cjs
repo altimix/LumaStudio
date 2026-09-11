@@ -69,3 +69,17 @@ test('plain full-frame video avoids RGBA compositing while edited layouts retain
   }
   assert.match(graph(p,{...settings,height:240}),/overlay=/);
 });
+
+test('display rotation keeps requested export dimensions and centered picture on the direct path',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-rotation-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const source=path.join(dir,'source.mp4');await run(ffmpeg,['-v','error','-f','lavfi','-i','testsrc2=s=320x180:r=30:d=1','-c:v','libx264','-y',source]);
+ for(const rotation of [90,270]){
+  const rotated=path.join(dir,`rotate-${rotation}.mp4`);await run(ffmpeg,['-v','error','-display_rotation',String(rotation),'-i',source,'-c','copy','-y',rotated]);
+  assert.ok((await probe(rotated)).streams[0].side_data_list.some(s=>Math.abs(s.rotation)===90));
+  const p=project(await inspectMedia(rotated,path.join(dir,'cache'))),settings={width:320,height:180,fps:30,quality:'high',encoder:'cpu'};
+  const output=path.join(dir,`out-${rotation}.mp4`);await exportProject(p,settings,output);const video=(await probe(output)).streams.find(s=>s.codec_type==='video');assert.equal(video.width,320);assert.equal(video.height,180);
+  const pixels=await run(ffmpeg,['-v','error','-i',output,'-frames:v','1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
+  const side=pixels.subarray((90*320+10)*3,(90*320+10)*3+3);assert.ok([...side].every(v=>v<8));
+  const center=pixels.subarray((90*320+160)*3,(90*320+160)*3+3);assert.ok([...center].some(v=>v>40));
+ }
+});
