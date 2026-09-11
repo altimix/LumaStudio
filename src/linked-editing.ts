@@ -1,3 +1,4 @@
+import { numberTracks } from './track-names';
 import type { Project } from './types';
 import { makeTrack, uid } from './model';
 import { audioTargets, clipsLocked, sameTiming, validateClipLinks } from '../shared/clip-links.mjs';
@@ -14,11 +15,11 @@ export function separateAudio(p: Project, ids: string[], link = true, reuseAvail
     const name = `${sourceTrack.name}の音声`;
     const available = (trackId: string) => ![...p.clips, ...reserved].some(other => other.trackId === trackId && Math.min(other.start + other.duration, c.start + c.duration) - Math.max(other.start, c.start) > 1e-7);
     const compatible = (t: Project['tracks'][number]) => t.kind === 'audio' && !t.locked && t.muted === sourceTrack.muted && t.solo === sourceTrack.solo;
-    let track = tracks.find(t => compatible(t) && t.name === name && (!reuseAvailable || available(t.id)));
+    let track = tracks.find(t => compatible(t) && (t.audioSourceTrackId === sourceTrack.id || t.name === name) && (!reuseAvailable || available(t.id)));
     if (!track && reuseAvailable) track = tracks.find(t => compatible(t) && available(t.id));
     if (!track) {
       if (tracks.length >= 24) throw Error('音声用トラックを追加する空きがありません（最大24本）。');
-      track = { ...makeTrack('audio', name), muted: sourceTrack.muted, solo: sourceTrack.solo };
+      track = { ...makeTrack('audio'), audioSourceTrackId: sourceTrack.id, muted: sourceTrack.muted, solo: sourceTrack.solo };
       const firstAudio = tracks.findIndex(t => t.kind === 'audio'); tracks.splice(firstAudio < 0 ? tracks.length : firstAudio, 0, track);
     }
     const id = uid(), linkId = link ? uid() : undefined;
@@ -33,7 +34,7 @@ export function separateAudio(p: Project, ids: string[], link = true, reuseAvail
     return [...(t.video ? [{ ...t, audio: undefined }] : []), { ...t, video: undefined, id: t.video ? uid() : t.id, fromId: audioIds.get(t.fromId) || t.fromId, toId: audioIds.get(t.toId) || t.toId, audio: t.audio }];
   });
   if (transitions && transitions.length > 1999) throw Error('トランジション数の上限です。効果を減らしてから分離してください。');
-  return { ...p, tracks, clips: [...p.clips.map(c => replacements.get(c.id) || c), ...audio], ...(transitions ? { transitions } : {}) };
+  return numberTracks({ ...p, tracks, clips: [...p.clips.map(c => replacements.get(c.id) || c), ...audio], ...(transitions ? { transitions } : {}) });
 }
 
 export function relinkAudio(p: Project, ids: string[]): Project {

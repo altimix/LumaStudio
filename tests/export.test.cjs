@@ -160,3 +160,17 @@ test('animated GIFs have the same fixed first frame in preview and at every expo
     assert.ok(rendered.every((value, i) => Math.abs(value - preview[i]) < 8), `${time}: ${rendered} vs ${preview}`);
   }
 });
+
+test('renders visuals from Audio rows and audio from Video rows with independent hide/mute',async()=>{
+ const base=project(),clip=base.clips[0];
+ for(const hidden of [false,true])for(const muted of [false,true]){
+  const p={...base,tracks:[{...base.tracks[0],id:'upper',kind:'video',muted},{...base.tracks[1],id:'lower',kind:'audio',hidden}],clips:[{...clip,id:'visual',trackId:'lower',audioMuted:true},{...clip,id:'sound',trackId:'upper',kind:'audio'}]};
+  validateProject(p);
+  const output=path.join(dir,`universal-${hidden}-${muted}.mp4`);await exportProject(p,settings,output);
+  const rgb=await run(ffmpeg,['-v','error','-i',output,'-vf','scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);assert.equal(rgb.length,30);
+  for(let i=0;i<rgb.length;i+=3)assert.ok(hidden?rgb[i+2]<10:rgb[i+2]>180,`visible=${!hidden}`);
+  const pcm=await run(ffmpeg,['-v','error','-i',output,'-vn','-ar','48000','-ac','1','-f','f32le','pipe:1']);
+  let energy=0;for(let i=0;i<pcm.length;i+=4)energy+=pcm.readFloatLE(i)**2;
+  const rms=Math.sqrt(energy/(pcm.length/4));assert.ok(muted?rms<.00001:rms>.03,`muted=${muted}, RMS=${rms}`);
+ }
+});

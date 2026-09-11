@@ -5,7 +5,7 @@ export function thumbnailFormat(p) {
 }
 function sample(items,limit){return items.length<=limit?items:Array.from({length:limit},(_,i)=>items[Math.round(i*(items.length-1)/(limit-1))]);}
 export function thumbnailFrames(p){
-  const tracks=p.tracks.filter(t=>!t.hidden&&t.kind==='video');
+  const tracks=p.tracks.filter(t=>!t.hidden);
   const assets=new Map(p.assets.map(a=>[a.id,a]));
   const clips=tracks.flatMap(t=>p.clips.filter(c=>c.trackId===t.id&&['video','image'].includes(c.kind)&&c.opacity>0&&assets.has(c.assetId)&&!assets.get(c.assetId).offline));
   // Sample the union of occupied intervals: leading/interior gaps should not

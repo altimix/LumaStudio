@@ -1,3 +1,4 @@
+import { numberTracks } from './track-names';
 import { afterEach, expect, it, vi } from 'vitest';
 import { emptyProject, makeClip, trimClip, rateStretchClip } from './model';
 import { separateAudio, relinkAudio } from './linked-editing';
@@ -63,7 +64,7 @@ it('Z skips an entire locked pair while splitting unrelated unlocked clips',()=>
   const p=loadPair();p.tracks.find(t=>t.id===p.clips[1].trackId)!.locked=true;p.clips.push({...makeClip(p.tracks[0].id,0),id:'title',duration:10});state().load(p);state().split(5,p.clips.map(c=>c.id));expect(state().project.clips).toHaveLength(4);expect(linkedIds(state().project,['v'])).toHaveLength(2);validateClipLinks(state().project);
 });
 it('separation capacity failures leave original project and history untouched',()=>{
-  const p=fixture();p.tracks=Array.from({length:24},(_,i)=>({...p.tracks[1],id:i===0?p.clips[0].trackId:`t${i}`}));state().load(p);state().separateAudio(['v']);expect(state().project).toBe(p);expect(state().history).toHaveLength(0);
+  const p=fixture();p.tracks=Array.from({length:24},(_,i)=>({...p.tracks[1],id:i===0?p.clips[0].trackId:`t${i}`}));p.tracks=numberTracks(p).tracks;state().load(p);state().separateAudio(['v']);expect(state().project).toBe(p);expect(state().history).toHaveLength(0);
 });
 it.each(['previous','next'] as const)('ripple %s preserves links and Undo/Redo restores the editing playhead',direction=>{
   const p=loadPair();state().seek(5);state().rippleTrim(direction);const edited=state().project,post=state().playhead;validateClipLinks(edited);
@@ -119,3 +120,12 @@ it('extending a linked trim does not invent a fade, and all speed controls scale
 });
 
 it('a valid explicitly attached video can separate without copying video-only metadata to audio',()=>{const p=fixture();p.clips[0].audioDetached=false;state().load(p);state().separateAudio(['v']);expect(state().project.clips).toHaveLength(2);expect(Object.hasOwn(state().project.clips[1],'audioDetached')).toBe(false);validateClipLinks(state().project);});
+
+it('reuses the numbered detached-audio lane for adjacent clips, both in one call and after save/reload',()=>{
+ const p=fixture();p.clips.push({...p.clips[0],id:'v2',start:10});
+ const together=separateAudio(p,['v','v2']);expect(together.tracks).toHaveLength(5);
+ expect(new Set(together.clips.filter(c=>c.kind==='audio').map(c=>c.trackId)).size).toBe(1);
+ const first=JSON.parse(JSON.stringify(separateAudio(p,['v'])));
+ const later=separateAudio(first,['v2']);expect(later.tracks).toHaveLength(5);
+ expect(later.clips.filter(c=>c.kind==='audio').every(c=>c.trackId===later.tracks.find(t=>t.audioSourceTrackId===p.clips[0].trackId)!.id)).toBe(true);
+});

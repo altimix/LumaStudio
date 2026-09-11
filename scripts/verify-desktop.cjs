@@ -62,7 +62,7 @@ async function verify() {
     await page.getByRole('spinbutton',{name:'長さ',exact:true}).blur();
     await page.waitForFunction(()=>document.querySelector('.timeline-clip.video').getAttribute('aria-label').includes('長さ 7.97 秒'));
     const protectedClip=await firstVideo.getAttribute('aria-label');
-    await page.getByRole('button',{name:'メイン映像 ロック',exact:true}).click();
+    await page.getByRole('button',{name:'Video1 ロック',exact:true}).click();
     assert.equal(await nameInput.isDisabled(),true);
     await page.getByRole('button',{name:'シーケンス',exact:true}).click();
     await page.getByLabel('シーケンスのフレームレート',{exact:true}).selectOption('24');

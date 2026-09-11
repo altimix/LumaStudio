@@ -9,7 +9,7 @@ export interface Asset {
   duration: number; width: number; height: number; fps: number; hasAudio: boolean;
   waveform: number[]; size: number; codec: string; proxy?: boolean; offline?: boolean; revision?: string;
 }
-export interface Track { id: string; name: string; kind: 'video' | 'audio'; muted: boolean; hidden: boolean; locked: boolean; solo: boolean }
+export interface Track { id: string; name: string; autoName?: boolean; audioSourceTrackId?: string; kind: 'video' | 'audio'; muted: boolean; hidden: boolean; locked: boolean; solo: boolean }
 export interface Clip {
   id: string; assetId?: string; trackId: string; name: string; kind: MediaKind | 'title';
   start: number; in: number; duration: number; speed: number;

@@ -19,14 +19,14 @@ it('trims long music or inserts the full song, and treats an audio-only/empty se
   expect(insertBgm(p,music,21,true,.2).repeats).toBe(1);
 });
 it('avoids overlaps, locked and muted tracks while preserving track flags',()=>{
-  for(const flag of ['locked','muted','hidden'] as const){const p=sequence();p.tracks[2][flag]=true;const next=insertBgm(p,music,0,true,.2).project;expect(next.tracks).toHaveLength(5);expect(next.tracks[2]).toBe(p.tracks[2]);expect(next.clips[1].trackId).not.toBe(p.tracks[2].id);}
+  for(const flag of ['locked','muted','hidden'] as const){const p=sequence();p.tracks[2][flag]=true;const next=insertBgm(p,music,0,true,.2).project;expect(next.tracks).toHaveLength(4);expect(next.tracks[2]).toBe(p.tracks[2]);expect(next.clips[1].trackId).not.toBe(p.tracks[2].id);}
   const p=sequence();p.assets=[music];p.clips.push(makeClip(p.tracks[2].id,0,music));const next=insertBgm(p,music,1,true,.2).project;expect(next.clips[1]).toBe(p.clips[1]);expect(next.clips[2].trackId).not.toBe(p.tracks[2].id);
 });
 it('reuses a music track when the insertion only touches an existing endpoint',()=>{
   const p=sequence();p.assets=[music];p.clips.push({...makeClip(p.tracks[2].id,0,music),duration:4});const next=insertBgm(p,music,4,true,.2).project;expect(next.tracks).toBe(p.tracks);expect(next.assets).toBe(p.assets);expect(next.clips[2].trackId).toBe(p.tracks[2].id);
 });
 it('adds the asset, track and repeated clips as one Undo/Redo action',()=>{
-  const p=sequence();p.tracks[2].locked=true;const s=useEditor.getState();s.load(p);s.seek(2);expect(s.addBgm(music,true,.2)).toBe(true);const after=useEditor.getState().project;expect(after.tracks).toHaveLength(5);expect(after.assets).toContain(music);expect(useEditor.getState().history).toHaveLength(1);s.undo();expect(useEditor.getState().project).toBe(p);s.redo();expect(useEditor.getState().project).toBe(after);expect(useEditor.getState().playhead).toBe(2);
+  const p=sequence();p.tracks[2].locked=true;p.tracks[3].locked=true;const s=useEditor.getState();s.load(p);s.seek(2);expect(s.addBgm(music,true,.2)).toBe(true);const after=useEditor.getState().project;expect(after.tracks).toHaveLength(5);expect(after.assets).toContain(music);expect(useEditor.getState().history).toHaveLength(1);s.undo();expect(useEditor.getState().project).toBe(p);s.redo();expect(useEditor.getState().project).toBe(after);expect(useEditor.getState().playhead).toBe(2);
 });
 it('restores an offline BGM asset for existing and new clips in the same Undo/Redo action',()=>{
   const p=sequence(),offline={...music,offline:true,url:''};p.assets=[offline];p.clips.push({...makeClip(p.tracks[2].id,0,music),duration:4});

@@ -60,7 +60,7 @@ async function verify() {
     await page.keyboard.press('k'); await page.keyboard.press('j'); await levels([-1.1598, -1.1598]); await page.keyboard.press('k'); await page.keyboard.press('l'); await levels([-1.1598, -1.1598]);
     checks.push('opposite-phase channels remain visible in red without false CLIP, including J/K/L');
     const copy = { ...base.clips[0], id: 'meter-mix-copy', trackId: 'meter-extra' };
-    await load({ ...base, name: '音量上限検証', tracks: [...base.tracks, { ...base.tracks.find(t => t.id === sound.trackId), id: copy.trackId, name: '追加音声' }], clips: [...base.clips, copy] });
+    await load({ ...base, name: '音量上限検証', tracks: [...base.tracks, { ...base.tracks.find(t => t.id === sound.trackId), id: copy.trackId, name: '追加音声', autoName: false }], clips: [...base.clips, copy] });
     await seek(12); await page.keyboard.press('l'); await levels([4.8608, 4.8608]);
     await page.locator('.meter-reset.is-clipped').waitFor();
     assert.equal(await page.locator('.meter-channel').first().getAttribute('aria-valuenow'), '0');

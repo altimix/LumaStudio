@@ -127,7 +127,7 @@ async function verify() {
     assert.ok(!(await save()).clips[0].volumeKeyframes?.length);
     // Select through the actual volume hit area, not a title coordinate that can
     // happen to miss it at a different Windows DPI or compact row height.
-    const line = async id => { const box = await clip(id).locator('.clip-volume-line').boundingBox(); return { x: box.x + 40, y: box.y + 8 + .75 * (box.height-16) }; };
+    const line = async id => { await clip(id).scrollIntoViewIfNeeded(); const box = await clip(id).locator('.clip-volume-line').boundingBox(); return { x: box.x + 40, y: box.y + 8 + .75 * (box.height-16) }; };
     for (const size of [[1600,1000],[1100,760]]) {
       await app.evaluate(({BrowserWindow},size)=>BrowserWindow.getAllWindows()[0].setSize(...size),size);
       await clip('voice').click({position:{x:25,y:10}});

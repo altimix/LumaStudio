@@ -67,3 +67,9 @@ test('JPEG stays below 2 MB without changing dimensions; PNG and oversized JPEG 
  const png=path.join(dir,`source-${w}.png`);await run(ffmpeg,['-v','error','-i',file,'-frames:v','1',png]);const converted=await thumbnailJpeg(png);assert.equal(converted[0],255);assert.equal(converted[1],216);assert.ok(converted.length<MAX_THUMBNAIL_BYTES);
  }
 }));
+
+test('Audio rows contribute visible thumbnail references and honor visibility',()=>{
+ const p=project(path.resolve('lower-row.mp4'));p.tracks[0].kind='audio';
+ assert.deepEqual(thumbnailFrames(p).map(f=>f.sourceTime),[3.6,6,8.4]);
+ p.tracks[0].hidden=true;assert.deepEqual(thumbnailFrames(p),[]);
+});
