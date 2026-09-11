@@ -1,5 +1,6 @@
 const { transcribeWindows } = require('./transcription-windows.cjs');
 const { MAX_MEDIA_SECONDS } = require('../shared/time.mjs');
+const { serializeProject } = require('./project.cjs');
 const { hasClipAudio } = require('../shared/clip-links.mjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -56,6 +57,15 @@ async function runAudio(args, signal) {
   });
   } finally { if (directory) await fs.rm(directory, { recursive: true, force: true }); }
 }
+function finalizeTranscription(p, cues, transcriptionStats) {
+  if (!cues.length) throw new Error('認識できる発話がありませんでした。音声・言語設定を確認してください。');
+  const result = { sourceKey: timelineKey(p), cues, transcriptionStats, titles: [], description: '', chapters: [], keywords: [], thumbnailPrompt: '' };
+  validateYoutube(result);
+  // Use the exact persisted representation, including all other project data,
+  // before returning a result that the renderer can commit over existing captions.
+  serializeProject({ ...p, youtube: result });
+  return result;
+}
 async function transcribeTimeline(p, vocabulary, client, signal, progress = () => {}, audioPaths = {}) {
   validateProject(p); if (typeof vocabulary !== 'string' || vocabulary.length > 120) throw new Error('用語ヒントは120文字以内にしてください。');
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-transcript-'));
@@ -68,9 +78,8 @@ async function transcribeTimeline(p, vocabulary, client, signal, progress = () =
       await runAudio(['-y', '-v', 'error', '-ss', number(from), '-i', audio, '-t', number(to - from), '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', file], signal);
       return client.transcribe(file, vocabulary, signal, { allowTimingFallback });
     }, signal, progress, p.height > p.width ? 15 : 24, p.fps);
-    if (!cues.length) throw new Error('認識できる発話がありませんでした。音声・言語設定を確認してください。');
-    const result = { sourceKey: timelineKey(p), cues, transcriptionStats, titles: [], description: '', chapters: [], keywords: [], thumbnailPrompt: '' };
-    validateYoutube(result); progress({ progress: 1, message: `${cues.length}件の字幕を作成しました` }); return result;
+    const result = finalizeTranscription(p, cues, transcriptionStats);
+    progress({ progress: 1, message: `${cues.length}件の字幕を作成しました` }); return result;
   } finally { await fs.rm(directory, { recursive: true, force: true }); }
 }
 async function generateMetadata(p, client, signal) {
@@ -111,4 +120,4 @@ async function generateThumbnail(p, prompt, client, signal, directory) {
     signal?.throwIfAborted();await fs.rename(temporary,file);return file;
   }finally{await fs.rm(temporary,{force:true});}
 }
-module.exports = { totalTime, audioClips, buildTimelineAudio, runAudio, transcribeTimeline, generateMetadata, generateThumbnail };
+module.exports = { finalizeTranscription, totalTime, audioClips, buildTimelineAudio, runAudio, transcribeTimeline, generateMetadata, generateThumbnail };

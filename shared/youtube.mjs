@@ -59,7 +59,7 @@ export function subtitleFile(cues, format = 'srt') {
 export function validateYoutube(y) {
   if (y === undefined) return;
   if (!y || typeof y !== 'object' || typeof y.sourceKey !== 'string' || y.sourceKey.length > 100) throw new Error('YouTube制作データが不正です。');
-  if (new TextEncoder().encode(JSON.stringify(y)).byteLength > 12 * 1024 * 1024) throw new Error('YouTube制作データが大きすぎます。シーケンスを分けてください。');
+  if (new TextEncoder().encode(JSON.stringify({ youtube: y }, null, 2)).byteLength > 12 * 1024 * 1024) throw new Error('YouTube制作データが大きすぎます。シーケンスを分けてください。');
   validateCues(y.cues);
   if (y.transcriptionStats !== undefined && (!y.transcriptionStats || !['retries', 'timingFallbacks'].every(key => Number.isSafeInteger(y.transcriptionStats[key]) && y.transcriptionStats[key] >= 0))) throw new Error('文字起こしの処理結果が不正です。');
   if (!Array.isArray(y.titles) || y.titles.length > 3 || y.titles.some(t => typeof t !== 'string' || t.length > 100)) throw new Error('タイトルは100文字以内で3案までです。');
