@@ -35,7 +35,7 @@ jobs:
         with:
           msystem: MINGW64
           path-type: inherit
-          install: make mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf mingw-w64-x86_64-nasm
+          install: make diffutils mingw-w64-x86_64-make mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf mingw-w64-x86_64-nasm mingw-w64-x86_64-cmake
       - name: Build redistributable media tools from pinned sources
         shell: msys2 {0}
         run: bash scripts/build-media.sh

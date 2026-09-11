@@ -35,7 +35,9 @@ async function verify(){
     assert.equal(await page.locator('.media-card.offline').count(),0);assert.equal((await save()).clips[0].duration,2);
     const output=path.join(results,'black-video.mp4');await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},output);
     await page.getByRole('button',{name:'書き出し',exact:true}).click();await page.getByLabel('品質',{exact:true}).selectOption('draft');await page.getByRole('button',{name:'保存先を選んで書き出す',exact:true}).click();await page.getByText('書き出しが完了しました',{exact:true}).waitFor({timeout:120000});
-    const pixels=await run(ffmpeg,['-v','error','-i',output,'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','pipe:1']);assert.ok(pixels.length>0&&pixels.every(v=>v<=1));assert.deepEqual(errors,[]);
+    const pixels=await run(ffmpeg,['-v','error','-i',output,'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','pipe:1']);const maximum=pixels.reduce((a,b)=>Math.max(a,b),0),mean=pixels.reduce((a,b)=>a+b,0)/pixels.length;
+    // Hardware H.264 can round a few black pixels by several 8-bit levels. Reject visible lift or non-black content.
+    assert.ok(pixels.length>0&&maximum<=4&&mean<0.1,JSON.stringify({maximum,mean}));assert.deepEqual(errors,[]);
     await page.screenshot({path:path.join(results,'black-video.png')});await fs.writeFile(path.join(results,'black-video-verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,checks:['生成・素材追加','75秒へ延長','保存・再読込','実MP4の黒画素検証']},null,2));
     console.log('Black video verified');
   }finally{await app.close();}

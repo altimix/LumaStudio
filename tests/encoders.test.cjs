@@ -4,11 +4,11 @@ const {ENCODERS,encodingArgs,createEncoderDetector,exportEncoders}=require('../e
 const {exportProject}=require('../electron/export.cjs');const {ffmpeg,run,probe,inspectMedia}=require('../electron/media.cjs');
 test('GPU detection executes a real probe, deduplicates it and falls back to CPU when none initialize',async()=>{
   const calls=[];const detector=createEncoderDetector(async id=>{calls.push(id);throw Error('not installed');});
-  const results=await Promise.all([detector.detect(),detector.detect(),detector.detect()]);assert.equal(calls.length,3);assert.equal(results[0].recommended,'cpu');
-  assert.equal((await detector.resolve('auto')).id,'cpu');assert.equal(calls.length,3);
+  const results=await Promise.all([detector.detect(),detector.detect(),detector.detect()]);assert.equal(calls.length,4);assert.equal(results[0].recommended,'cpu');
+  assert.equal((await detector.resolve('auto')).id,'cpu');assert.equal(calls.length,4);
   await assert.rejects(detector.resolve('nvenc'),/CPU/);await assert.rejects(detector.resolve('external-codec'),/方式/);
-  await detector.detect(true);assert.equal(calls.length,6);
-  for(const id of ['nvenc','qsv','amf','cpu'])for(const quality of ['draft','standard','high'])assert.equal(encodingArgs(id,quality)[1],ENCODERS.find(e=>e.id===id).codec);
+  await detector.detect(true);assert.equal(calls.length,8);
+  for(const id of ['videotoolbox','nvenc','qsv','amf','cpu'])for(const quality of ['draft','standard','high'])assert.equal(encodingArgs(id,quality)[1],ENCODERS.find(e=>e.id===id).codec);
   assert.throws(()=>encodingArgs('auto'));assert.throws(()=>encodingArgs('cpu','unsafe'));
   assert.ok(encodingArgs('qsv').includes('-global_quality:v'));assert.ok(!encodingArgs('qsv').includes('-global_quality'));
 });
@@ -55,4 +55,32 @@ test('canceling an export rejects promptly while the shared detector is still pe
   let timer;await assert.rejects(Promise.race([pending,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('cancel timeout')),250);})]),/キャンセル/);clearTimeout(timer);assert.equal(await fs.readFile(output,'utf8'),'original');finish(ENCODERS[0]);
 });
 
-test('CPU fallback is limited to hardware encoder diagnostics',()=>{const {isEncoderFailure}=require('../electron/export.cjs');for(const message of ['[h264_nvenc @ 123] Cannot load nvcuda.dll','[h264_qsv @ 1] Error initializing an internal MFX session','[h264_amf @ 1] CreateComponent failed'])assert.equal(isEncoderFailure(Error(message)),true);for(const message of ['Permission denied','[out#0/mp4 @ 1] Error writing trailer: No space left on device','[vost#0:0/h264_nvenc @ 1] Error submitting a packet to the muxer: No space left on device','[vost#0:0/h264_qsv @ 1] Error submitting a packet to the muxer: I/O error','[Parsed_scale_0 @ 1] Failed to configure output pad','Invalid data found when processing input'])assert.equal(isEncoderFailure(Error(message)),false);});
+test('CPU fallback is limited to hardware encoder diagnostics',()=>{const {isEncoderFailure}=require('../electron/export.cjs');for(const message of ['[h264_nvenc @ 123] Cannot load nvcuda.dll','[h264_qsv @ 1] Error initializing an internal MFX session','[h264_amf @ 1] CreateComponent failed','[h264_videotoolbox @ 1] Error: cannot create compression session: -12908'])assert.equal(isEncoderFailure(Error(message)),true);for(const message of ['Permission denied','[out#0/mp4 @ 1] Error writing trailer: No space left on device','[vost#0:0/h264_nvenc @ 1] Error submitting a packet to the muxer: No space left on device','[vost#0:0/h264_qsv @ 1] Error submitting a packet to the muxer: I/O error','[Parsed_scale_0 @ 1] Failed to configure output pad','Invalid data found when processing input'])assert.equal(isEncoderFailure(Error(message)),false);});
+
+test('plain full-frame video avoids RGBA compositing while edited layouts retain it', () => {
+  const { buildExport } = require('../electron/export.cjs');
+  const asset={id:'a',path:path.resolve('plain.mp4'),name:'plain',kind:'video',duration:1,width:320,height:180,fps:30,hasAudio:true,waveform:[],size:1,codec:'h264'};
+  const p=project(asset),settings={width:320,height:180,fps:30,quality:'standard',encoder:'videotoolbox'};
+  const graph=(p,settings)=>{const args=buildExport(p,settings,{a:asset.path},path.resolve('out.mp4')).args;return args[args.indexOf('-filter_complex')+1];};
+  assert.doesNotMatch(graph(p,settings),/format=rgba|overlay=|lutrgb/);
+  for(const patch of [{x:10},{opacity:.8},{fadeIn:.2},{start:1},{exposure:.1}]) {
+    const edited={...p,clips:[{...p.clips[0],...patch}]};
+    assert.match(graph(edited,settings),/overlay=/);
+  }
+  assert.match(graph(p,{...settings,height:240}),/overlay=/);
+  assert.match(graph({...p,assets:[{...asset,codec:'prores'}]},settings),/overlay=/);
+});
+
+test('display rotation keeps requested export dimensions and centered picture on the direct path',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-rotation-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const source=path.join(dir,'source.mp4');await run(ffmpeg,['-v','error','-f','lavfi','-i','testsrc2=s=320x180:r=30:d=1','-c:v','libx264','-y',source]);
+ for(const rotation of [90,270]){
+  const rotated=path.join(dir,`rotate-${rotation}.mp4`);await run(ffmpeg,['-v','error','-display_rotation',String(rotation),'-i',source,'-c','copy','-y',rotated]);
+  assert.ok((await probe(rotated)).streams[0].side_data_list.some(s=>Math.abs(s.rotation)===90));
+  const p=project(await inspectMedia(rotated,path.join(dir,'cache'))),settings={width:320,height:180,fps:30,quality:'high',encoder:'cpu'};
+  const output=path.join(dir,`out-${rotation}.mp4`);await exportProject(p,settings,output);const video=(await probe(output)).streams.find(s=>s.codec_type==='video');assert.equal(video.width,320);assert.equal(video.height,180);
+  const pixels=await run(ffmpeg,['-v','error','-i',output,'-frames:v','1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
+  const side=pixels.subarray((90*320+10)*3,(90*320+10)*3+3);assert.ok([...side].every(v=>v<8));
+  const center=pixels.subarray((90*320+160)*3,(90*320+160)*3+3);assert.ok([...center].some(v=>v>40));
+ }
+});
