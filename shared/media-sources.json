@@ -18,5 +18,29 @@
     "name": "zlib-1.3.1.tar.gz",
     "url": "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz",
     "sha256": "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
+  },
+  {
+    "name": "nv-codec-headers.tar.gz",
+    "url": "https://codeload.github.com/FFmpeg/nv-codec-headers/tar.gz/1889e62e2d35ff7aa9baca2bceb14f053785e6f1",
+    "sha256": "e30d4791fd386de8b5c9f88dec781e546ec148b8808440dd421da5f26c2700ae",
+    "platforms": [
+      "win32-x64"
+    ]
+  },
+  {
+    "name": "amf.tar.gz",
+    "url": "https://codeload.github.com/GPUOpen-LibrariesAndSDKs/AMF/tar.gz/a118570647cfa579af8875c3955a314c3ddd7058",
+    "sha256": "55bab05db821c878d7712cc127737bd2c601b75d48bf40512866b2bcd404af6b",
+    "platforms": [
+      "win32-x64"
+    ]
+  },
+  {
+    "name": "libvpl.tar.gz",
+    "url": "https://codeload.github.com/intel/libvpl/tar.gz/383b5caac6df614e76ade5a07c4f53be702e9176",
+    "sha256": "ab9b9e7c28a50ea2de8ccd5a6c8b586dbcd31c4960bb86333037680dd2272140",
+    "platforms": [
+      "win32-x64"
+    ]
   }
 ]
