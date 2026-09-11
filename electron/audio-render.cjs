@@ -12,9 +12,17 @@ function clipAudioFilter(c, index, envelopes = [], window={start:c.start,duratio
   // Match the stereo mix before evaluating each channel. With mono AAC, aeval's
   // negotiated stereo output can otherwise read a nonexistent input channel.
   if (c.volumeKeyframes?.length) f.push('aformat=channel_layouts=stereo', `aeval=exprs='val(ch)*(${volumeExpression(c.volumeKeyframes, offset)})':c=same`);
-  if (c.fadeIn) f.push(`afade=t=in:st=${number(offset)}:d=${number(c.fadeIn)}`);
-  if (c.fadeOut) f.push(`afade=t=out:st=${number(offset+c.duration - c.fadeOut)}:d=${number(c.fadeOut)}`);
-  for(const e of envelopes) f.push(`afade=t=${e.direction}:st=${number(e.start-window.start)}:d=${number(e.end-e.start)}:curve=${e.curve==='constantPower'?'qsin':'tri'}`);
+  const fade = (direction, start, duration, curve='tri') => {
+    if (start >= 0) { f.push(`afade=t=${direction}:st=${number(start)}:d=${number(duration)}:curve=${curve}`); return; }
+    // A transcription window may start part-way through a fade. afade rejects
+    // negative start times; evaluate its remaining curve at each sample instead.
+    const ramp = `clip((t-(${number(start)}))/${number(duration)},0,1)`;
+    const gain = direction === 'in' ? ramp : `(1-${ramp})`;
+    f.push(`aeval=exprs='val(ch)*(${curve==='qsin' ? `sin(PI/2*${gain})` : gain})':c=same`);
+  };
+  if (c.fadeIn) fade('in', offset, c.fadeIn);
+  if (c.fadeOut) fade('out', offset+c.duration-c.fadeOut, c.fadeOut);
+  for(const e of envelopes) fade(e.direction,e.start-window.start,e.end-e.start,e.curve==='constantPower'?'qsin':'tri');
   f.push(`adelay=${Math.round(window.start * 48000)}S:all=1[a${index}]`); return f.join(',');
 }
 const mixAudioFilter = audios => `${audios.join('')}amix=inputs=${audios.length}:duration=first:normalize=0:dropout_transition=0,alimiter=limit=0.98:level=0:latency=1[afinal]`;
