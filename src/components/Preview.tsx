@@ -14,6 +14,7 @@ import { transitionPlan, visualSourceTime, type PlannedTransition } from '../../
 import { TransitionPreview } from '../transition-preview';
 import { GpuTransitionPool } from '../gpu-transition';
 import { playbackFrameAhead, waitForNativeFrame, usablePlaybackFrame, videoSeekLead, videoSeekRecoveryMs, videoSeekTolerance } from '../video-timing';
+import { ordinaryCutPrefetch } from '../video-prefetch';
 import DrawLayer from './DrawLayer';
 import MediaDragLayer from './MediaDragLayer';
 import { mediaSourceKey, type MediaSize } from '../media-transform';
@@ -127,9 +128,9 @@ export default function Preview() {
       if(s.playing)for(const track of p.tracks){
         if(track.hidden||track.kind!=='video')continue;
         const forward=s.shuttleRate>0;
-        const upcoming=p.clips.filter(c=>c.trackId===track.id&&c.kind==='video'&&!pairs.has(c.id)).map(clip=>({clip,until:forward?clip.start-t:t-(clip.start+clip.duration)})).filter(c=>c.until>0&&c.until<=2*Math.abs(s.shuttleRate)).sort((a,b)=>a.until-b.until)[0];
+        const upcoming=ordinaryCutPrefetch(p.clips,plans,track.id,t,s.shuttleRate);
         if(!upcoming)continue;
-        const clip=upcoming.clip,asset=p.assets.find(a=>a.id===clip.assetId);
+        const clip=upcoming,asset=p.assets.find(a=>a.id===clip.assetId);
         if(!asset||asset.offline)continue;
         const item=prepareVideo(clip,asset),el=item.element;
         alive.add(clip.id);item.nativePlayback=false;if(!el.paused)el.pause();
