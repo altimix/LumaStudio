@@ -13,7 +13,10 @@ const root=path.join(__dirname,'..');
  const profile=await fs.mkdtemp(path.join(results,'profile-')),env={...process.env,LUMA_TEST_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;
  const executablePath=process.env.LUMA_VERIFY_EXE,app=await electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000});
  try{
-  const page=await app.firstWindow();await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});
+  const page=await app.firstWindow();
+  // A hidden loading screen also matches the initial blank document. Wait for
+  // React to mount before waiting for bootstrap and sending keyboard input.
+  await page.locator('.app-titlebar').waitFor({timeout:60000});await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});
   await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},file);
   await page.keyboard.press('Control+o');await page.getByRole('button',{name:project.name,exact:true}).waitFor();
   // Exercise the actual C razor tool, followed by save/reload and Undo/Redo.
