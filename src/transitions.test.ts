@@ -62,7 +62,7 @@ it('a single selection is always incoming; a first clip requires an explicit pai
 });
 it('linear and equal-power curves have correct endpoints, midpoint and reverse envelopes',()=>{
   for(const curve of ['constantGain','constantPower'] as const){const p=applyTransition(fixture(),'c0','c1',{duration:1,audio:curve},'t'),env=audioEnvelopes(p);expect(crossfadeGain(env.get('c0'),3.5)).toBe(1);expect(crossfadeGain(env.get('c1'),3.5)).toBe(0);expect(crossfadeGain(env.get('c0'),4.5)).toBe(0);expect(crossfadeGain(env.get('c1'),4.5)).toBe(1);expect(crossfadeGain(env.get('c0'),4)).toBeCloseTo(curve==='constantGain'?.5:Math.SQRT1_2);
-    const reverse=audioSlices(p,4.5,3.5,-2).filter(s=>s.clip.id!=='other');expect(reverse.every(s=>s.reverse&&s.envelopes?.length===1)).toBe(true);expect(reverse.find(s=>s.clip.id==='c1')?.timelineStart).toBe(4.5);
+    const reverse=audioSlices(p,4.5,3.5,-2).filter(s=>s.clip.id!=='other');expect(reverse.every(s=>s.reverse&&s.envelopes?.some(e=>e.start===3.5&&e.end===4.5))).toBe(true);expect(reverse.find(s=>s.clip.id==='c1')?.timelineStart).toBe(4.5);
     expect(timelineKey(p)).not.toBe(timelineKey({...p,transitions:p.transitions!.map(t=>({...t,audio:curve==='constantGain'?'constantPower':'constantGain'}))}));
   }
 });
@@ -94,4 +94,42 @@ it('preserves fixed effects and common cuts when sequence FPS changes',()=>{
   const next=applySequenceSettings(sequence,{name:p.name,width:p.width,height:p.height,fps:24});expect(transitionPlan(next)).toHaveLength(2);
   expect(next.clips[0].start+next.clips[0].duration).toBeCloseTo(next.clips[1].start);expect(next.clips[1].start+next.clips[1].duration).toBeCloseTo(next.clips[2].start);
   const s=useEditor.getState();s.load(sequence);s.commit(next);s.undo();expect(useEditor.getState().project).toBe(sequence);s.redo();expect(useEditor.getState().project.transitions).toHaveLength(2);
+});
+it('continuous source splits stay untouched while discontinuous cuts have 3 ms edge ramps',()=>{
+ const p=fixture();p.clips=p.clips.slice(0,2);p.clips[1]={...p.clips[1],in:10};
+ expect(audioEnvelopes(p).size).toBe(0);
+ p.clips[1]={...p.clips[1],in:11};
+ const envelopes=audioEnvelopes(p);
+ expect(crossfadeGain(envelopes.get('c0'),4-.003)).toBe(1);
+ expect(crossfadeGain(envelopes.get('c0'),4)).toBe(0);
+ expect(crossfadeGain(envelopes.get('c1'),4)).toBe(0);
+ expect(crossfadeGain(envelopes.get('c1'),4+.003)).toBe(1);
+ expect(crossfadeGain(envelopes.get('c1'),4+.0015)).toBeCloseTo(.5);
+ p.clips[1]={...p.clips[1],start:5};expect(audioEnvelopes(p).size).toBe(0);
+});
+
+it('an earlier A-to-B transition does not suppress the later B-to-C hard-cut ramps',()=>{
+ const p=fixture();p.clips=p.clips.slice(0,3);
+ const n=applyTransition(p,'c0','c1',{duration:1,audio:'constantGain'},'t'),env=audioEnvelopes(n);
+ expect(env.get('c0')).toEqual([{start:3.5,end:4.5,curve:'constantGain',direction:'out'}]);
+ expect(env.get('c1')).toContainEqual({start:7.997,end:8,curve:'constantGain',direction:'out'});
+ expect(env.get('c2')).toEqual([{start:8,end:8.003,curve:'constantGain',direction:'in'}]);
+ expect(crossfadeGain(env.get('c1'),8)).toBe(0);
+ expect(crossfadeGain(env.get('c2'),8)).toBe(0);
+ expect(crossfadeGain(env.get('c2'),8.003)).toBe(1);
+});
+it('keeps a cross-track transition tail and ramps only the unrelated hard-cut endpoint',()=>{
+ const p=fixture();p.clips=p.clips.filter(c=>c.id!=='c2').map(c=>c.id==='other'?{...c,start:4}:c);
+ p.transitions=[{id:'cross',fromId:'c0',toId:'other',mode:'fixed',duration:1,audio:'constantGain'}];
+ const env=audioEnvelopes(p);
+ expect(crossfadeGain(env.get('c0'),4.25)).toBeCloseTo(.25);
+ expect(env.get('c1')).toEqual([{start:4,end:4.003,curve:'constantGain',direction:'in'}]);
+ expect(crossfadeGain(env.get('c1'),4)).toBe(0);
+ expect(crossfadeGain(env.get('c1'),4.003)).toBe(1);
+ p.clips=p.clips.map(c=>c.id==='other'?{...c,start:0}:c);
+ p.transitions=[{id:'cross-in',fromId:'other',toId:'c1',mode:'fixed',duration:1,audio:'constantGain'}];
+ const incoming=audioEnvelopes(p);
+ expect(crossfadeGain(incoming.get('c1'),3.75)).toBeCloseTo(.25);
+ expect(incoming.get('c0')).toEqual([{start:3.997,end:4,curve:'constantGain',direction:'out'}]);
+ expect(crossfadeGain(incoming.get('c0'),4)).toBe(0);
 });

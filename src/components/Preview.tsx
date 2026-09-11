@@ -14,6 +14,7 @@ import { transitionPlan, visualSourceTime, type PlannedTransition } from '../../
 import { TransitionPreview } from '../transition-preview';
 import { GpuTransitionPool } from '../gpu-transition';
 import { playbackFrameAhead, waitForNativeFrame, usablePlaybackFrame, videoSeekLead, videoSeekRecoveryMs, videoSeekTolerance } from '../video-timing';
+import { ordinaryCutPrefetch } from '../video-prefetch';
 import DrawLayer from './DrawLayer';
 import MediaDragLayer from './MediaDragLayer';
 import { mediaSourceKey, type MediaSize } from '../media-transform';
@@ -54,7 +55,12 @@ export default function Preview() {
     sync();
     const unsubscribe = useEditor.subscribe((s, previous) => {
       const requestedSeek=s.seekRevision!==previous.seekRevision||(!updatingClock&&s.playhead!==previous.playhead);
-      if(s.project!==previous.project||requestedSeek)seekRevision++;
+      const remapped=s.project!==previous.project&&(s.project.id!==previous.project.id||s.project.clips.some(c=>{
+        if(c.kind!=='video')return false;const before=previous.project.clips.find(old=>old.id===c.id);
+        return before&&(before.assetId!==c.assetId||before.start!==c.start||before.in!==c.in||before.speed!==c.speed);
+      }));
+      // Adding/moving a graphic does not invalidate already decoded video.
+      if(remapped||requestedSeek)seekRevision++;
       if (s.project !== previous.project || s.playing !== previous.playing || s.shuttleRate !== previous.shuttleRate || requestedSeek) sync();
     });
     const prepareVideo = (clip: Clip, asset: Asset) => {
@@ -116,6 +122,20 @@ export default function Preview() {
       const alive = new Set<string>(), activeTitles = new Set<string>();
       if(plannedProject!==p){plans=transitionPlan(p);plannedProject=p;projectRevision++;const ids=new Set(p.clips.map(c=>c.id));for(const id of knownSizes.keys())if(!ids.has(id)){knownSizes.delete(id);sizesChanged=true;}}
       const active=plans.filter(pair=>pair.video&&t>=pair.start&&t<pair.end&&!p.tracks.find(track=>track.id===pair.from.trackId)?.hidden),pairs=new Map(active.flatMap(pair=>[[pair.fromId,pair],[pair.toId,pair]] as const));
+      // Ordinary cuts need the same decoder warm-up as transitions. Prepare
+      // only the nearest incoming clip per visible track, so long edits do not
+      // open every decoder at once.
+      if(s.playing)for(const track of p.tracks){
+        if(track.hidden||track.kind!=='video')continue;
+        const forward=s.shuttleRate>0;
+        const upcoming=ordinaryCutPrefetch(p.clips,plans,track.id,t,s.shuttleRate);
+        if(!upcoming)continue;
+        const clip=upcoming,asset=p.assets.find(a=>a.id===clip.assetId);
+        if(!asset||asset.offline)continue;
+        const item=prepareVideo(clip,asset),el=item.element;
+        alive.add(clip.id);item.nativePlayback=false;if(!el.paused)el.pause();
+        seekVideo(item,visualSourceTime(clip,asset,forward?clip.start:clip.start+clip.duration-1/p.fps),.008);
+      }
       // Prime the incoming decoder before the effect starts, including reverse playback.
       if(s.playing)for(const pair of plans){
         const forward=s.shuttleRate>0,until=forward?pair.start-t:t-pair.end;

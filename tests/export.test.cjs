@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { ffmpeg, run, probe, inspectMedia } = require('../electron/media.cjs');
-const { exportProject, validateProject } = require('../electron/export.cjs');
+const { exportProject, validateProject, buildExport } = require('../electron/export.cjs');
 let dir, asset, titlePNG;
 before(async()=>{
  dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-tests-'));
@@ -19,6 +19,54 @@ function project(){
  return {version:1,id:'p',name:'Export test',width:320,height:180,fps:10,assets:[asset],markers:[],tracks:[{id:'v2',name:'title',kind:'video',muted:false,hidden:false,locked:false,solo:false},{id:'v1',name:'video',kind:'video',muted:false,hidden:false,locked:false,solo:false}],clips:[clip,{...clip,id:'c2',start:1.5,duration:1,speed:2},{...clip,id:'title',assetId:undefined,trackId:'v2',kind:'title',start:0.2,duration:0.5}]};
 }
 const settings={width:320,height:180,fps:10,quality:'draft'};
+test('audio-only edits allocate one media input per clip',()=>{
+ const p=project();p.clips=Array.from({length:12},(_,i)=>({...p.clips[0],id:`audio${i}`,kind:'audio',start:i}));
+ const {args}=buildExport(p,settings,{[asset.id]:asset.path},path.join(dir,'audio-only.mp4'));
+ assert.equal(args.filter(arg=>arg==='-i').length,2+p.clips.length);
+});
+test('one-frame projects never gain a trailing black frame at a different export FPS',async()=>{
+ for(const fps of [1,10,25,30,60]){
+  const p=project();p.fps=24;p.clips=[{...p.clips[0],duration:1/24,audioMuted:true}];
+  const out=path.join(dir,`one-frame-${fps}.mp4`);await exportProject(p,{...settings,fps},out);
+  const pixels=await run(ffmpeg,['-v','error','-i',out,'-vf','scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
+  assert.equal(pixels.length,Math.max(1,Math.ceil(fps/24-1e-7))*3);
+  for(let i=2;i<pixels.length;i+=3)assert.ok(pixels[i]>180,`black at ${fps} FPS frame ${(i-2)/3}`);
+ }
+});
+test('a short final audio interval survives downsampling without a black final video frame',async()=>{
+ const p=project();p.fps=120;
+ p.clips=[{...p.clips[0],duration:1+1/120,audioMuted:true},
+  {...p.clips[0],id:'tail-audio',kind:'audio',start:1,in:.5,duration:1/120}];
+ const out=path.join(dir,'short-tail.mp4');await exportProject(p,{...settings,fps:24},out);
+ const pixels=await run(ffmpeg,['-v','error','-i',out,'-vf','scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
+ assert.equal(pixels.length,25*3);
+ for(let i=2;i<pixels.length;i+=3)assert.ok(pixels[i]>180,`black tail at frame ${(i-2)/3}`);
+ const pcm=await run(ffmpeg,['-v','error','-i',out,'-vn','-ac','1','-ar','48000','-f','f32le','pipe:1']);
+ assert.ok(pcm.length>=48400*4);let energy=0;
+ for(let i=48000;i<48400;i++)energy+=pcm.readFloatLE(i*4)**2;
+ assert.ok(Math.sqrt(energy/400)>.02,'the final 1/120-second tone remains audible');
+});
+test('sub-frame video and title intervals retain one slot after FPS conversion',async()=>{
+ for(const kind of ['video','title'])for(let tick=0;tick<10;tick++){
+  const p=project();p.fps=120;p.clips=[{...p.clips[0],id:'tiny',kind,assetId:kind==='title'?undefined:asset.id,start:tick/120,duration:1/120,audioMuted:kind==='video'?true:undefined}];
+  const out=path.join(dir,`tiny-${kind}-${tick}.mp4`);await exportProject(p,{...settings,fps:24},out,{titleImages:{tiny:titlePNG}});
+  const pixels=await run(ffmpeg,['-v','error','-i',out,'-vf','scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
+  const frames=Math.ceil((tick+1)/5-1e-7);assert.equal(pixels.length,frames*3);
+  assert.ok(pixels[(frames-1)*3+(kind==='title'?0:2)]>180,`${kind} at 120fps tick ${tick} disappeared`);
+  for(let i=0;i<(frames-1)*3;i++)assert.ok(pixels[i]<12,'leading empty output frames remain black');
+ }
+});
+test('adjacent cuts keep every frame when source and sequence FPS differ',async()=>{
+ for(const frames of [1,2,7,10]){
+ const p=project();p.fps=30;
+ const base={...p.clips[0],audioMuted:true};
+ p.clips=Array.from({length:6},(_,i)=>({...base,id:`cut${i}`,start:i*frames/30,in:i*frames/30,duration:(i===5?60-i*frames:frames)/30}));
+ const out=path.join(dir,'cuts.mp4');await exportProject(p,{...settings,fps:30},out);
+ const pixels=await run(ffmpeg,['-v','error','-i',out,'-vf','scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
+ assert.equal(pixels.length,60*3);
+ for(let frame=0;frame<60;frame++)assert.ok(pixels[frame*3+2]>180,`${frames}-frame cut: black frame ${frame}: ${[...pixels.subarray(frame*3,frame*3+3)]}`);
+ }
+});
 test('long source durations survive project validation without minute, hour or week caps', () => {
  const p=project();p.assets=[{...asset,duration:9*86400}];p.clips=[{...p.clips[0],start:13*3600,in:86400,duration:8*86400}];p.markers=[{id:'long',label:'long',time:13*3600}];
  assert.equal(validateProject(p),p);

@@ -1,4 +1,5 @@
 import { hasClipAudio, audioTargets, syncLinkedEdits, clipsLocked } from './clip-links.mjs';
+import { volumeAt } from './volume-automation.mjs';
 export const VIDEO_TRANSITIONS = { dissolve:'クロスディゾルブ', pageTurn:'ページターン', pagePeel:'ページピール' };
 export const AUDIO_TRANSITIONS = { constantGain:'コンスタントゲイン', constantPower:'コンスタントパワー' };
 const epsilon=1e-6;
@@ -78,7 +79,30 @@ export function audioEnvelopes(p){
       const range=end-start>epsilon?{start,end}:direction==='out'?{start:t.start,end:t.to.start}:{start:t.to.start,end:t.end};
       if(range.end-range.start>epsilon){const list=map.get(clip.id)||[];list.push({...range,curve:t.audio,direction});map.set(clip.id,list);}
     }
-  }return map;
+  }
+  // A hard edit between unrelated samples clicks even with exact scheduling.
+  // Use a tiny edge ramp only at discontinuous adjacent cuts. A simple split
+  // of continuous source audio stays sample-identical, without a volume dip.
+  for(const track of p.tracks){
+    const lane=p.clips.filter(c=>c.trackId===track.id&&hasClipAudio(c,assets.get(c.assetId))).sort((a,b)=>a.start-b.start);
+    for(let i=1;i<lane.length;i++){
+      const from=lane[i-1],to=lane[i];
+      if(Math.abs(from.start+from.duration-to.start)>epsilon||plans.some(t=>t.audio&&t.fromId===from.id&&t.toId===to.id))continue;
+      const fromGain=from.audioMuted||from.fadeOut?0:from.volume*volumeAt(from.volumeKeyframes,from.duration);
+      const toGain=to.audioMuted||to.fadeIn?0:to.volume*volumeAt(to.volumeKeyframes,0);
+      const continuous=from.assetId===to.assetId&&Math.abs(from.in+from.duration*from.speed-to.in)<epsilon&&from.speed===to.speed&&Math.abs(fromGain-toGain)<epsilon&&from.audioTreatment===to.audioTreatment;
+      if(continuous)continue;
+      for(const [clip,direction]of [[from,'out'],[to,'in']]){
+        // A cross-track transition owns only its participating edge. Do not
+        // truncate its handles, but still soften the unrelated hard-cut side.
+        if(plans.some(t=>t.audio&&(direction==='out'?t.fromId===clip.id:t.toId===clip.id)))continue;
+        const duration=Math.min(.003,clip.duration/2),edge=to.start;
+        const list=map.get(clip.id)||[];
+        list.push({start:direction==='out'?edge-duration:edge,end:direction==='out'?edge:edge+duration,curve:'constantGain',direction});map.set(clip.id,list);
+      }
+    }
+  }
+  return map;
 }
 export function mediaWindow(c,asset,plans,kind){
   let start=c.start,end=c.start+c.duration;
