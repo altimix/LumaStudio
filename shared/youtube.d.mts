@@ -1,3 +1,4 @@
+export const MAX_SUBTITLE_CUES: number;
 import type { Project, SubtitleCue, YoutubeData, Chapter } from '../src/types';
 export function timelineKey(p: Project): string;
 export function chapterTime(seconds: number): string;

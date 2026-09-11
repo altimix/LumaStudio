@@ -34,6 +34,7 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
         if (globalThis.__ytFailure) return new Response(data.key,{status:globalThis.__ytFailure});
         if (url.endsWith('/audio/transcriptions')) {
           const file=options.body.get('file'), model=options.body.get('model'); globalThis.__ytRequests.push({kind:'transcription',model,language:options.body.get('language')||options.body.get('languages[]'),bytes:file.size});
+          if(globalThis.__ytAlignmentFailure) return Response.json(model==='gpt-transcribe'?{text:'本文側で専門用語を認識しました。'}:{words:[{word:'実測時刻と一緒に認識した字幕。',start:1.1,end:2.2}]});
           if(model==='gpt-transcribe') return Response.json({text:'日本語の字幕を自然な区切りで読みやすく作成します。タイムラインで編集します。概要欄を作成します。動画を書き出します。'});
           return Response.json({words:[{start:0.3,end:1.2,word:'日本語の字幕を自然な区切りで'},{start:1.2,end:2.5,word:'読みやすく作成します。'},{start:12,end:14,word:'タイムラインで編集します。'},{start:24,end:26,word:'概要欄を作成します。'},{start:32,end:34,word:'動画を書き出します。'}]});
         }
@@ -174,6 +175,13 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
     await page.keyboard.press('Control+s'); await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
     // A changed audio edit keeps old text readable, but blocks applying stale timing.
     const changed=JSON.parse(await fs.readFile(projectFile,'utf8')); changed.clips.find(c=>c.kind==='audio').volume=0.7; await fs.writeFile(projectFile,JSON.stringify(changed)); await openFile(projectFile); await studio(); await page.locator('.yt-notice').filter({hasText:'音声の編集内容が変わりました'}).waitFor(); assert.equal(await page.getByRole('button',{name:'字幕をタイムラインに適用',exact:true}).isDisabled(),true); checks.push('audio edits visibly invalidate old transcript timing');
+    await page.getByRole('button',{name:'編集に戻る',exact:true}).click();
+    const longRetry={...changed,clips:changed.clips.map(c=>c.kind==='audio'?{...c,duration:35}:c)};await fs.writeFile(projectFile,JSON.stringify(longRetry));await openFile(projectFile);await studio();
+    await app.evaluate(()=>{globalThis.__ytAlignmentFailure=true;});await page.getByRole('button',{name:'文字起こしを再実行',exact:true}).click();await done();
+    await page.locator('.yt-notice').filter({hasText:'時刻付き認識を採用'}).waitFor();
+    await page.getByRole('button',{name:'編集に戻る',exact:true}).click();await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
+    const retried=JSON.parse(await fs.readFile(projectFile,'utf8'));assert.equal(retried.youtube.transcriptionStats.retries,7);assert.equal(retried.youtube.transcriptionStats.timingFallbacks,8);assert.equal(retried.youtube.cues.length,8);assert.ok(retried.youtube.cues.at(-1).start>30);
+    await openFile(projectFile);await studio();await page.locator('.yt-notice').filter({hasText:'時刻付き認識を採用'}).waitFor();checks.push('automatic short-window retries, measured-text fallback and its notice survive real IPC/save/reload');
     const requests=await app.evaluate(()=>globalThis.__ytRequests); assert.ok(requests.some(r=>r.kind==='transcription'&&r.language==='ja'&&r.bytes>10000)); assert.ok(requests.some(r=>r.kind==='image'&&r.size==='1536x864')); assert.ok(requests.filter(r=>r.kind==='metadata').every(r=>r.model==='gpt-6-astra'&&r.stored===false&&r.reasoning.effort==='low'&&r.strict===true));
     assert.deepEqual(errors,[]); await fs.writeFile(path.join(results,'youtube-verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,api:'mocked OpenAI responses; real native IPC, encrypted settings, audio render and video exports',checks,exports:[landscape,shorts],requests,consoleErrors:errors},null,2)); console.log('YouTube studio, Japanese captions and horizontal/Shorts MP4 exports verified (OpenAI responses mocked).');
   } catch(e) { await page.screenshot({path:path.join(results,'youtube-failure.png')}).catch(()=>{}); await fs.writeFile(path.join(results,'youtube-failure.json'),JSON.stringify({message:e.message,resourceFailures,images:await page.locator('img').evaluateAll(images=>images.map(img=>({src:img.src,width:img.naturalWidth,complete:img.complete})))},null,2)); throw e; }

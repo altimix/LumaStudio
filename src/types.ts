@@ -32,7 +32,7 @@ export interface Transition { id:string;fromId:string;toId:string;mode?:'fixed';
 export interface TransitionOptions {duration:number;autoAudio?:boolean;video?:Transition['video'];audio?:Transition['audio']}
 export interface SubtitleCue { start: number; end: number; text: string }
 export interface Chapter { time: number; label: string }
-export interface YoutubeData { sourceKey: string; cues: SubtitleCue[]; titles: string[]; description: string; chapters: Chapter[]; keywords: string[]; hashtags?: string[]; thumbnailPrompt: string; thumbnailAssetId?: string }
+export interface YoutubeData { transcriptionStats?: { retries: number; timingFallbacks: number }; sourceKey: string; cues: SubtitleCue[]; titles: string[]; description: string; chapters: Chapter[]; keywords: string[]; hashtags?: string[]; thumbnailPrompt: string; thumbnailAssetId?: string }
 export interface AIStatus { configured: boolean; source: string; transcriptionModel: string; timingModel: string; textModel: string; imageModel: string }
 export interface AIProgress { message: string; progress: number }
 export interface Project { version: 1; id: string; name: string; width: number; height: number; fps: number; assets: Asset[]; clips: Clip[]; tracks: Track[]; markers: Marker[]; youtube?: YoutubeData; transitions?:Transition[] }

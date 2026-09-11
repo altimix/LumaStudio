@@ -33,7 +33,7 @@ test('empty transcription avoids timing call and cancellation stops before secon
 }));
 
 test('rendered timeline audio preserves delay, duration, gain and fades', async () => temporary(async dir => { const file = path.join(dir, '日本語 & voice.wav'); const { ffmpeg, run } = require('../electron/media.cjs'); await run(ffmpeg, ['-y','-v','error','-f','lavfi','-i','sine=frequency=440:duration=4','-c:a','pcm_s16le',file]); const p = fixture(file); const target = path.join(dir, 'timeline.wav'); await runAudio(buildTimelineAudio(p, target)); const pcm = await run(ffmpeg, ['-v','error','-i',target,'-f','f32le','-ac','1','-ar','16000','pipe:1']); const rms = (from, to) => { let sum = 0; for (let i = from * 16000; i < to * 16000; i++) sum += pcm.readFloatLE(i * 4) ** 2; return Math.sqrt(sum / ((to - from) * 16000)); }; assert.equal(pcm.length / 4, 48000); assert.ok(rms(0,0.9) < 1e-6); assert.ok(rms(1.5,2) > 0.03); assert.ok(rms(1,1.05) < rms(1.5,2) / 2); p.tracks[0].muted = true; assert.throws(() => buildTimelineAudio(p,target), /音声がありません/); }));
-test('long transcription windows keep sequence offsets and suppress overlap words', async () => temporary(async dir => { const file = path.join(dir,'voice.wav'); const { ffmpeg, run } = require('../electron/media.cjs'); await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','sine=duration=305','-ar','16000',file]); const p = fixture(file, 302); let count = 0; const result = await transcribeTimeline(p, '', { transcribe: async () => ++count === 1 ? { words: [{ start: 1, end: 2, word: '開始' },{ start: 300.2,end: 300.8,word:'重複' }] } : { words: [{ start: 0,end:0.8,word:'重複' },{ start: 1.2,end:2,word:'続き' }] } }, undefined); assert.equal(count,2); assert.deepEqual(result.cues.map(c => c.text),['開始','続き']); assert.equal(result.cues[1].start,300.2); }));
+test('long transcription windows keep sequence offsets and suppress overlap words', async () => temporary(async dir => { const file = path.join(dir,'voice.wav'); const { ffmpeg, run } = require('../electron/media.cjs'); await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','sine=duration=65','-ar','16000',file]); const p = fixture(file, 62); let count = 0; const result = await transcribeTimeline(p, '', { transcribe: async () => ++count === 1 ? { words: [{ start: 1, end: 2, word: '開始' },{ start: 60.2,end: 60.8,word:'重複' }] } : { words: [{ start: 0,end:0.8,word:'重複' },{ start: 1.2,end:2,word:'続き' }] } }, undefined); assert.equal(count,2); assert.deepEqual(result.cues.map(c => c.text),['開始','続き']); assert.equal(result.cues[1].start,60.2); }));
 test('metadata rejects stale edits and incorrect keyword cardinality', async () => { const p = fixture(path.resolve('unused.wav'),40); p.youtube = { sourceKey: timelineKey(p), cues:[{start:1,end:2,text:'動画編集です'}],titles:[],description:'',chapters:[],keywords:[],thumbnailPrompt:'' }; const raw = { titles:['a','b','c'], description:'説明', chapters:[], keywords:Array(10).fill('同じ'), hashtags:['#動画編集','#日本語字幕','#YouTube制作'],thumbnailPrompt:'画像' }; await assert.rejects(generateMetadata(p,{metadata:async()=>raw}), /形式/); p.clips[0].volume=1; await assert.rejects(generateMetadata(p,{metadata:async()=>raw}), /再実行/); });
 test('metadata requires usable generated text and retains the previous data on rejection', async () => {
   const p = fixture(path.resolve('unused.wav'),40);
@@ -66,4 +66,13 @@ test('generated JPEGs produce decodable library thumbnails and rebuild empty cac
   const asset = await inspectMedia(file, cache); assert.equal(asset.kind, 'image');
   const check = async () => { const info = await probe(asset.thumbnailPath); assert.equal(info.streams[0].width, 480); assert.equal(info.streams[0].height, 270); };
   await check(); await fs.writeFile(asset.thumbnailPath, ''); await inspectMedia(file, cache); await check();
+}));
+
+test('timing fallback is opt-in and keeps measured text and timestamps when models disagree', async()=>temporary(async dir=>{
+  const file=path.join(dir,'audio.wav');await fs.writeFile(file,'RIFF');
+  const client=createOpenAI(async()=>KEY,async(_url,{body})=>Response.json(body.get('model')==='gpt-transcribe'?{text:'専門用語の認識結果が異なります。'}:{words:[{word:'実際に時刻を取得した言葉です。',start:.4,end:3.2}]}));
+  await assert.rejects(client.transcribe(file,''),{code:'TRANSCRIPT_ALIGNMENT'});
+  const result=await client.transcribe(file,'',undefined,{allowTimingFallback:true});
+  assert.equal(result.text,'実際に時刻を取得した言葉です。');assert.equal(result.alignment.textModel,'whisper-1');
+  assert.equal(result.words[0].start,.4);assert.equal(result.words.at(-1).end,3.2);
 }));

@@ -1,6 +1,6 @@
 const fs = require('node:fs/promises');
 const { atomicWrite } = require('./persistence.cjs');
-const { alignTranscript } = require('./transcript-alignment.cjs');
+const { alignTranscript, timedTranscript } = require('./transcript-alignment.cjs');
 const MODELS = Object.freeze({ transcriptionModel: 'gpt-transcribe', timingModel: 'whisper-1', textModel: 'gpt-6-astra', imageModel: 'gpt-image-2' });
 function validateKey(key) {
   if (typeof key !== 'string' || !/^sk-[A-Za-z0-9_-]{16,500}$/.test(key.trim())) throw new Error('OpenAI APIキーの形式を確認してください。');
@@ -57,7 +57,7 @@ function createOpenAI(getKey, fetcher = (...args) => fetch(...args)) {
     try { return await response.json(); } catch { throw new Error('OpenAIからの応答を読み取れませんでした。再実行してください。'); }
   }
   return {
-    async transcribe(file, vocabulary, signal) {
+    async transcribe(file, vocabulary, signal, { allowTimingFallback = false } = {}) {
       if (typeof vocabulary !== 'string' || vocabulary.length > 120 || /[<>\r\n]/.test(vocabulary)) throw new Error('用語ヒントは改行・<・>を含まない120文字以内にしてください。');
       const bytes = await fs.readFile(file); if (bytes.length >= 25 * 1024 * 1024) throw new Error('送信する音声が25MBを超えています。');
       const audio = new Blob([bytes], { type: 'audio/wav' });
@@ -71,7 +71,12 @@ function createOpenAI(getKey, fetcher = (...args) => fetch(...args)) {
       const timing = new FormData(); timing.set('file', audio, 'timeline.wav'); timing.set('model', MODELS.timingModel); timing.set('language', 'ja'); timing.set('response_format', 'verbose_json'); timing.append('timestamp_granularities[]', 'word'); timing.append('timestamp_granularities[]', 'segment');
       // Whisper prompt is preceding context: the full transcript can make it skip the beginning.
       if (vocabulary) timing.set('prompt', vocabulary);
-      return alignTranscript(accurate.text, await request('audio/transcriptions', timing, signal));
+      const measured = await request('audio/transcriptions', timing, signal);
+      try { return alignTranscript(accurate.text, measured); }
+      catch (error) {
+        if (!allowTimingFallback || error.code !== 'TRANSCRIPT_ALIGNMENT') throw error;
+        return timedTranscript(measured);
+      }
     },
     async metadata(input, signal) {
       const text = { type: 'string' }; const array = items => ({ type: 'array', items });

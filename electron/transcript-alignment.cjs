@@ -1,7 +1,7 @@
 // Accurate transcription and timestamp extraction have different API contracts.
 // Align their text locally; never replace the accurate text with the timing pass.
 const lexical = text => [...text.normalize('NFKC').toLowerCase()].filter(c => /[\p{L}\p{N}]/u.test(c)).map(c => /[ァ-ヶ]/u.test(c) ? String.fromCharCode(c.charCodeAt(0) - 0x60) : c);
-const failure = () => new Error('文字起こし本文と音声の時刻を十分に照合できませんでした。用語ヒントを調整するか、短い区間に分けて再実行してください。既存の字幕は保持されます。');
+const failure = () => Object.assign(new Error('文字起こし本文と音声の時刻を照合できませんでした。既存の字幕は保持されます。'), { code: 'TRANSCRIPT_ALIGNMENT' });
 function alignTranscript(text, timing) {
   if (typeof text !== 'string' || text.length > 20000) throw failure();
   if (!text.trim()) return { text: '', words: [] };
@@ -92,3 +92,21 @@ function alignTranscript(text, timing) {
   return { text: text.trim(), words, alignment: { matchedRatio: matches / Math.max(n, m), timingModel: 'whisper-1', timingGranularity } };
 }
 module.exports = { alignTranscript };
+
+// Last resort after short-window retries: text and times come from the same
+// measured response. Do not spread the accurate transcript over guessed times.
+function timedTranscript(timing) {
+  if (timing?.words !== undefined && !Array.isArray(timing.words)) throw failure();
+  const wordTiming = !!timing?.words?.length;
+  const units = timing?.words?.length ? timing.words : timing?.segments;
+  if (!Array.isArray(units) || units.length > 7000) throw failure();
+  let previous = 0;
+  for (const unit of units) {
+    if (!unit || typeof (wordTiming ? unit.word : unit.text) !== 'string' || !Number.isFinite(unit.start) || !Number.isFinite(unit.end) || unit.start < 0 || unit.end < unit.start || unit.start < previous - .05 || unit.end > 310) throw failure();
+    previous = unit.end;
+  }
+  const text = units.filter(unit => !(unit?.no_speech_prob > 0.6 && unit?.avg_logprob < -1)).map(unit => unit?.word ?? unit?.text ?? '').reduce((text, word) => text + (/[a-z0-9]$/i.test(text) && /^[a-z0-9]/i.test(word) ? ' ' : '') + word, '');
+  const result = alignTranscript(text, timing);
+  return { ...result, alignment: { ...result.alignment, textModel: 'whisper-1' } };
+}
+module.exports.timedTranscript = timedTranscript;

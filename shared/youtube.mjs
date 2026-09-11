@@ -1,3 +1,5 @@
+import { MAX_MEDIA_SECONDS } from './time.mjs';
+export const MAX_SUBTITLE_CUES = 100000;
 import { buildCaptionCues, wrapCaption } from './captions.mjs';
 // A change detector, not an authorization token. Shared by the UI and desktop jobs.
 export function timelineKey(p) {
@@ -41,10 +43,10 @@ export function cuesFromTranscription(data, offset, duration, width = 24) {
   return buildCaptionCues(data,offset,duration,text=>wrapCaption(text,width));
 }
 export function validateCues(cues) {
-  if (!Array.isArray(cues) || cues.length > 6000) throw new Error('字幕は6000件以内にしてください。');
+  if (!Array.isArray(cues) || cues.length > MAX_SUBTITLE_CUES) throw new Error(`字幕は${MAX_SUBTITLE_CUES}件以内にしてください。`);
   let end = 0;
   for (const c of cues) {
-    if (!c || !Number.isFinite(c.start) || !Number.isFinite(c.end) || c.start < end - 0.001 || c.start < 0 || c.end <= c.start || c.end > 86400 || typeof c.text !== 'string' || !c.text.trim() || c.text.length > 4000) throw new Error('字幕の時刻・本文が不正です。時刻は昇順で重ならないようにしてください。');
+    if (!c || !Number.isFinite(c.start) || !Number.isFinite(c.end) || c.start < end - 0.001 || c.start < 0 || c.end <= c.start || c.end > MAX_MEDIA_SECONDS || typeof c.text !== 'string' || !c.text.trim() || c.text.length > 4000) throw new Error('字幕の時刻・本文が不正です。時刻は昇順で重ならないようにしてください。');
     if (c.text.split(/\r\n?|\n/).some(line => !line.trim())) throw new Error('字幕の本文に空行は入れられません。先頭・末尾や連続した改行を削除してください。');
     end = c.end;
   }
@@ -57,8 +59,9 @@ export function subtitleFile(cues, format = 'srt') {
 export function validateYoutube(y) {
   if (y === undefined) return;
   if (!y || typeof y !== 'object' || typeof y.sourceKey !== 'string' || y.sourceKey.length > 100) throw new Error('YouTube制作データが不正です。');
-  if (JSON.stringify(y).length > 1000000) throw new Error('YouTube制作データが大きすぎます。シーケンスを分けてください。');
+  if (new TextEncoder().encode(JSON.stringify(y)).byteLength > 12 * 1024 * 1024) throw new Error('YouTube制作データが大きすぎます。シーケンスを分けてください。');
   validateCues(y.cues);
+  if (y.transcriptionStats !== undefined && (!y.transcriptionStats || !['retries', 'timingFallbacks'].every(key => Number.isSafeInteger(y.transcriptionStats[key]) && y.transcriptionStats[key] >= 0))) throw new Error('文字起こしの処理結果が不正です。');
   if (!Array.isArray(y.titles) || y.titles.length > 3 || y.titles.some(t => typeof t !== 'string' || t.length > 100)) throw new Error('タイトルは100文字以内で3案までです。');
   if (typeof y.description !== 'string' || y.description.length > 5000 || typeof y.thumbnailPrompt !== 'string' || y.thumbnailPrompt.length > 6000) throw new Error('概要欄または画像プロンプトが長すぎます。');
   if (!Array.isArray(y.keywords) || y.keywords.length > 10 || y.keywords.some(k => typeof k !== 'string' || k.length > 80 || /[,，\n]/.test(k))) throw new Error('検索ワードはカンマを含まない10個以内の語句にしてください。');
