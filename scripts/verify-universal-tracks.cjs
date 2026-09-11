@@ -21,7 +21,13 @@ const root=path.join(__dirname,'..');
   await expectNames(['Video2','Video1','Audio1','Audio2']);
   await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},file);
   async function open(name=project.name){await page.keyboard.press('Control+o');await page.getByRole('button',{name,exact:true}).waitFor();await page.getByRole('dialog',{name:'プロジェクトを開いています',exact:true}).waitFor({state:'hidden'});}
+  await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setBounds({x:0,y:0,width:1600,height:1000}));
+  await page.waitForFunction(()=>innerHeight>=900);
   await open();await page.locator('.timeline-clip[data-clip-id="video"]').waitFor();
+  // Make all three rows visible before raw pointer gestures (CI desktop sizes vary).
+  const divider=await page.getByRole('separator',{name:'タイムラインの高さを変更'}).boundingBox();
+  await page.mouse.move(divider.x+divider.width/2,divider.y+divider.height/2);await page.mouse.down();await page.mouse.move(divider.x+divider.width/2,divider.y-180,{steps:12});await page.mouse.up();
+  await page.waitForFunction(()=>document.querySelector('.timeline-container').getBoundingClientRect().height>=320);
   async function drag(id,track){const c=page.locator(`.timeline-clip[data-clip-id="${id}"]`),lane=page.locator(`[data-track-id="${track}"]`);await c.scrollIntoViewIfNeeded();const b=await c.boundingBox(),dest=await lane.boundingBox(),x=b.x+Math.min(35,b.width/2);await page.mouse.move(x,b.y+12);await page.mouse.down();await page.mouse.move(x,dest.y+12,{steps:12});await page.mouse.up();}
   // A locked destination rejects a cross-group move.
   await page.getByRole('button',{name:'Audio1 ロック',exact:true}).click();await drag('video','a');
