@@ -8,9 +8,22 @@ export function thumbnailFrames(p){
   const tracks=p.tracks.filter(t=>!t.hidden&&t.kind==='video');
   const assets=new Map(p.assets.map(a=>[a.id,a]));
   const clips=tracks.flatMap(t=>p.clips.filter(c=>c.trackId===t.id&&['video','image'].includes(c.kind)&&c.opacity>0&&assets.has(c.assetId)&&!assets.get(c.assetId).offline));
-  const duration=Math.max(0,...clips.map(c=>c.start+c.duration)),seen=new Set(),frames=[];
+  // Sample the union of occupied intervals: leading/interior gaps should not
+  // consume reference slots, and overlapping tracks should not count twice.
+  const spans=[];
+  for(const clip of [...clips].sort((a,b)=>a.start-b.start)){
+    const last=spans.at(-1),end=clip.start+clip.duration;
+    if(last&&clip.start<=last.end)last.end=Math.max(last.end,end);
+    else spans.push({start:clip.start,end});
+  }
+  const duration=spans.reduce((total,span)=>total+span.end-span.start,0),seen=new Set(),frames=[];
   for(const fraction of [.2,.5,.8]){
-    const time=duration*fraction;
+    let offset=duration*fraction,time=0;
+    for(const span of spans){
+      const length=span.end-span.start;
+      if(offset<length){time=span.start+offset;break;}
+      offset-=length;
+    }
     const clip=clips.find(c=>time>=c.start&&time<c.start+c.duration)||[...clips].sort((a,b)=>Math.abs(a.start+a.duration/2-time)-Math.abs(b.start+b.duration/2-time))[0];
     if(!clip)continue;
     const asset=assets.get(clip.assetId),sequenceTime=Math.max(clip.start,Math.min(clip.start+clip.duration-1/p.fps,time));

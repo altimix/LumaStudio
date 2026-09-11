@@ -9,7 +9,7 @@ const root=path.join(__dirname,'..');
  const source=path.join(results,'料理の見せ場.mp4');await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','testsrc2=s=320x180:r=30:d=4','-c:v','libx264',source]);
  const asset=await inspectMedia(source,path.join(results,'cache'));
  const responses={};for(const [name,size]of [['landscape','1536x864'],['portrait','864x1536']])responses[name]=(await run(ffmpeg,['-v','error','-f','lavfi','-i',`color=c=0x465935:s=${size}`,'-frames:v','1','-f','image2pipe','-c:v','mjpeg','pipe:1'])).toString('base64');
- const clip={id:'c',assetId:asset.id,trackId:'v',name:'料理',kind:'video',start:0,in:0,duration:4,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,contrast:1,saturation:1,volume:1,fadeIn:0,fadeOut:0};
+ const clip={id:'c',assetId:asset.id,trackId:'v',name:'料理',kind:'video',start:100,in:0,duration:4,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,contrast:1,saturation:1,volume:1,fadeIn:0,fadeOut:0};
  const project={version:1,id:'thumbnail-test',name:'10分で作るパスタ',width:1920,height:1080,fps:30,assets:[asset],markers:[],tracks:[{id:'v',name:'映像',kind:'video',muted:false,hidden:false,locked:false,solo:false}],clips:[clip]};
  const profile=await fs.mkdtemp(path.join(results,'profile-')),env={...process.env,LUMA_TEST_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;delete env.OPENAI_API_KEY;delete env.LUMA_ENV_FILE;
  const executablePath=process.env.LUMA_VERIFY_EXE,app=await electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000});

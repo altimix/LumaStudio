@@ -17,6 +17,16 @@ test('frame references use visible edited source intervals and never hidden or u
  const p=project(path.resolve('food.mp4'));assert.deepEqual(thumbnailFrames(p).map(f=>f.sourceTime),[3.6,6,8.4]);
  p.tracks[0].hidden=true;assert.deepEqual(thumbnailFrames(p),[]);p.tracks[0].hidden=false;p.assets[0].offline=true;assert.deepEqual(thumbnailFrames(p),[]);
 });
+test('reference sampling ignores leading and interior gaps without double-counting overlapping tracks',()=>{
+ const p=project(path.resolve('food.mp4'));p.clips[0].start=100;
+ const times=thumbnailFrames(p).map(f=>f.sourceTime);
+ assert.equal(times.length,3);[3.6,6,8.4].forEach((expected,i)=>assert.ok(Math.abs(times[i]-expected)<1e-8));
+ p.clips.push({...p.clips[0],id:'later',start:1000,in:0});
+ const spread=thumbnailFrames(p).map(f=>f.sourceTime);
+ [5.2,0,4.8].forEach((expected,i)=>assert.ok(Math.abs(spread[i]-expected)<1e-8));
+ p.tracks.push({...p.tracks[0],id:'under'});p.clips.push({...p.clips[0],id:'overlap',trackId:'under'});
+ assert.deepEqual(thumbnailFrames(p).map(f=>f.sourceTime),spread);
+});
 test('brief uses current video content, bounded transcript samples, requested headline and orientation',()=>{
  const p=project(path.resolve('food.mp4'));p.youtube={sourceKey:timelineKey(p),titles:['時短パスタ'],description:'料理のコツ',keywords:['パスタ'],cues:Array.from({length:100},(_,i)=>({text:`説明${i}`,start:i,end:i+1}))};
  let brief=thumbnailBrief(p,'見出しは「たった10分」');assert.match(brief,/時短パスタ/);assert.match(brief,/たった10分/);assert.match(brief,/説明99/);assert.match(brief,/16:9/);assert.ok(!brief.includes(p.assets[0].path));
