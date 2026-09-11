@@ -14,7 +14,7 @@ const root=path.join(__dirname,'..');
  const profile=await fs.mkdtemp(path.join(results,'profile-')),env={...process.env,LUMA_TEST_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;delete env.OPENAI_API_KEY;delete env.LUMA_ENV_FILE;
  const executablePath=process.env.LUMA_VERIFY_EXE,app=await electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000});
  try{
-  const page=await app.firstWindow();await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});
+  const page=await app.firstWindow();await page.locator('.app-titlebar').waitFor({timeout:60000});await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});
   await app.evaluate((_,responses)=>{globalThis.__thumbnailRequests=[];globalThis.fetch=async(url,options)=>{
    if(!url.endsWith('/images/edits'))throw new Error('Unexpected endpoint');
    if(globalThis.__thumbnailFailure)return new Response('',{status:500});
