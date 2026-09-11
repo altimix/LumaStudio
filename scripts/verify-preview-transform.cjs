@@ -142,7 +142,7 @@ async function verify() {
     }
     checks.push('150% and 300% clips keep all four resize handles reachable and resize without resetting their transforms');
 
-    const upper = { ...project.tracks[0], id: 'front-media', name: '前面素材' };
+    const upper = { ...project.tracks[0], id: 'front-media', name: '前面素材', autoName: false };
     const graphic = { ...video, id: 'back-graphic', kind: 'title', assetId: undefined, linkId: undefined, audioDetached: undefined, trackId: project.tracks[0].id, x: 0, y: 0, scale: 1, rotation: 0, start: 0, duration: 6, graphic: { shape: 'rectangle', width: 220, height: 150, lineWidth: 4, fill: true, fillColor: '#004cff' }, color: '#004cff' };
     const picture = { ...video, id: 'front-image', name: image.name, kind: 'image', assetId: image.id, trackId: upper.id, linkId: undefined, audioDetached: undefined, x: 0, y: 0, scale: .45, rotation: 0, start: 0, in: 0, duration: 6 };
     project = await open({ ...reset, tracks: [upper, ...reset.tracks], clips: [...reset.clips, graphic, picture] });
