@@ -46,6 +46,16 @@ test('a short final audio interval survives downsampling without a black final v
  for(let i=48000;i<48400;i++)energy+=pcm.readFloatLE(i*4)**2;
  assert.ok(Math.sqrt(energy/400)>.02,'the final 1/120-second tone remains audible');
 });
+test('sub-frame video and title intervals retain one slot after FPS conversion',async()=>{
+ for(const kind of ['video','title'])for(let tick=0;tick<10;tick++){
+  const p=project();p.fps=120;p.clips=[{...p.clips[0],id:'tiny',kind,assetId:kind==='title'?undefined:asset.id,start:tick/120,duration:1/120,audioMuted:kind==='video'?true:undefined}];
+  const out=path.join(dir,`tiny-${kind}-${tick}.mp4`);await exportProject(p,{...settings,fps:24},out,{titleImages:{tiny:titlePNG}});
+  const pixels=await run(ffmpeg,['-v','error','-i',out,'-vf','scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
+  const frames=Math.ceil((tick+1)/5-1e-7);assert.equal(pixels.length,frames*3);
+  assert.ok(pixels[(frames-1)*3+(kind==='title'?0:2)]>180,`${kind} at 120fps tick ${tick} disappeared`);
+  for(let i=0;i<(frames-1)*3;i++)assert.ok(pixels[i]<12,'leading empty output frames remain black');
+ }
+});
 test('adjacent cuts keep every frame when source and sequence FPS differ',async()=>{
  for(const frames of [1,2,7,10]){
  const p=project();p.fps=30;
