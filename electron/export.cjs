@@ -82,7 +82,7 @@ function isEncoderFailure(error){
   const message=String(error?.message||'');
   if(/no space left|permission denied|read-only file system|input\/output error|broken pipe|error submitting a packet to the muxer|error writing (?:trailer|packet)/i.test(message))return false;
   // Per-output-stream vost diagnostics can describe muxing or I/O, not the encoder.
-  return /\[h264_(?:nvenc|qsv|amf)[^\]\r\n]*\][^\r\n]*(?:error|fail|cannot|could not|unavailable|unsupported|not support|no capable|no nvenc)/i.test(message);
+  return /\[h264_(?:nvenc|qsv|amf|videotoolbox)[^\]\r\n]*\][^\r\n]*(?:error|fail|cannot|could not|unavailable|unsupported|not support|no capable|no nvenc)/i.test(message);
 }
 function colorFilter(c) {
   const gain = 2 ** c.exposure; const contrast = c.contrast; const s = c.saturation;
@@ -111,7 +111,10 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}) {
   const duration = Math.max(0, ...p.clips.map(c => c.start + c.duration));
   if (!duration) throw new Error('書き出すクリップがありません。');
   const args = ['-hide_banner', '-y', '-filter_complex_threads', '2', '-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:r=${fps}:d=${number(duration)}`, '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${number(duration)}`];
-  const filters = ['[0:v]format=rgba[base]'];
+  const visible = p.clips.filter(c => c.kind !== 'audio' && !p.tracks.find(t => t.id === c.trackId)?.hidden);
+  const only = visible.length === 1 ? visible[0] : null, onlyAsset = p.assets.find(a => a.id === only?.assetId);
+  const directVideo = onlyAsset?.codec === 'h264' && only?.kind === 'video' && only.start === 0 && only.duration === duration && only.scale === 1 && only.x === 0 && only.y === 0 && only.rotation === 0 && only.opacity === 1 && !only.opacityKeyframes?.length && !only.fadeIn && !only.fadeOut && only.exposure === 0 && only.contrast === 1 && only.saturation === 1 && !p.transitions?.length && onlyAsset?.width * height === onlyAsset?.height * width;
+  const filters = directVideo ? [] : ['[0:v]format=rgba[base]'];
   let base = 'base'; const audios = ['[1:a]']; let input = 2;
   const envelopes=audioEnvelopes(p), plans=transitionPlan(p), transitionClips=new Set(plans.filter(t=>t.video).flatMap(t=>[t.fromId,t.toId])), visuals=[];
   const anySolo = p.tracks.some(t => t.solo);
@@ -134,12 +137,12 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}) {
     const index = input++;
     if (visual) {
       const fitW = Math.max(2, Math.round(width * (c.graphic?1:c.scale) / 2) * 2); const fitH = Math.max(2, Math.round(height * (c.graphic?1:c.scale) / 2) * 2);
-      const f = [`[${index}:v]setpts=(PTS-STARTPTS)/${number(c.speed)}`, `fps=${fps}`, `scale=${fitW}:${fitH}:force_original_aspect_ratio=decrease:force_divisible_by=2`, 'setsar=1', 'format=rgba'];
+      const f = [`[${index}:v]setpts=(PTS-STARTPTS)/${number(c.speed)}`, `fps=${fps}`, `scale=${fitW}:${fitH}:force_original_aspect_ratio=decrease:force_divisible_by=2`, 'setsar=1', ...(directVideo ? [`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`] : ['format=rgba'])];
       if(transitionClips.has(c.id))f.push(`tpad=start_mode=clone:start_duration=${number(videoWindow.padBefore)}:stop_mode=clone:stop_duration=${number(videoWindow.padAfter+1/fps)}`,`trim=duration=${number(videoWindow.duration)}`,'setpts=PTS-STARTPTS');
-      if (c.kind !== 'title') f.push(colorFilter(c));
+      if (c.kind !== 'title' && (c.exposure !== 0 || c.contrast !== 1 || c.saturation !== 1)) f.push(colorFilter(c));
       if (c.rotation&&!c.graphic) { const angle = number(c.rotation * Math.PI / 180); f.push(`rotate=${angle}:ow=rotw(${angle}):oh=roth(${angle}):c=none`); }
       if (c.opacityKeyframes?.length) f.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacityExpression(c.opacityKeyframes)})'`);
-      else f.push(`colorchannelmixer=aa=${number(c.opacity)}`);
+      else if (c.opacity !== 1) f.push(`colorchannelmixer=aa=${number(c.opacity)}`);
       if (c.fadeIn) f.push(`fade=t=in:st=${number(c.start-videoWindow.start)}:d=${number(c.fadeIn)}:alpha=1`);
       if (c.fadeOut) f.push(`fade=t=out:st=${number(c.start-videoWindow.start+c.duration - c.fadeOut)}:d=${number(c.fadeOut)}:alpha=1`);
       f.push('settb=AVTB');filters.push(f.join(',')+'[v'+index+']');
@@ -159,7 +162,7 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}) {
       filters.push(clipAudioFilter(c, audioIndex, envelopes.get(c.id),audioWindow)); audios.push(`[a${audioIndex}]`);
     }
   }
-  base=compositeVisuals(filters,visuals,plans);
+  base=directVideo ? visuals[0].label : compositeVisuals(filters,visuals,plans);
   filters.push(`[${base}]format=yuv420p[vfinal]`);
   filters.push(mixAudioFilter(audios));
   args.push('-filter_complex', filters.join(';'), '-map', '[vfinal]', '-map', '[afinal]', '-t', number(duration), '-r', String(fps), ...encodingArgs(settings.encoder ?? 'cpu', settings.quality), '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', output);

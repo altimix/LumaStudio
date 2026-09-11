@@ -13,7 +13,7 @@ export LDFLAGS="-L$PREFIX_DIR/lib"
 export CPPFLAGS="-I$PREFIX_DIR/include"
 case "$(uname -s)" in
   Darwin) PLATFORM=darwin-arm64; EXTRA_FLAGS=(--enable-videotoolbox); export MACOSX_DEPLOYMENT_TARGET=13.0 ;;
-  MINGW*|MSYS*) PLATFORM=win32-x64; EXTRA_FLAGS=(--extra-ldflags=-static) ;;
+  MINGW*|MSYS*) PLATFORM=win32-x64; EXTRA_FLAGS=(--extra-ldflags=-static --enable-ffnvcodec --enable-nvenc --enable-amf --enable-libvpl) ;;
   *) echo 'Supported builders: Apple Silicon macOS or MSYS2 MINGW64'; exit 1 ;;
 esac
 cd "$BUILD_DIR"
@@ -44,6 +44,28 @@ if [ ! -f "$PREFIX_DIR/lib/libx264.a" ]; then
   make -j"$JOBS"; make install
   cd "$BUILD_DIR"
 fi
+if [ "$PLATFORM" = win32-x64 ]; then
+  mkdir -p nv-codec-headers amf libvpl
+  tar -xf "$SOURCE_DIR/nv-codec-headers.tar.gz" -C nv-codec-headers --strip-components=1
+  make -C nv-codec-headers PREFIX="$PREFIX_DIR" install
+  tar -xf "$SOURCE_DIR/amf.tar.gz" -C amf --strip-components=1
+  mkdir -p "$PREFIX_DIR/include/AMF"
+  cp -R amf/amf/public/include/. "$PREFIX_DIR/include/AMF/"
+  tar -xf "$SOURCE_DIR/libvpl.tar.gz" -C libvpl --strip-components=1
+  # The pinned dispatcher mistakes MinGW's undefined _MSC_VER for old MSVC.
+  # Modern MinGW supplies the secure CRT functions; its Windows headers must
+  # not see the dispatcher's legacy wcscpy_s / wcscat_s statement macros.
+  node - "$BUILD_DIR/libvpl/libvpl/src/windows/mfx_dispatcher_defs.h" <<'NODE'
+const fs = require('node:fs');
+const file = process.argv[2], original = fs.readFileSync(file, 'utf8');
+const before = '#if _MSC_VER < 1400';
+if (original.split(before).length !== 2) throw new Error('Unexpected pinned oneVPL compatibility guard');
+fs.writeFileSync(file, original.replace(before, '#if defined(_MSC_VER) && _MSC_VER < 1400'));
+NODE
+  cmake -S libvpl -B libvpl-build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX_DIR" -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF -DBUILD_TOOLS=OFF -DBUILD_EXAMPLES=OFF -DINSTALL_EXAMPLE_CODE=OFF
+  cmake --build libvpl-build --parallel "$JOBS"
+  cmake --install libvpl-build
+fi
 tar -xf "$SOURCE_DIR/ffmpeg-6.1.1.tar.xz"
 cd ffmpeg-6.1.1
 ./configure --prefix="$PREFIX_DIR" --disable-autodetect --disable-shared --enable-static --disable-doc --disable-debug --disable-ffplay --enable-gpl --enable-libx264 --enable-libmp3lame --enable-zlib --pkg-config-flags=--static --extra-cflags="-I$PREFIX_DIR/include" --extra-ldflags="-L$PREFIX_DIR/lib" "${EXTRA_FLAGS[@]}"
@@ -58,7 +80,16 @@ cp "$BUILD_DIR/lame-3.100/COPYING" "$DEST_DIR/lame-COPYING"
 cp "$BUILD_DIR/zlib-1.3.1/LICENSE" "$DEST_DIR/zlib-LICENSE"
 "$DEST_DIR/ffmpeg$EXT" -version > "$DEST_DIR/BUILD.txt"
 "$DEST_DIR/ffmpeg$EXT" -L >> "$DEST_DIR/BUILD.txt" 2>&1
-node "$ROOT_DIR/scripts/check-media.cjs"
+if [ "$PLATFORM" = win32-x64 ]; then
+  cp "$BUILD_DIR/amf/LICENSE.txt" "$DEST_DIR/amf-LICENSE"
+  cp "$BUILD_DIR/libvpl/LICENSE" "$DEST_DIR/libvpl-LICENSE"
+  cp "$BUILD_DIR/libvpl/third-party-programs.txt" "$DEST_DIR/libvpl-third-party-programs.txt"
+  cp "$BUILD_DIR/nv-codec-headers/include/ffnvcodec/nvEncodeAPI.h" "$DEST_DIR/nv-codec-headers-LICENSE.h"
+fi
+node "$ROOT_DIR/scripts/check-media.cjs" --hardware
 
 mkdir -p "$ROOT_DIR/release/media-sources"
 cp "$SOURCE_DIR/ffmpeg-6.1.1.tar.xz" "$SOURCE_DIR/x264.tar.gz" "$SOURCE_DIR/lame-3.100.tar.gz" "$SOURCE_DIR/zlib-1.3.1.tar.gz" "$ROOT_DIR/release/media-sources/"
+if [ "$PLATFORM" = win32-x64 ]; then
+  cp "$SOURCE_DIR/nv-codec-headers.tar.gz" "$SOURCE_DIR/amf.tar.gz" "$SOURCE_DIR/libvpl.tar.gz" "$ROOT_DIR/release/media-sources/"
+fi

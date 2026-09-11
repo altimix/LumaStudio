@@ -36,3 +36,12 @@ Drawing attention sounds (pop, chime, jingle) are original procedurally synthesi
 ## Bundled BGM
 
 bgm001.mp3 through bgm005.mp3: original recordings by altimix. See BGM-LICENSE.txt.
+
+## ハードウェアエンコード用の開発依存
+
+Windowsのメディアビルドは次の固定ソースを使用します。実行時のGPUドライバーは同梱しません。
+- NVIDIA: FFmpeg/nv-codec-headers n12.1.14.0（MIT、各ヘッダー内のCopyright/Permission notice）。
+- AMD: AMF v1.4.30のpublic/include（MIT、AMFのLICENSE.txtを保持）。同梱SDKの他のバイナリは使用しません。
+- Intel: oneVPL/libvpl v2.10.2ディスパッチャー（MIT、LICENSEとthird-party-programs.txtを保持）。
+
+ソースURLとSHA256はshared/media-sources.jsonに固定し、ビルド時に照合します。ビルド成果物にはこれらのライセンスを含めます。
