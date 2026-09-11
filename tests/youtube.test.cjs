@@ -70,7 +70,7 @@ test('generated JPEGs produce decodable library thumbnails and rebuild empty cac
 
 test('timing fallback is opt-in and keeps measured text and timestamps when models disagree', async()=>temporary(async dir=>{
   const file=path.join(dir,'audio.wav');await fs.writeFile(file,'RIFF');
-  const client=createOpenAI(async()=>KEY,async(_url,{body})=>Response.json(body.get('model')==='gpt-transcribe'?{text:'専門用語の認識結果が異なります。'}:{words:[{word:'実際に時刻を取得した言葉です。',start:.4,end:3.2}]}));
+  const client=createOpenAI(async()=>KEY,async(_url,{body})=>Response.json(body.get('model')==='gpt-transcribe'?{text:'専門用語の認識結果が異なります。'}:{words:[{word:'実際に時刻を取得した言葉です。',start:.4,end:3.2},{word:'ご視聴ありがとうございました。',start:4,end:5}],segments:[{text:'実際に時刻を取得した言葉です。',start:0,end:3.3,no_speech_prob:.01,avg_logprob:-.1},{text:'ご視聴ありがとうございました。',start:3.5,end:6,no_speech_prob:.95,avg_logprob:-1.5}]}));
   await assert.rejects(client.transcribe(file,''),{code:'TRANSCRIPT_ALIGNMENT'});
   const result=await client.transcribe(file,'',undefined,{allowTimingFallback:true});
   assert.equal(result.text,'実際に時刻を取得した言葉です。');assert.equal(result.alignment.textModel,'whisper-1');
@@ -82,3 +82,13 @@ test('transcription rejects overflowing sequence duration before starting an RF6
   const p=fixture(path.resolve('unused.wav'));p.clips[0].start=MAX_MEDIA_SECONDS;
   assert.throws(()=>buildTimelineAudio(p,path.resolve('unused-output.wav')),/音声の長さが不正/);
 });
+
+test('RF64 preparation audio can be seeked into a small ordinary WAV upload', async()=>temporary(async dir=>{
+  const {ffmpeg,run}=require('../electron/media.cjs');
+  const source=path.join(dir,'large-format.wav'),chunk=path.join(dir,'upload.wav');
+  await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','sine=frequency=440:duration=3','-ar','16000','-ac','1','-c:a','pcm_s16le','-rf64','always',source]);
+  assert.equal((await fs.readFile(source)).subarray(0,4).toString(),'RF64');
+  await runAudio(['-y','-v','error','-ss','1','-i',source,'-t','1','-ar','16000','-ac','1','-c:a','pcm_s16le',chunk]);
+  assert.equal((await fs.readFile(chunk)).subarray(0,4).toString(),'RIFF');
+  const pcm=await run(ffmpeg,['-v','error','-i',chunk,'-f','s16le','pipe:1']);assert.equal(pcm.length,32000);assert.ok(pcm.some(v=>v));
+}));
