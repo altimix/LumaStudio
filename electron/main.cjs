@@ -2,6 +2,7 @@ const { readStartupProject, rebaseStartupYoutube } = require('./startup-project.
 const { blackVideo } = require('./black-video.cjs');
 const { hasClipAudio } = require('../shared/clip-links.mjs');
 const { app, BrowserWindow, ipcMain, protocol, net, dialog, shell, Menu, session, safeStorage, clipboard } = require('electron');
+const { createUpdateChecker } = require('./updates.cjs');
 const { copyText } = require('./clipboard.cjs');
 const fs = require('node:fs/promises');
 const { createReadStream } = require('node:fs');
@@ -87,6 +88,14 @@ function handle(channel, fn) {
   });
 }
 function installIPC() {
+  const updateChecker = createUpdateChecker({ currentVersion: app.getVersion(), platform: process.platform, arch: process.arch,
+    ...(process.env.LUMA_TEST_DATA ? { fetchRelease: async () => ({ tag_name: `v${app.getVersion()}`, draft: false, prerelease: false, assets: [] }) } : {}) });
+  handle('check-updates', refresh => { if (refresh !== undefined && typeof refresh !== 'boolean') throw new Error('更新確認の指定が不正です。'); return updateChecker.check(refresh === true); });
+  handle('open-update-page', async () => {
+    const result = await updateChecker.check();
+    if (!['available', 'unsupported'].includes(result.status)) throw new Error('新しいバージョンは確認されていません。');
+    await shell.openExternal(result.releaseUrl);
+  });
   handle('copy-text', text => copyText(clipboard, text));
   const waveformRequests=new Map();
   handle('waveform-read', async (url,start,end,bins,options,requestId) => {

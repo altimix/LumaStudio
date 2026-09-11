@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const listen = (channel, cb) => { const listener = (_event, data) => cb(data); ipcRenderer.on(channel, listener); return () => ipcRenderer.removeListener(channel, listener); };
 contextBridge.exposeInMainWorld('luma', {
+  checkUpdates: refresh => ipcRenderer.invoke('check-updates', refresh),
+  openUpdatePage: () => ipcRenderer.invoke('open-update-page'),
   copyText: text => ipcRenderer.invoke('copy-text', text),
   listBgm: () => ipcRenderer.invoke('bgm-list'),
   chooseBgmFolder: () => ipcRenderer.invoke('bgm-choose'),
