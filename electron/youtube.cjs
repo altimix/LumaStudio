@@ -29,8 +29,9 @@ function buildTimelineAudio(p, output, audioPaths = {}) {
     const a = p.assets.find(a => a.id === c.assetId); if (a.offline) throw new Error('音声素材がオフラインです。再リンクしてください。');
     if (c.audioTreatment && !audioPaths[c.id]) throw new Error('自動調整した音声を準備できませんでした。');
     const window=mediaWindow(c,a,plans,'audio');
-    args.push('-ss', number(window.sourceIn), '-t', number(window.sourceDuration), '-i', c.audioTreatment ? audioPaths[c.id] : a.path);
-    filters.push(clipAudioFilter(c, i + 1, envelopes.get(c.id),window)); labels.push(`[a${i + 1}]`);
+    const sourceTrim=Math.min(1,window.sourceIn);
+    args.push('-ss', number(window.sourceIn-sourceTrim), '-t', number(window.sourceDuration+sourceTrim), '-i', c.audioTreatment ? audioPaths[c.id] : a.path);
+    filters.push(clipAudioFilter(c, i + 1, envelopes.get(c.id),window,sourceTrim)); labels.push(`[a${i + 1}]`);
   });
   filters.push(mixAudioFilter(labels));
   args.push('-filter_complex', filters.join(';'), '-map', '[afinal]', '-t', number(duration), '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', output);

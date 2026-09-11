@@ -19,6 +19,17 @@ function project(){
  return {version:1,id:'p',name:'Export test',width:320,height:180,fps:10,assets:[asset],markers:[],tracks:[{id:'v2',name:'title',kind:'video',muted:false,hidden:false,locked:false,solo:false},{id:'v1',name:'video',kind:'video',muted:false,hidden:false,locked:false,solo:false}],clips:[clip,{...clip,id:'c2',start:1.5,duration:1,speed:2},{...clip,id:'title',assetId:undefined,trackId:'v2',kind:'title',start:0.2,duration:0.5}]};
 }
 const settings={width:320,height:180,fps:10,quality:'draft'};
+test('adjacent cuts keep every frame when source and sequence FPS differ',async()=>{
+ for(const frames of [1,2,7,10]){
+ const p=project();p.fps=30;
+ const base={...p.clips[0],audioMuted:true};
+ p.clips=Array.from({length:6},(_,i)=>({...base,id:`cut${i}`,start:i*frames/30,in:i*frames/30,duration:(i===5?60-i*frames:frames)/30}));
+ const out=path.join(dir,'cuts.mp4');await exportProject(p,{...settings,fps:30},out);
+ const pixels=await run(ffmpeg,['-v','error','-i',out,'-vf','scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
+ assert.equal(pixels.length,60*3);
+ for(let frame=0;frame<60;frame++)assert.ok(pixels[frame*3+2]>180,`${frames}-frame cut: black frame ${frame}: ${[...pixels.subarray(frame*3,frame*3+3)]}`);
+ }
+});
 test('long source durations survive project validation without minute, hour or week caps', () => {
  const p=project();p.assets=[{...asset,duration:9*86400}];p.clips=[{...p.clips[0],start:13*3600,in:86400,duration:8*86400}];p.markers=[{id:'long',label:'long',time:13*3600}];
  assert.equal(validateProject(p),p);
