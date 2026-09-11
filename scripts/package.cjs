@@ -16,7 +16,7 @@ if (process.platform === 'darwin') {
 }
 async function packageApp() {
 await require('./prepare-bgm.cjs').prepareBgm();
-const child=spawn(process.execPath,[path.join(root,'node_modules','electron-builder','cli.js'),...target,'--config',path.join(__dirname,'electron-builder.cjs')],{
+const child=spawn(process.execPath,[path.join(root,'node_modules','electron-builder','cli.js'),...target,'--publish','never','--config',path.join(__dirname,'electron-builder.cjs')],{
   cwd:root,stdio:'inherit',windowsHide:true,
   env:{...process.env,ELECTRON_BUILDER_COMPRESSION_LEVEL:process.env.ELECTRON_BUILDER_COMPRESSION_LEVEL||'9'}
 });

@@ -45,7 +45,10 @@ jobs:
         run: npm test
       - name: Build, sign and verify macOS distribution ZIP
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Ad-hoc signing uses no certificate or secret. electron-builder otherwise
+          # skips even identity "-" on PRs. Never enable publishing for PR builds.
+          CSC_FOR_PULL_REQUEST: 'true'
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npm run package
       - name: Verify packaged editing, export and recovery
         run: npm run verify:packaged
