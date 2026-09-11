@@ -107,3 +107,29 @@ it('continuous source splits stay untouched while discontinuous cuts have 3 ms e
  expect(crossfadeGain(envelopes.get('c1'),4+.0015)).toBeCloseTo(.5);
  p.clips[1]={...p.clips[1],start:5};expect(audioEnvelopes(p).size).toBe(0);
 });
+
+it('an earlier A-to-B transition does not suppress the later B-to-C hard-cut ramps',()=>{
+ const p=fixture();p.clips=p.clips.slice(0,3);
+ const n=applyTransition(p,'c0','c1',{duration:1,audio:'constantGain'},'t'),env=audioEnvelopes(n);
+ expect(env.get('c0')).toEqual([{start:3.5,end:4.5,curve:'constantGain',direction:'out'}]);
+ expect(env.get('c1')).toContainEqual({start:7.997,end:8,curve:'constantGain',direction:'out'});
+ expect(env.get('c2')).toEqual([{start:8,end:8.003,curve:'constantGain',direction:'in'}]);
+ expect(crossfadeGain(env.get('c1'),8)).toBe(0);
+ expect(crossfadeGain(env.get('c2'),8)).toBe(0);
+ expect(crossfadeGain(env.get('c2'),8.003)).toBe(1);
+});
+it('keeps a cross-track transition tail and ramps only the unrelated hard-cut endpoint',()=>{
+ const p=fixture();p.clips=p.clips.filter(c=>c.id!=='c2').map(c=>c.id==='other'?{...c,start:4}:c);
+ p.transitions=[{id:'cross',fromId:'c0',toId:'other',mode:'fixed',duration:1,audio:'constantGain'}];
+ const env=audioEnvelopes(p);
+ expect(crossfadeGain(env.get('c0'),4.25)).toBeCloseTo(.25);
+ expect(env.get('c1')).toEqual([{start:4,end:4.003,curve:'constantGain',direction:'in'}]);
+ expect(crossfadeGain(env.get('c1'),4)).toBe(0);
+ expect(crossfadeGain(env.get('c1'),4.003)).toBe(1);
+ p.clips=p.clips.map(c=>c.id==='other'?{...c,start:0}:c);
+ p.transitions=[{id:'cross-in',fromId:'other',toId:'c1',mode:'fixed',duration:1,audio:'constantGain'}];
+ const incoming=audioEnvelopes(p);
+ expect(crossfadeGain(incoming.get('c1'),3.75)).toBeCloseTo(.25);
+ expect(incoming.get('c0')).toEqual([{start:3.997,end:4,curve:'constantGain',direction:'out'}]);
+ expect(crossfadeGain(incoming.get('c0'),4)).toBe(0);
+});

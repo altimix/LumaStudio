@@ -17,11 +17,30 @@ test('frame references use visible edited source intervals and never hidden or u
  const p=project(path.resolve('food.mp4'));assert.deepEqual(thumbnailFrames(p).map(f=>f.sourceTime),[3.6,6,8.4]);
  p.tracks[0].hidden=true;assert.deepEqual(thumbnailFrames(p),[]);p.tracks[0].hidden=false;p.assets[0].offline=true;assert.deepEqual(thumbnailFrames(p),[]);
 });
+test('reference sampling ignores leading and interior gaps without double-counting overlapping tracks',()=>{
+ const p=project(path.resolve('food.mp4'));p.clips[0].start=100;
+ const times=thumbnailFrames(p).map(f=>f.sourceTime);
+ assert.equal(times.length,3);[3.6,6,8.4].forEach((expected,i)=>assert.ok(Math.abs(times[i]-expected)<1e-8));
+ p.clips.push({...p.clips[0],id:'later',start:1000,in:0});
+ const spread=thumbnailFrames(p).map(f=>f.sourceTime);
+ [5.2,0,4.8].forEach((expected,i)=>assert.ok(Math.abs(spread[i]-expected)<1e-8));
+ p.tracks.push({...p.tracks[0],id:'under'});p.clips.push({...p.clips[0],id:'overlap',trackId:'under'});
+ assert.deepEqual(thumbnailFrames(p).map(f=>f.sourceTime),spread);
+});
 test('brief uses current video content, bounded transcript samples, requested headline and orientation',()=>{
  const p=project(path.resolve('food.mp4'));p.youtube={sourceKey:timelineKey(p),titles:['時短パスタ'],description:'料理のコツ',keywords:['パスタ'],cues:Array.from({length:100},(_,i)=>({text:`説明${i}`,start:i,end:i+1}))};
  let brief=thumbnailBrief(p,'見出しは「たった10分」');assert.match(brief,/時短パスタ/);assert.match(brief,/たった10分/);assert.match(brief,/説明99/);assert.match(brief,/16:9/);assert.ok(!brief.includes(p.assets[0].path));
  p.width=1080;p.height=1920;assert.equal(thumbnailFormat(p).ratio,'9:16');assert.match(thumbnailBrief(p,''),/縦専用/);
  p.youtube.sourceKey='old';assert.ok(!thumbnailBrief(p,'').includes('時短パスタ'));
+});
+test('brief excludes transparent titles while retaining titles made visible by keyframes',()=>{
+ const p=project(path.resolve('food.mp4')),title={...p.clips[0],kind:'title',assetId:undefined};
+ p.clips.push({...title,id:'hidden',text:'古い見出し',opacity:0},
+  {...title,id:'visible',text:'今の見出し',opacity:1},
+  {...title,id:'keys-hidden',text:'隠した原稿',opacity:1,opacityKeyframes:[{time:0,value:0},{time:4,value:0}]},
+  {...title,id:'keys-visible',text:'後半の見せ場',opacity:0,opacityKeyframes:[{time:0,value:0},{time:2,value:1}]});
+ const brief=thumbnailBrief(p,'');assert.ok(!brief.includes('古い見出し'));assert.ok(!brief.includes('隠した原稿'));
+ assert.ok(brief.includes('今の見出し'));assert.ok(brief.includes('後半の見せ場'));
 });
 test('image API sends reference scenes as multipart at high quality in both aspect ratios',async()=>{
  for(const portrait of [false,true]){

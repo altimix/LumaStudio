@@ -13,7 +13,10 @@ const root=path.join(__dirname,'..');
  const profile=await fs.mkdtemp(path.join(results,'profile-')),env={...process.env,LUMA_TEST_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;
  const executablePath=process.env.LUMA_VERIFY_EXE,app=await electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000});
  try{
-  const page=await app.firstWindow();await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});
+  const page=await app.firstWindow();
+  // A hidden loading screen also matches the initial blank document. Wait for
+  // React to mount before waiting for bootstrap and sending keyboard input.
+  await page.locator('.app-titlebar').waitFor({timeout:60000});await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});
   await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},file);
   await page.keyboard.press('Control+o');await page.getByRole('button',{name:project.name,exact:true}).waitFor();
   // Exercise the actual C razor tool, followed by save/reload and Undo/Redo.
@@ -25,7 +28,11 @@ const root=path.join(__dirname,'..');
   await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
   const cut=JSON.parse(await fs.readFile(file,'utf8'));assert.equal(cut.clips.length,2);
   for(const [i,shape]of ['arrow','rectangle','ellipse'].entries())cut.clips.push({...clip,id:shape,assetId:undefined,trackId:'g',kind:'title',name:shape,start:.5+i,duration:.8,graphic:{shape,width:100,height:60,lineWidth:6,fill:false,fillColor:'#ff0000'}});
-  await fs.writeFile(file,JSON.stringify(cut));await page.keyboard.press('Control+o');await page.keyboard.press('Home');
+  await fs.writeFile(file,JSON.stringify(cut));await page.keyboard.press('Control+o');
+  await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip.title').length===3);
+  await page.getByRole('dialog',{name:'プロジェクトを開いています',exact:true}).waitFor({state:'hidden'});
+  await page.keyboard.press('Home');
+  await page.waitForFunction(()=>Number(document.querySelector('.canvas-wrap canvas')?.dataset.previewTime)===0);
   await page.waitForFunction(()=>{const c=document.querySelector('.canvas-wrap canvas');return c.getContext('2d').getImageData(2,2,1,1).data[2]>180;});
   await page.evaluate(()=>{
    window.cutSamples=[];window.cutRecording=true;
@@ -33,6 +40,9 @@ const root=path.join(__dirname,'..');
   });
   await page.keyboard.press('Space');await page.waitForFunction(()=>Number(document.querySelector('.canvas-wrap canvas').dataset.previewTime)>3.8,{},{timeout:30000});await page.keyboard.press('Space');
   const samples=await page.evaluate(()=>{window.cutRecording=false;return window.cutSamples;});await fs.writeFile(path.join(results,'preview-samples.json'),JSON.stringify(samples));
+  const boundary=cut.clips.filter(c=>c.kind==='video').sort((a,b)=>a.start-b.start)[1].start;
+  assert.ok(samples.some(s=>s.t<.1),'recording starts at the beginning');
+  assert.ok(samples.some(s=>s.t<boundary-1/project.fps)&&samples.some(s=>s.t>boundary+1/project.fps),'recording crosses the razor cut');
   const bad=samples.filter(s=>s.t>.1&&s.t<3.8&&s.rgba[2]<180);assert.equal(bad.length,0,JSON.stringify(bad.slice(0,8)));
   await page.screenshot({path:path.join(results,'editor.png')});
   const output=path.join(results,'カットと図形.mp4');

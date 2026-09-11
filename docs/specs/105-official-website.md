@@ -12,7 +12,7 @@ Issue: https://github.com/altimix/LumaStudio/issues/8
 - `/support/`: 任意の開発支援、会社への支援問い合わせ、Issue・PRによる参加方法。
 - `/about/`: 運営会社、著作権・ライセンス、画面例の映像クレジット、プライバシー、問い合わせ先。
 
-本体はGitHub Releasesから配布し、サイトにEXEやアプリを複製しない。公開版は1.1.0。GPU書き出し（MacのVideoToolbox、WindowsのNVENC・Quick Sync・AMF）と起動時の更新確認・手動入れ替え案内を紹介する。GPUの利用可否は環境による。未公開の機能を提供済みとして表示しない。
+本体はGitHub Releasesから配布し、サイトにEXEやアプリを複製しない。1.2.0の公開後は同版を公開安定版として案内する。カット・図形合成と音声のつなぎ目の改善、動画の内容に沿った横16:9・縦9:16のサムネイル生成と2MB未満のJPEG保存を紹介する。GPU書き出し（MacのVideoToolbox、WindowsのNVENC・Quick Sync・AMF）と起動時の更新確認・手動入れ替え案内を紹介する。GPUの利用可否は環境による。未公開の機能を提供済みとして表示しない。
 
 ## 会社情報
 
