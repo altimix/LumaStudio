@@ -194,6 +194,17 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
     await page.getByRole('button',{name:'編集に戻る',exact:true}).click();await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
     const editedLarge=JSON.parse(await fs.readFile(projectFile,'utf8'));assert.equal(editedLarge.youtube.cues.length,100000);assert.equal(editedLarge.youtube.cues[0].text,'大量字幕の編集');
     checks.push('100000-cue editing validates only the draft while typing, checks full size on blur and saves successfully');
+    await studio();await page.getByRole('textbox',{name:'字幕1の本文',exact:true}).fill('');await page.keyboard.press('Escape');
+    await page.getByRole('dialog',{name:'YouTube制作スタジオ',exact:true}).waitFor();assert.ok(await page.locator('.yt-error').count());
+    assert.equal(await page.getByRole('textbox',{name:'字幕1の本文',exact:true}).inputValue(),'大量字幕の編集');
+    for(const [text,escape] of [['Escで確定',true],['画面外で確定',false]]){
+      await page.getByRole('textbox',{name:'字幕1の本文',exact:true}).fill(text);
+      if(escape)await page.keyboard.press('Escape');else await page.locator('.modal-backdrop').click({position:{x:4,y:4}});
+      await page.getByRole('dialog',{name:'YouTube制作スタジオ',exact:true}).waitFor({state:'hidden'});
+      await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
+      assert.equal(JSON.parse(await fs.readFile(projectFile,'utf8')).youtube.cues[0].text,text);await studio();
+    }
+    checks.push('Escape and backdrop commit active drafts before closing; rejected drafts keep the editor open');
     const requests=await app.evaluate(()=>globalThis.__ytRequests); assert.ok(requests.some(r=>r.kind==='transcription'&&r.language==='ja'&&r.bytes>10000)); assert.ok(requests.some(r=>r.kind==='image'&&r.size==='1536x864')); assert.ok(requests.filter(r=>r.kind==='metadata').every(r=>r.model==='gpt-6-astra'&&r.stored===false&&r.reasoning.effort==='low'&&r.strict===true));
     assert.deepEqual(errors,[]); await fs.writeFile(path.join(results,'youtube-verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,api:'mocked OpenAI responses; real native IPC, encrypted settings, audio render and video exports',checks,exports:[landscape,shorts],requests,consoleErrors:errors},null,2)); console.log('YouTube studio, Japanese captions and horizontal/Shorts MP4 exports verified (OpenAI responses mocked).');
   } catch(e) { await page.screenshot({path:path.join(results,'youtube-failure.png')}).catch(()=>{}); await fs.writeFile(path.join(results,'youtube-failure.json'),JSON.stringify({message:e.message,resourceFailures,images:await page.locator('img').evaluateAll(images=>images.map(img=>({src:img.src,width:img.naturalWidth,complete:img.complete})))},null,2)); throw e; }
