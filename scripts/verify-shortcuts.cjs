@@ -90,7 +90,7 @@ async function verify() {
     await seek(239); await page.keyboard.press('l'); await page.waitForFunction(() => document.querySelector('.shuttle-status').textContent === '停止'); assert.equal(await time(), '00:00:08:00');
     await seek(1); await page.keyboard.press('j'); await page.waitForFunction(() => document.querySelector('.shuttle-status').textContent === '停止'); assert.equal(await time(), '00:00:00:00');
     await seek(120);
-    const lock = page.getByRole('button', { name: 'Video2 ロック', exact: true }); await lock.click(); await page.keyboard.press('q'); await count(3); await page.getByText(/該当トラックのロックを解除/).waitFor(); await page.keyboard.press('z'); await count(5); await page.keyboard.press('Control+z'); await count(3); await page.getByRole('button', { name: 'テロップ・オーバーレイ ロック解除', exact: true }).click(); await seek(120);
+    const lock = page.getByRole('button', { name: 'Video2 ロック', exact: true }); await lock.click(); await page.keyboard.press('q'); await count(3); await page.getByText(/該当トラックのロックを解除/).waitFor(); await page.keyboard.press('z'); await count(5); await page.keyboard.press('Control+z'); await count(3); await page.getByRole('button', { name: 'Video2 ロック解除', exact: true }).click(); await seek(120);
     // Q/W are single undoable edits and persist exact source intervals.
     await page.keyboard.press('q'); await count(5); assert.equal(await time(), '00:00:02:00'); let saved = await save();
     assert.deepEqual(saved.clips.filter(c => c.kind === 'video').map(c => [c.start, c.in, c.duration]), [[0, 0, 2], [2, 4, 4]]);
