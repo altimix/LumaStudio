@@ -3,15 +3,17 @@
 altimixが開発する、Windows・macOS向けの日本語動画編集ソフトです。
 ソースコードをGPL-3.0-onlyで公開し、研究・教育・個人・商用で利用できます。
 
-[ダウンロード](https://github.com/altimix/LumaStudio/releases/latest) · [操作ガイド](README.html) · [開発手順](docs/DEVELOPMENT.md) · [開発に参加](CONTRIBUTING.md)
+[公式サイト](https://lumastudio.altimix.jp/) · [ダウンロード](https://github.com/altimix/LumaStudio/releases/latest) · [操作ガイド](README.html) · [開発手順](docs/DEVELOPMENT.md) · [開発に参加](CONTRIBUTING.md)
 
-## 1.0.0
+## 1.1.0
 
 - Windows x64 / macOS Apple Silicon（M1以降）に対応。
 - 素材・タイムラインは空で起動。BGMタブから初期BGM5曲を試聴・追加できます。
 - 動画・画像・音声の読込、複数トラック、分割・トリミング、Undo/Redo。
-- 日本語テロップ、トランジション、描画、音量調整、CPUによるMP4書き出し。
-- 1.0.0の配布版はNVENC・Quick Sync・AMFによるGPU書き出しを含みません。「自動」でもCPUを使用します。
+- 日本語テロップ、トランジション、描画、タイムライン上の音量調整、MP4書き出し。
+- MacのVideoToolbox、WindowsのNVENC・Quick Sync・AMFに対応。利用できる方式はGPU・ドライバーによって異なり、自動選択では利用可能なGPUを優先します。
+- 単一無加工映像などで不要な合成を省き、書き出し処理を軽量化。
+- ヘルプのキーボード図と、起動時の更新確認・ダウンロードと手動入れ替えの案内。
 - プロジェクト保存、自動保存からの明示的な復元。
 - AI字幕・投稿素材の生成は利用者自身のAPI設定が必要です。
 
