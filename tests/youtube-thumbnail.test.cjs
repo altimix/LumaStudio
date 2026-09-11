@@ -33,6 +33,15 @@ test('brief uses current video content, bounded transcript samples, requested he
  p.width=1080;p.height=1920;assert.equal(thumbnailFormat(p).ratio,'9:16');assert.match(thumbnailBrief(p,''),/縦専用/);
  p.youtube.sourceKey='old';assert.ok(!thumbnailBrief(p,'').includes('時短パスタ'));
 });
+test('brief excludes transparent titles while retaining titles made visible by keyframes',()=>{
+ const p=project(path.resolve('food.mp4')),title={...p.clips[0],kind:'title',assetId:undefined};
+ p.clips.push({...title,id:'hidden',text:'古い見出し',opacity:0},
+  {...title,id:'visible',text:'今の見出し',opacity:1},
+  {...title,id:'keys-hidden',text:'隠した原稿',opacity:1,opacityKeyframes:[{time:0,value:0},{time:4,value:0}]},
+  {...title,id:'keys-visible',text:'後半の見せ場',opacity:0,opacityKeyframes:[{time:0,value:0},{time:2,value:1}]});
+ const brief=thumbnailBrief(p,'');assert.ok(!brief.includes('古い見出し'));assert.ok(!brief.includes('隠した原稿'));
+ assert.ok(brief.includes('今の見出し'));assert.ok(brief.includes('後半の見せ場'));
+});
 test('image API sends reference scenes as multipart at high quality in both aspect ratios',async()=>{
  for(const portrait of [false,true]){
   let request;const image=await jpeg(portrait?864:1536,portrait?1536:864);
