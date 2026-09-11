@@ -13,7 +13,11 @@ const root = path.resolve(__dirname, '..');
   const profile=await fs.mkdtemp(path.join(results,'profile-')),env={...process.env,LUMA_TEST_DATA:profile}; delete env.ELECTRON_RUN_AS_NODE;
   const executablePath=process.env.LUMA_VERIFY_EXE, app=await electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000});
   try {
-    const page=await app.firstWindow(); await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});
+    const page=await app.firstWindow();
+    // An empty document also has no loading screen. Observe React mounting
+    // before waiting for bootstrap to finish and sending editor shortcuts.
+    await page.locator('.app-titlebar').waitFor({state:'visible',timeout:60000});
+    await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});
     await page.getByRole('button',{name:'ヘルプ',exact:true}).waitFor({timeout:60000});
     await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},file);
     await page.keyboard.press('Control+o'); await page.getByRole('button',{name:project.name,exact:true}).waitFor();
