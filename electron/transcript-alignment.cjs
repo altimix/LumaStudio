@@ -98,15 +98,31 @@ module.exports = { alignTranscript };
 function timedTranscript(timing) {
   if (timing?.words !== undefined && !Array.isArray(timing.words)) throw failure();
   const wordTiming = !!timing?.words?.length;
-  const units = timing?.words?.length ? timing.words : timing?.segments;
-  if (!Array.isArray(units) || units.length > 7000) throw failure();
-  let previous = 0;
-  for (const unit of units) {
-    if (!unit || typeof (wordTiming ? unit.word : unit.text) !== 'string' || !Number.isFinite(unit.start) || !Number.isFinite(unit.end) || unit.start < 0 || unit.end < unit.start || unit.start < previous - .05 || unit.end > 310) throw failure();
-    previous = unit.end;
+  const validate = (units, field) => {
+    if (!Array.isArray(units) || units.length > 7000) throw failure();
+    let previous = 0;
+    for (const unit of units) {
+      if (!unit || typeof unit[field] !== 'string' || !Number.isFinite(unit.start) || !Number.isFinite(unit.end) || unit.start < 0 || unit.end < unit.start || unit.start < previous - .05 || unit.end > 310) throw failure();
+      previous = unit.end;
+    }
+  };
+  const silent = unit => unit.no_speech_prob > .6 && unit.avg_logprob < -1;
+  let units = wordTiming ? timing.words : timing?.segments;
+  validate(units, wordTiming ? 'word' : 'text');
+  let measured = timing;
+  if (wordTiming && timing.segments !== undefined) {
+    validate(timing.segments, 'text');
+    const rejected = timing.segments.filter(silent);
+    // Word timing has no silence confidence of its own. Use the enclosing
+    // segment's evidence before aligning the fallback text to those words.
+    units = units.filter(word => !rejected.some(segment => {
+      const middle = (word.start + word.end) / 2;
+      return middle >= segment.start && middle < segment.end;
+    }));
+    measured = { ...timing, words: units, segments: timing.segments.filter(segment => !silent(segment)) };
   }
-  const text = units.filter(unit => !(unit?.no_speech_prob > 0.6 && unit?.avg_logprob < -1)).map(unit => unit?.word ?? unit?.text ?? '').reduce((text, word) => text + (/[a-z0-9]$/i.test(text) && /^[a-z0-9]/i.test(word) ? ' ' : '') + word, '');
-  const result = alignTranscript(text, timing);
+  const text = units.filter(unit => !silent(unit)).map(unit => unit.word ?? unit.text).reduce((text, word) => text + (/[a-z0-9]$/i.test(text) && /^[a-z0-9]/i.test(word) ? ' ' : '') + word, '');
+  const result = alignTranscript(text, measured);
   return { ...result, alignment: { ...result.alignment, textModel: 'whisper-1' } };
 }
 module.exports.timedTranscript = timedTranscript;

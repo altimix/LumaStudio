@@ -38,3 +38,12 @@ test('timed fallback excludes silent segment hallucinations and rejects invalid 
   assert.throws(()=>timedTranscript({words:{},segments:[silent]}),{code:'TRANSCRIPT_ALIGNMENT'});
   assert.equal(timedTranscript({words:[{word:'Luma',start:0,end:1},{word:'Studio',start:1,end:2}]}).text,'Luma Studio');
 });
+
+test('production word+segment fallback excludes words inside rejected silence segments', () => {
+  const words=[{word:'聞こえた言葉。',start:.2,end:2},{word:'ご視聴ありがとうございました。',start:5.2,end:7}];
+  const segments=[{text:'聞こえた言葉。',start:0,end:3,no_speech_prob:.01,avg_logprob:-.1},{text:'ご視聴ありがとうございました。',start:5,end:8,no_speech_prob:.95,avg_logprob:-1.5}];
+  const result=timedTranscript({words,segments});assert.equal(result.text,'聞こえた言葉。');assert.equal(result.words.at(-1).end,2);
+  assert.deepEqual(timedTranscript({words:[words[1]],segments:[segments[1]]}).words,[]);
+  assert.throws(()=>timedTranscript({words:[{...words[1],start:NaN}],segments}),{code:'TRANSCRIPT_ALIGNMENT'});
+  assert.throws(()=>timedTranscript({words,segments:[{...segments[1],start:NaN}]}),{code:'TRANSCRIPT_ALIGNMENT'});
+});
