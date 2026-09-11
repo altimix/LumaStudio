@@ -1,0 +1,38 @@
+name: Website CI
+on:
+  pull_request:
+    paths: ['website/**', 'README.html', '.github/workflows/website-ci.yml']
+  push:
+    branches: [main]
+    paths: ['website/**', 'README.html', '.github/workflows/website-ci.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  website-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            website/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --prefix website --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Verify website and manual
+        env:
+          CLOUDFLARE_SEND_METRICS: 'false'
+        run: |
+          npm run dev --prefix website -- --port 8791 > /tmp/lumastudio-site.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:8791/ > /dev/null; then break; fi
+            sleep 1
+          done
+          node website/verify.cjs || { cat /tmp/lumastudio-site.log; exit 1; }
