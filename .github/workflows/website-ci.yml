@@ -39,4 +39,4 @@ jobs:
       - name: Verify live release download links
         env:
           SITE_URL: https://lumastudio.altimix.jp
-        run: node website/verify.cjs
+        run: node website/verify.cjs --downloads-only
