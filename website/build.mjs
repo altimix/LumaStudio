@@ -24,6 +24,11 @@ let manual=await readFile(path.join(root,'../README.html'),'utf8');
 manual=manual.replace('</head>','<link rel="canonical" href="https://lumastudio.altimix.jp/manual/"><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"><style>.site-return{display:block;padding:12px 24px;background:#e6eddf;color:#213d31;font:14px/1.5 sans-serif;text-decoration:none}@media print{.site-return{display:none}}</style></head>').replace('<body>','<body><a class="site-return" href="/">← Luma Studio 公式サイトに戻る</a>');
 // Preserve the offline guide and all its searchable commands; add only online navigation and favicon permissions.
 manual=manual.replace("default-src 'none';", "default-src 'none'; img-src 'self';");
+const keyboardCss = await readFile(path.join(root, 'assets/keyboard.css'), 'utf8');
+const keyboardJs = await readFile(path.join(root, 'assets/keyboard.js'), 'utf8');
+manual = manual.replace('</head>', `<style>${keyboardCss}</style></head>`)
+  .replace('<h2>全コマンド・ショートカット一覧</h2>', '<h2>全コマンド・ショートカット一覧</h2><div id="keyboard-guide" hidden></div>')
+  .replace('</body>', `<script>${keyboardJs}</script></body>`);
 await save('manual/index.html',manual);
 await save('404.html',page('ページが見つかりません','Luma Studio公式サイトのホームやマニュアルからお探しください。','<div class="article wrap"><p class="eyebrow">404 / NOT FOUND</p><h1>ページが見つかりません。</h1><p>アドレスが変わったか、ページが存在しないようです。</p><a class="button" href="/">ホームに戻る</a> <a href="/manual/">マニュアルを見る</a></div>','/404'));
 await save('robots.txt','User-agent: *\nAllow: /\nSitemap: https://lumastudio.altimix.jp/sitemap.xml\n');

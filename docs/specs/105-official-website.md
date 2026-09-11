@@ -30,3 +30,9 @@ Issue: https://github.com/altimix/LumaStudio/issues/8
 ## 運用
 
 `website/README.md`のビルド・検証・公開手順に従う。アプリの新しい正式リリースに合わせてダウンロード先・対応条件・マニュアルを同じ変更で更新する。振込先の追記は、公開用の正確な銀行・支店・種別・番号・口座名義を利用者から受け取ってから行う。
+
+## キーボード図説
+
+マニュアルの`#commands`にQWERTY配列の概略図を表示する。Windows / Macと修飾キー（なし、Shift、Ctrl / Command、両方）を選べる。割り当てのあるキーを緑で示し、クリック・タップ・TabとEnterで操作説明を表示する。公開版READMEの`data-key`、`data-ctrl`、`data-shift`と説明文を読み取り、図のために別の割り当て表を持たない。図は文字キーと補助キーの概略で、JIS / USや機種による位置の違いを明記する。JavaScript無効時も従来の一覧を読める。
+
+受け入れ条件: Spaceの再生、MacのCommand+S、Command+Shift+S、WindowsのJを検証する。390pxでもページを横にはみ出さず、既存の検索・一覧を維持する。
