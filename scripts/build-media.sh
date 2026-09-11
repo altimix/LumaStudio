@@ -52,6 +52,16 @@ if [ "$PLATFORM" = win32-x64 ]; then
   mkdir -p "$PREFIX_DIR/include/AMF"
   cp -R amf/amf/public/include/. "$PREFIX_DIR/include/AMF/"
   tar -xf "$SOURCE_DIR/libvpl.tar.gz" -C libvpl --strip-components=1
+  # The pinned dispatcher mistakes MinGW's undefined _MSC_VER for old MSVC.
+  # Modern MinGW supplies the secure CRT functions; its Windows headers must
+  # not see the dispatcher's legacy wcscpy_s / wcscat_s statement macros.
+  node - "$BUILD_DIR/libvpl/libvpl/src/windows/mfx_dispatcher_defs.h" <<'NODE'
+const fs = require('node:fs');
+const file = process.argv[2], original = fs.readFileSync(file, 'utf8');
+const before = '#if _MSC_VER < 1400';
+if (original.split(before).length !== 2) throw new Error('Unexpected pinned oneVPL compatibility guard');
+fs.writeFileSync(file, original.replace(before, '#if defined(_MSC_VER) && _MSC_VER < 1400'));
+NODE
   cmake -S libvpl -B libvpl-build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX_DIR" -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF -DBUILD_TOOLS=OFF -DBUILD_EXAMPLES=OFF -DINSTALL_EXAMPLE_CODE=OFF
   cmake --build libvpl-build --parallel "$JOBS"
   cmake --install libvpl-build

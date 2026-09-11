@@ -14,6 +14,8 @@ Issue: #3
 
 Windowsの新規MSYS2環境でも同じ手順で構築できるよう、依存ライブラリの構成判定に必要なdiffutilsを明示的に導入する。CMake・MinGW makeを含む導入コマンドは`docs/DEVELOPMENT.md`とWindows CIで一致させる。
 
+固定oneVPLの`mfx_dispatcher_defs.h`は、未定義の`_MSC_VER`を0として扱いMinGWにも古いMSVC向けの`wcscpy_s`・`wcscat_s`マクロを適用する。新しいMinGWヘッダーとの衝突を避けるため、Windowsビルド時に条件を`defined(_MSC_VER) && _MSC_VER < 1400`へ限定する。元アーカイブのSHA256検証は維持し、展開後の変更は配布する`build-media.sh`で再現する。想定する条件が1箇所でない場合はビルドを中断する。
+
 ## 実測例
 
 Apple M2 Pro、付属デモ映像8秒、単一無加工クリップ、30fps・標準品質。ほかのテストを止めて各1回計測。
