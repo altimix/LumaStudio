@@ -68,6 +68,7 @@ test('plain full-frame video avoids RGBA compositing while edited layouts retain
     assert.match(graph(edited,settings),/overlay=/);
   }
   assert.match(graph(p,{...settings,height:240}),/overlay=/);
+  assert.match(graph({...p,assets:[{...asset,codec:'prores'}]},settings),/overlay=/);
 });
 
 test('display rotation keeps requested export dimensions and centered picture on the direct path',async t=>{

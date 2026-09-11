@@ -113,7 +113,7 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}) {
   const args = ['-hide_banner', '-y', '-filter_complex_threads', '2', '-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:r=${fps}:d=${number(duration)}`, '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${number(duration)}`];
   const visible = p.clips.filter(c => c.kind !== 'audio' && !p.tracks.find(t => t.id === c.trackId)?.hidden);
   const only = visible.length === 1 ? visible[0] : null, onlyAsset = p.assets.find(a => a.id === only?.assetId);
-  const directVideo = only?.kind === 'video' && only.start === 0 && only.duration === duration && only.scale === 1 && only.x === 0 && only.y === 0 && only.rotation === 0 && only.opacity === 1 && !only.opacityKeyframes?.length && !only.fadeIn && !only.fadeOut && only.exposure === 0 && only.contrast === 1 && only.saturation === 1 && !p.transitions?.length && onlyAsset?.width * height === onlyAsset?.height * width;
+  const directVideo = onlyAsset?.codec === 'h264' && only?.kind === 'video' && only.start === 0 && only.duration === duration && only.scale === 1 && only.x === 0 && only.y === 0 && only.rotation === 0 && only.opacity === 1 && !only.opacityKeyframes?.length && !only.fadeIn && !only.fadeOut && only.exposure === 0 && only.contrast === 1 && only.saturation === 1 && !p.transitions?.length && onlyAsset?.width * height === onlyAsset?.height * width;
   const filters = directVideo ? [] : ['[0:v]format=rgba[base]'];
   let base = 'base'; const audios = ['[1:a]']; let input = 2;
   const envelopes=audioEnvelopes(p), plans=transitionPlan(p), transitionClips=new Set(plans.filter(t=>t.video).flatMap(t=>[t.fromId,t.toId])), visuals=[];
