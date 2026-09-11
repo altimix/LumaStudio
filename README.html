@@ -171,7 +171,7 @@
       <table><caption>v1.3.0 が使用するAPIモデル</caption><thead><tr><th scope="col">用途</th><th scope="col">設定値</th></tr></thead><tbody>
         <tr><th scope="row">文字起こし本文</th><td data-label="設定値"><code>gpt-transcribe</code></td></tr><tr><th scope="row">単語・字幕の時刻取得</th><td data-label="設定値"><code>whisper-1</code></td></tr><tr><th scope="row">投稿文</th><td data-label="設定値"><code>gpt-6-astra</code>（GPT-6 Astra）</td></tr><tr><th scope="row">サムネイル画像</th><td data-label="設定値"><code>gpt-image-2</code></td></tr>
       </tbody></table>
-      <p class="small">上記はアプリ内の設定値です。モデルの利用にはAPIアカウントの権限が必要です。認識と時刻取得は別々のAPI処理です。音声は16kHzモノラル・300秒単位、最大12時間／6000字幕。適用先には2000クリップ／24トラックの上限があります。</p>
+      <p class="small">上記はアプリ内の設定値です。モデルの利用にはAPIアカウントの権限が必要です。認識と時刻取得は別々のAPI処理です。音声は16kHzモノラル・60秒単位で処理し、時刻が合わない区間だけ自動で細分化して再確認します。短い区間でも食い違う場合は時刻付き認識の本文を採用し、採用区間数を表示します。12時間の長さ制限はありません。字幕は最大10万件、制作データは12MiB以内で、作業用ディスク容量とAPI利用料が必要です。自動再試行では追加のAPI利用料が発生します。適用先には2000クリップ／24トラックの上限があります。</p>
       <p>字幕原稿と投稿素材もCtrl+Sで保存します。音声編集後に古い結果の案内が出た場合は文字起こしを再実行し、固有名詞と字幕時刻を確認してください。</p>
     </section>
     <section id="export">

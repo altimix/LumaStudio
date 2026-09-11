@@ -33,7 +33,7 @@ test('empty transcription avoids timing call and cancellation stops before secon
 }));
 
 test('rendered timeline audio preserves delay, duration, gain and fades', async () => temporary(async dir => { const file = path.join(dir, '日本語 & voice.wav'); const { ffmpeg, run } = require('../electron/media.cjs'); await run(ffmpeg, ['-y','-v','error','-f','lavfi','-i','sine=frequency=440:duration=4','-c:a','pcm_s16le',file]); const p = fixture(file); const target = path.join(dir, 'timeline.wav'); await runAudio(buildTimelineAudio(p, target)); const pcm = await run(ffmpeg, ['-v','error','-i',target,'-f','f32le','-ac','1','-ar','16000','pipe:1']); const rms = (from, to) => { let sum = 0; for (let i = from * 16000; i < to * 16000; i++) sum += pcm.readFloatLE(i * 4) ** 2; return Math.sqrt(sum / ((to - from) * 16000)); }; assert.equal(pcm.length / 4, 48000); assert.ok(rms(0,0.9) < 1e-6); assert.ok(rms(1.5,2) > 0.03); assert.ok(rms(1,1.05) < rms(1.5,2) / 2); p.tracks[0].muted = true; assert.throws(() => buildTimelineAudio(p,target), /音声がありません/); }));
-test('long transcription windows keep sequence offsets and suppress overlap words', async () => temporary(async dir => { const file = path.join(dir,'voice.wav'); const { ffmpeg, run } = require('../electron/media.cjs'); await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','sine=duration=305','-ar','16000',file]); const p = fixture(file, 302); let count = 0; const result = await transcribeTimeline(p, '', { transcribe: async () => ++count === 1 ? { words: [{ start: 1, end: 2, word: '開始' },{ start: 300.2,end: 300.8,word:'重複' }] } : { words: [{ start: 0,end:0.8,word:'重複' },{ start: 1.2,end:2,word:'続き' }] } }, undefined); assert.equal(count,2); assert.deepEqual(result.cues.map(c => c.text),['開始','続き']); assert.equal(result.cues[1].start,300.2); }));
+test('long transcription windows keep sequence offsets and suppress overlap words', async () => temporary(async dir => { const file = path.join(dir,'voice.wav'); const { ffmpeg, run } = require('../electron/media.cjs'); await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','sine=duration=65','-ar','16000',file]); const p = fixture(file, 62); let count = 0; const result = await transcribeTimeline(p, '', { transcribe: async () => ++count === 1 ? { words: [{ start: 1, end: 2, word: '開始' },{ start: 60.2,end: 60.8,word:'重複' }] } : { words: [{ start: 0,end:0.8,word:'重複' },{ start: 1.2,end:2,word:'続き' }] } }, undefined); assert.equal(count,2); assert.deepEqual(result.cues.map(c => c.text),['開始','続き']); assert.equal(result.cues[1].start,60.2); }));
 test('metadata rejects stale edits and incorrect keyword cardinality', async () => { const p = fixture(path.resolve('unused.wav'),40); p.youtube = { sourceKey: timelineKey(p), cues:[{start:1,end:2,text:'動画編集です'}],titles:[],description:'',chapters:[],keywords:[],thumbnailPrompt:'' }; const raw = { titles:['a','b','c'], description:'説明', chapters:[], keywords:Array(10).fill('同じ'), hashtags:['#動画編集','#日本語字幕','#YouTube制作'],thumbnailPrompt:'画像' }; await assert.rejects(generateMetadata(p,{metadata:async()=>raw}), /形式/); p.clips[0].volume=1; await assert.rejects(generateMetadata(p,{metadata:async()=>raw}), /再実行/); });
 test('metadata requires usable generated text and retains the previous data on rejection', async () => {
   const p = fixture(path.resolve('unused.wav'),40);
@@ -66,4 +66,81 @@ test('generated JPEGs produce decodable library thumbnails and rebuild empty cac
   const asset = await inspectMedia(file, cache); assert.equal(asset.kind, 'image');
   const check = async () => { const info = await probe(asset.thumbnailPath); assert.equal(info.streams[0].width, 480); assert.equal(info.streams[0].height, 270); };
   await check(); await fs.writeFile(asset.thumbnailPath, ''); await inspectMedia(file, cache); await check();
+}));
+
+test('timing fallback is opt-in and keeps measured text and timestamps when models disagree', async()=>temporary(async dir=>{
+  const file=path.join(dir,'audio.wav');await fs.writeFile(file,'RIFF');
+  const client=createOpenAI(async()=>KEY,async(_url,{body})=>Response.json(body.get('model')==='gpt-transcribe'?{text:'専門用語の認識結果が異なります。'}:{words:[{word:'実際に時刻を取得した言葉です。',start:.4,end:3.2},{word:'ご視聴ありがとうございました。',start:4,end:5}],segments:[{text:'実際に時刻を取得した言葉です。',start:0,end:3.3,no_speech_prob:.01,avg_logprob:-.1},{text:'ご視聴ありがとうございました。',start:3.5,end:6,no_speech_prob:.95,avg_logprob:-1.5}]}));
+  await assert.rejects(client.transcribe(file,''),{code:'TRANSCRIPT_ALIGNMENT'});
+  const result=await client.transcribe(file,'',undefined,{allowTimingFallback:true});
+  assert.equal(result.text,'実際に時刻を取得した言葉です。');assert.equal(result.alignment.textModel,'whisper-1');
+  assert.equal(result.words[0].start,.4);assert.equal(result.words.at(-1).end,3.2);
+}));
+
+test('transcription rejects overflowing sequence duration before starting an RF64 render', () => {
+  const {MAX_MEDIA_SECONDS}=require('../shared/time.mjs');
+  const p=fixture(path.resolve('unused.wav'));p.clips[0].start=MAX_MEDIA_SECONDS;
+  assert.throws(()=>buildTimelineAudio(p,path.resolve('unused-output.wav')),/音声の長さが不正/);
+});
+
+test('RF64 preparation audio can be seeked into a small ordinary WAV upload', async()=>temporary(async dir=>{
+  const {ffmpeg,run}=require('../electron/media.cjs');
+  const source=path.join(dir,'large-format.wav'),chunk=path.join(dir,'upload.wav');
+  await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','sine=frequency=440:duration=3','-ar','16000','-ac','1','-c:a','pcm_s16le','-rf64','always',source]);
+  assert.equal((await fs.readFile(source)).subarray(0,4).toString(),'RF64');
+  await runAudio(['-y','-v','error','-ss','1','-i',source,'-t','1','-ar','16000','-ac','1','-c:a','pcm_s16le',chunk]);
+  assert.equal((await fs.readFile(chunk)).subarray(0,4).toString(),'RIFF');
+  const pcm=await run(ffmpeg,['-v','error','-i',chunk,'-f','s16le','pipe:1']);assert.equal(pcm.length,32000);assert.ok(pcm.some(v=>v));
+}));
+
+test('large transcripts fit the actual persisted project before replacing old captions', () => {
+  const {finalizeTranscription}=require('../electron/youtube.cjs');
+  const {serializeProject}=require('../electron/project.cjs');
+  const {validateYoutube,validateYoutubeProject}=require('../shared/youtube.mjs');
+  const p=fixture(path.resolve('unused.wav'),60000),text='長い日本語の字幕です。'.repeat(2);
+  const makeCues=n=>Array.from({length:n},(_,i)=>({start:i,end:i+.5,text}));
+  const old={sourceKey:timelineKey(p),cues:makeCues(1),titles:[],description:'以前の説明',chapters:[],keywords:[],thumbnailPrompt:''};p.youtube=old;
+  assert.throws(()=>finalizeTranscription(p,makeCues(100000),{retries:0,timingFallbacks:0}),/大きすぎます/);
+  assert.equal(p.youtube,old);
+  // This transcript fits its own allowance but not this already-large project.
+  p.clips.push(...Array.from({length:1999},(_,i)=>({...p.clips[0],id:`title-${i}`,assetId:undefined,kind:'title',start:0,duration:1,text:'あ'.repeat(1800),fontSize:58,color:'#ffffff',textStyle:'subtitle'})));
+  serializeProject(p);
+  const cues=makeCues(50000);validateYoutube({...old,cues});
+  validateYoutubeProject(p);
+  assert.throws(()=>validateYoutubeProject({...p,youtube:{...old,cues}}),/大きすぎる/);
+  assert.equal(p.youtube,old);
+  assert.throws(()=>finalizeTranscription(p,cues,{retries:0,timingFallbacks:0}),/15 MiB/);
+  assert.equal(p.youtube,old);
+  const small=fixture(path.resolve('unused.wav'),60000);
+  const result=finalizeTranscription(small,makeCues(8000),{retries:0,timingFallbacks:0});
+  assert.equal(JSON.parse(serializeProject({...small,youtube:result})).youtube.cues.length,8000);
+});
+
+test('direct transcription windows preserve fades and volume without rendering distant timeline gaps', async () => temporary(async dir => {
+  const {ffmpeg,run}=require('../electron/media.cjs');
+  const source=path.join(dir,'声.wav'),full=path.join(dir,'full.wav'),chunk=path.join(dir,'chunk.wav');
+  await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','sine=frequency=440:duration=8','-c:a','pcm_s16le',source]);
+  const p=fixture(source,4);p.clips[0].fadeIn=2;p.clips[0].fadeOut=2;
+  p.clips[0].volumeKeyframes=[{time:0,value:.4},{time:4,value:1}];
+  await runAudio(buildTimelineAudio(p,full));
+  const pcm=async file=>run(ffmpeg,['-v','error','-i',file,'-f','s16le','-ac','1','-ar','16000','pipe:1']);
+  const whole=await pcm(full),rms=(b,start,end)=>{let sum=0;for(let i=start;i<end;i++)sum+=b.readInt16LE(i*2)**2;return Math.sqrt(sum/(end-start));};
+  for(const from of [1.5,3.5]){
+    await runAudio(buildTimelineAudio(p,chunk,{}, {from,to:from+1}));const part=await pcm(chunk);
+    assert.equal(part.length,32000);
+    for(const offset of [.1,.5]){const actual=rms(part,Math.round(offset*16000),Math.round((offset+.1)*16000));const expected=rms(whole,Math.round((from+offset)*16000),Math.round((from+offset+.1)*16000));assert.ok(Math.abs(actual/expected-1)<.03,`${from} ${offset}: ${actual}/${expected}`);}
+  }
+  const late=3*86400;p.clips.push({...p.clips[0],id:'late',start:late});
+  const args=buildTimelineAudio(p,chunk,{}, {from:late,to:late+1});
+  assert.ok(args.includes('anullsrc=r=48000:cl=stereo:d=1'));assert.equal(args.filter(x=>x===source).length,1);
+  await runAudio(args);assert.ok((await fs.stat(chunk)).size<33000);assert.equal((await pcm(chunk)).length,32000);
+}));
+
+test('sparse long timeline skips empty windows and retains absolute speech times', async()=>temporary(async dir=>{
+  const {ffmpeg,run}=require('../electron/media.cjs'),source=path.join(dir,'speech.wav');
+  await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','sine=frequency=440:duration=3','-c:a','pcm_s16le',source]);
+  const p=fixture(source,1),late=86400*3;p.clips[0].start=late;
+  let calls=0;
+  const result=await transcribeTimeline(p,'',{transcribe:async file=>{calls++;assert.ok((await fs.stat(file)).size<65000);return {text:'音声',words:[{word:'音声',start:1,end:1.8}]};}});
+  assert.equal(calls,1);assert.equal(result.cues[0].start,late);assert.equal(result.cues[0].end,late+.8);
 }));

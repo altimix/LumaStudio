@@ -1,7 +1,7 @@
 // Accurate transcription and timestamp extraction have different API contracts.
 // Align their text locally; never replace the accurate text with the timing pass.
 const lexical = text => [...text.normalize('NFKC').toLowerCase()].filter(c => /[\p{L}\p{N}]/u.test(c)).map(c => /[ァ-ヶ]/u.test(c) ? String.fromCharCode(c.charCodeAt(0) - 0x60) : c);
-const failure = () => new Error('文字起こし本文と音声の時刻を十分に照合できませんでした。用語ヒントを調整するか、短い区間に分けて再実行してください。既存の字幕は保持されます。');
+const failure = () => Object.assign(new Error('文字起こし本文と音声の時刻を照合できませんでした。既存の字幕は保持されます。'), { code: 'TRANSCRIPT_ALIGNMENT' });
 function alignTranscript(text, timing) {
   if (typeof text !== 'string' || text.length > 20000) throw failure();
   if (!text.trim()) return { text: '', words: [] };
@@ -92,3 +92,37 @@ function alignTranscript(text, timing) {
   return { text: text.trim(), words, alignment: { matchedRatio: matches / Math.max(n, m), timingModel: 'whisper-1', timingGranularity } };
 }
 module.exports = { alignTranscript };
+
+// Last resort after short-window retries: text and times come from the same
+// measured response. Do not spread the accurate transcript over guessed times.
+function timedTranscript(timing) {
+  if (timing?.words !== undefined && !Array.isArray(timing.words)) throw failure();
+  const wordTiming = !!timing?.words?.length;
+  const validate = (units, field) => {
+    if (!Array.isArray(units) || units.length > 7000) throw failure();
+    let previous = 0;
+    for (const unit of units) {
+      if (!unit || typeof unit[field] !== 'string' || !Number.isFinite(unit.start) || !Number.isFinite(unit.end) || unit.start < 0 || unit.end < unit.start || unit.start < previous - .05 || unit.end > 310) throw failure();
+      previous = unit.end;
+    }
+  };
+  const silent = unit => unit.no_speech_prob > .6 && unit.avg_logprob < -1;
+  let units = wordTiming ? timing.words : timing?.segments;
+  validate(units, wordTiming ? 'word' : 'text');
+  let measured = timing;
+  if (wordTiming && timing.segments !== undefined) {
+    validate(timing.segments, 'text');
+    const rejected = timing.segments.filter(silent);
+    // Word timing has no silence confidence of its own. Use the enclosing
+    // segment's evidence before aligning the fallback text to those words.
+    units = units.filter(word => !rejected.some(segment => {
+      const middle = (word.start + word.end) / 2;
+      return middle >= segment.start && middle < segment.end;
+    }));
+    measured = { ...timing, words: units, segments: timing.segments.filter(segment => !silent(segment)) };
+  }
+  const text = units.filter(unit => !silent(unit)).map(unit => unit.word ?? unit.text).reduce((text, word) => text + (/[a-z0-9]$/i.test(text) && /^[a-z0-9]/i.test(word) ? ' ' : '') + word, '');
+  const result = alignTranscript(text, measured);
+  return { ...result, alignment: { ...result.alignment, textModel: 'whisper-1' } };
+}
+module.exports.timedTranscript = timedTranscript;

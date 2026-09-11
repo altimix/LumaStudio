@@ -1,3 +1,6 @@
+const { transcribeWindows } = require('./transcription-windows.cjs');
+const { MAX_MEDIA_SECONDS } = require('../shared/time.mjs');
+const { serializeProject } = require('./project.cjs');
 const { hasClipAudio } = require('../shared/clip-links.mjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -20,23 +23,31 @@ function audioClips(p) {
     return hasClipAudio(c,a) && !c.audioMuted && c.volume > 0 && !t.muted && (!solo || t.solo);
   });
 }
-function buildTimelineAudio(p, output, audioPaths = {}) {
+function buildTimelineAudio(p, output, audioPaths = {}, range) {
   validateProject(p); const duration = totalTime(p); const clips = audioClips(p);
   if (!clips.length) throw new Error('文字起こしできる音声がありません。音声トラックのミュート・ソロ・音量を確認してください。');
-  if (duration <= 0 || duration > 43200) throw new Error('文字起こしは12時間以内のシーケンスで利用できます。');
-  const args = ['-y', '-v', 'error', '-filter_complex_threads', '1', '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${number(duration)}`];
+  if (!Number.isFinite(duration) || duration <= 0 || duration > MAX_MEDIA_SECONDS) throw new Error('文字起こしの音声の長さが不正です。');
+  const from = range?.from ?? 0, to = range?.to ?? duration;
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from < 0 || to <= from || to > duration) throw new Error('文字起こしの音声区間が不正です。');
+  const span = to - from;
+  const args = ['-y', '-v', 'error', '-filter_complex_threads', '1', '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${number(span)}`];
   const envelopes=audioEnvelopes(p),plans=transitionPlan(p);
   const filters = [], labels = ['[0:a]'];
   clips.forEach((c, i) => {
-    const a = p.assets.find(a => a.id === c.assetId); if (a.offline) throw new Error('音声素材がオフラインです。再リンクしてください。');
+    const a = p.assets.find(a => a.id === c.assetId);
+    const whole=mediaWindow(c,a,plans,'audio');
+    const start=Math.max(from,whole.start), end=Math.min(to,whole.start+whole.duration);
+    if(end<=start)return;
+    if (a.offline) throw new Error('音声素材がオフラインです。再リンクしてください。');
     if (c.audioTreatment && !audioPaths[c.id]) throw new Error('自動調整した音声を準備できませんでした。');
-    const window=mediaWindow(c,a,plans,'audio');
+    const window={...whole,start:start-from,duration:end-start,sourceIn:whole.sourceIn+(start-whole.start)*c.speed,sourceDuration:(end-start)*c.speed};
     const sourceTrim=Math.min(1,window.sourceIn);
     args.push('-ss', number(window.sourceIn-sourceTrim), '-t', number(window.sourceDuration+sourceTrim), '-i', c.audioTreatment ? audioPaths[c.id] : a.path);
-    filters.push(clipAudioFilter(c, i + 1, envelopes.get(c.id),window,sourceTrim)); labels.push(`[a${i + 1}]`);
+    const index=labels.length;
+    filters.push(clipAudioFilter({...c,start:c.start-from}, index, (envelopes.get(c.id)||[]).map(e=>({...e,start:e.start-from,end:e.end-from})),window,sourceTrim)); labels.push(`[a${index}]`);
   });
   filters.push(mixAudioFilter(labels));
-  args.push('-filter_complex', filters.join(';'), '-map', '[afinal]', '-t', number(duration), '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', output);
+  args.push('-filter_complex', filters.join(';'), '-map', '[afinal]', '-t', number(span), '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-rf64', 'auto', output);
   return args;
 }
 async function runAudio(args, signal) {
@@ -54,30 +65,30 @@ async function runAudio(args, signal) {
   });
   } finally { if (directory) await fs.rm(directory, { recursive: true, force: true }); }
 }
+function finalizeTranscription(p, cues, transcriptionStats) {
+  if (!cues.length) throw new Error('認識できる発話がありませんでした。音声・言語設定を確認してください。');
+  const result = { sourceKey: timelineKey(p), cues, transcriptionStats, titles: [], description: '', chapters: [], keywords: [], thumbnailPrompt: '' };
+  validateYoutube(result);
+  // Use the exact persisted representation, including all other project data,
+  // before returning a result that the renderer can commit over existing captions.
+  serializeProject({ ...p, youtube: result });
+  return result;
+}
 async function transcribeTimeline(p, vocabulary, client, signal, progress = () => {}, audioPaths = {}) {
   validateProject(p); if (typeof vocabulary !== 'string' || vocabulary.length > 120) throw new Error('用語ヒントは120文字以内にしてください。');
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-transcript-'));
   try {
-    const audio = path.join(directory, 'timeline.wav'); progress({ progress: 0, message: '編集済みタイムラインの音声を準備中' });
-    await runAudio(buildTimelineAudio(p, audio, audioPaths), signal);
-    const duration = totalTime(p), cues = [];
-    for (let start = 0; start < duration; start += 300) {
-      signal?.throwIfAborted(); const end = Math.min(start + 300, duration), from = Math.max(0, start - 1), to = Math.min(duration, end + 1); const file = path.join(directory, 'chunk.wav');
-      progress({ progress: start / duration, message: `gpt-transcribeで認識・字幕時刻を照合中 ${Math.floor(start / 300) + 1} / ${Math.ceil(duration / 300)}` });
-      await runAudio(['-y', '-v', 'error', '-ss', number(from), '-i', audio, '-t', number(to - from), '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', file], signal);
-      const raw = await client.transcribe(file, vocabulary, signal);
-      // Overlap provides context, while midpoint ownership avoids duplicate words at the seam.
-      const owns = w => { const midpoint = from + (w.start + w.end) / 2; return midpoint >= start && midpoint < end; };
-      const owned = { ...raw, words: Array.isArray(raw.words) ? raw.words.filter(owns) : undefined, segments: Array.isArray(raw.segments) ? raw.segments.filter(owns) : [] };
-      for (const cue of cuesFromTranscription(owned, from, to - from, p.height > p.width ? 15 : 24)) {
-        cue.start = Math.max(cues.at(-1)?.end || 0, cue.start); cue.end = Math.min(duration, cue.end);
-        if (cue.end - cue.start >= 1 / p.fps) cues.push(cue);
-      }
-      if (cues.length > 6000) throw new Error('字幕が6000件を超えました。シーケンスを分けてください。');
-    }
-    if (!cues.length) throw new Error('認識できる発話がありませんでした。音声・言語設定を確認してください。');
-    const result = { sourceKey: timelineKey(p), cues, titles: [], description: '', chapters: [], keywords: [], thumbnailPrompt: '' };
-    validateYoutube(result); progress({ progress: 1, message: `${cues.length}件の字幕を作成しました` }); return result;
+    progress({ progress: 0, message: '短い区間ごとに音声を準備します' });
+    const duration = totalTime(p), plans = transitionPlan(p), audible = audioClips(p);
+    if (!audible.length) throw new Error('文字起こしできる音声がありません。音声トラックのミュート・ソロ・音量を確認してください。');
+    const ranges = audible.map(c=>{const w=mediaWindow(c,p.assets.find(a=>a.id===c.assetId),plans,'audio');return {start:w.start,end:w.start+w.duration};});
+    const { cues, transcriptionStats } = await transcribeWindows(duration, async ({ from, to, allowTimingFallback }) => {
+      const file = path.join(directory, 'chunk.wav');
+      await runAudio(buildTimelineAudio(p, file, audioPaths, { from, to }), signal);
+      return client.transcribe(file, vocabulary, signal, { allowTimingFallback });
+    }, signal, progress, p.height > p.width ? 15 : 24, p.fps, ranges);
+    const result = finalizeTranscription(p, cues, transcriptionStats);
+    progress({ progress: 1, message: `${cues.length}件の字幕を作成しました` }); return result;
   } finally { await fs.rm(directory, { recursive: true, force: true }); }
 }
 async function generateMetadata(p, client, signal) {
@@ -118,4 +129,4 @@ async function generateThumbnail(p, prompt, client, signal, directory) {
     signal?.throwIfAborted();await fs.rename(temporary,file);return file;
   }finally{await fs.rm(temporary,{force:true});}
 }
-module.exports = { totalTime, audioClips, buildTimelineAudio, runAudio, transcribeTimeline, generateMetadata, generateThumbnail };
+module.exports = { finalizeTranscription, totalTime, audioClips, buildTimelineAudio, runAudio, transcribeTimeline, generateMetadata, generateThumbnail };
