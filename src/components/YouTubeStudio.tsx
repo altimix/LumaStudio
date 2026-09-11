@@ -3,7 +3,7 @@ import { Captions, Copy, Download, ImagePlus, KeyRound, LoaderCircle, Sparkles, 
 import { useEditor } from '../store';
 import { endTime } from '../model';
 import { applySubtitles, emptyYoutube } from '../youtube';
-import { chapterTime, descriptionWithChapters, parseHashtags, timelineKey, validateYoutube, validChapters, youtubeText } from '../../shared/youtube.mjs';
+import { chapterTime, descriptionWithChapters, parseHashtags, timelineKey, validateYoutubeProject, validChapters, youtubeText } from '../../shared/youtube.mjs';
 import type { AIProgress, AIStatus, Project, SubtitleCue, YoutubeData } from '../types';
 import { Modal } from './UI';
 import '../youtube.css';
@@ -31,7 +31,7 @@ export default function YouTubeStudio({ onClose }: { onClose: () => void }) {
   const update = (patch: Partial<YoutubeData>, field?: string) => {
     setCopied('');
     try {
-      const s = useEditor.getState(), current = s.project.youtube || emptyYoutube(s.project), next = { ...current, ...patch }; validateYoutube(next);
+      const s = useEditor.getState(), current = s.project.youtube || emptyYoutube(s.project), next = { ...current, ...patch }; validateYoutubeProject({ ...s.project, youtube: next });
       if (JSON.stringify(next) === JSON.stringify(current)) { setError(''); return true; }
       if (field) {
         if (editingField.current !== field) { s.checkpoint('YouTube投稿素材を編集'); editingField.current = field; }
@@ -78,7 +78,7 @@ export default function YouTubeStudio({ onClose }: { onClose: () => void }) {
   const cuePatch = (index: number, patch: Partial<SubtitleCue>) => ({ cues: y.cues.map((c, i) => i === index ? { ...c, ...patch } : c) });
   const checkDraft = (patch: Partial<YoutubeData>) => {
     setCopied('');
-    try { validateYoutube({ ...y, ...patch }); invalidDraft.current = false; setDraftInvalid(false); setError(''); }
+    try { validateYoutubeProject({ ...p, youtube: { ...y, ...patch } }); invalidDraft.current = false; setDraftInvalid(false); setError(''); }
     catch (e) { invalidDraft.current = true; setDraftInvalid(true); setError(message(e)); }
   };
   const commitDraft = (patch: Partial<YoutubeData>, input: HTMLInputElement | HTMLTextAreaElement, saved: string) => {

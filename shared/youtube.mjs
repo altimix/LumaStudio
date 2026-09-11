@@ -85,3 +85,10 @@ export function parseHashtags(value) {
 export function youtubeText(y, duration) {
   return `【タイトル案】\n${y.titles.join('\n')}\n\n【概要欄】\n${descriptionWithChapters(y, duration)}\n\n【検索ワード】\n${y.keywords.join(',')}\n\n【サムネイル用プロンプト】\n${y.thumbnailPrompt}\n`;
 }
+
+// Match electron/project.cjs: transient media URLs are not persisted.
+export function validateYoutubeProject(project) {
+  validateYoutube(project.youtube);
+  const persisted = { ...project, assets: project.assets.map(({ url, thumbnail, offline, playbackPath, thumbnailPath, ...asset }) => asset) };
+  if (new TextEncoder().encode(JSON.stringify(persisted, null, 2)).byteLength > 15 * 1024 * 1024) throw new Error('プロジェクトが大きすぎるため、この変更を保存できません。字幕を短くするか、シーケンスを分けてください。');
+}

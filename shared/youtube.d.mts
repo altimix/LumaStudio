@@ -12,3 +12,5 @@ export function validChapters(chapters: Chapter[], duration: number): boolean;
 export function descriptionWithChapters(y: YoutubeData, duration: number): string;
 export function parseHashtags(value: string): string[];
 export function youtubeText(y: YoutubeData, duration: number): string;
+
+export function validateYoutubeProject(project: import("../src/types").Project): void;

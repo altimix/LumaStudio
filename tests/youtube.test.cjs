@@ -96,7 +96,7 @@ test('RF64 preparation audio can be seeked into a small ordinary WAV upload', as
 test('large transcripts fit the actual persisted project before replacing old captions', () => {
   const {finalizeTranscription}=require('../electron/youtube.cjs');
   const {serializeProject}=require('../electron/project.cjs');
-  const {validateYoutube}=require('../shared/youtube.mjs');
+  const {validateYoutube,validateYoutubeProject}=require('../shared/youtube.mjs');
   const p=fixture(path.resolve('unused.wav'),60000),text='長い日本語の字幕です。'.repeat(2);
   const makeCues=n=>Array.from({length:n},(_,i)=>({start:i,end:i+.5,text}));
   const old={sourceKey:timelineKey(p),cues:makeCues(1),titles:[],description:'以前の説明',chapters:[],keywords:[],thumbnailPrompt:''};p.youtube=old;
@@ -106,6 +106,9 @@ test('large transcripts fit the actual persisted project before replacing old ca
   p.clips.push(...Array.from({length:1999},(_,i)=>({...p.clips[0],id:`title-${i}`,assetId:undefined,kind:'title',start:0,duration:1,text:'あ'.repeat(1800),fontSize:58,color:'#ffffff',textStyle:'subtitle'})));
   serializeProject(p);
   const cues=makeCues(50000);validateYoutube({...old,cues});
+  validateYoutubeProject(p);
+  assert.throws(()=>validateYoutubeProject({...p,youtube:{...old,cues}}),/大きすぎる/);
+  assert.equal(p.youtube,old);
   assert.throws(()=>finalizeTranscription(p,cues,{retries:0,timingFallbacks:0}),/15 MiB/);
   assert.equal(p.youtube,old);
   const small=fixture(path.resolve('unused.wav'),60000);
