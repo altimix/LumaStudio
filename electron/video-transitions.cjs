@@ -15,7 +15,7 @@ function compositeVisuals(filters,visuals,plans,fps) {
     const shifted=`shifted${serial++}`,out=`composite${serial++}`;
     filters.push(`[${label}]settb=1/${fps},setpts=PTS+${Math.round(item.clip.start*fps)}[${shifted}]`);
     const x=item.full?'0':`(W-w)/2+W*${number((item.clip.graphic?0:item.clip.x)/100)}`,y=item.full?'0':`(H-h)/2+H*${number((item.clip.graphic?0:item.clip.y)/100)}`;
-    filters.push(`[${base}][${shifted}]overlay=x=${x}:y=${y}:eof_action=repeat:repeatlast=1:enable='gte(t,${number((Math.round(item.clip.start*fps)-.5)/fps)})*lt(t,${number((Math.max(1,Math.round(end*fps))-.5)/fps)})'[${out}]`);base=out;
+    filters.push(`[${base}][${shifted}]overlay=x=${x}:y=${y}:eof_action=repeat:repeatlast=1:enable='gte(t,${number((Math.round(item.clip.start*fps)-.5)/fps)})*lt(t,${number((Math.max(1,Math.ceil(end*fps-1e-7))-.5)/fps)})'[${out}]`);base=out;
   }
   return base;
 }

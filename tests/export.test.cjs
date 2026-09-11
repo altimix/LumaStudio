@@ -29,9 +29,22 @@ test('one-frame projects never gain a trailing black frame at a different export
   const p=project();p.fps=24;p.clips=[{...p.clips[0],duration:1/24,audioMuted:true}];
   const out=path.join(dir,`one-frame-${fps}.mp4`);await exportProject(p,{...settings,fps},out);
   const pixels=await run(ffmpeg,['-v','error','-i',out,'-vf','scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
-  assert.equal(pixels.length,Math.max(1,Math.round(fps/24))*3);
+  assert.equal(pixels.length,Math.max(1,Math.ceil(fps/24-1e-7))*3);
   for(let i=2;i<pixels.length;i+=3)assert.ok(pixels[i]>180,`black at ${fps} FPS frame ${(i-2)/3}`);
  }
+});
+test('a short final audio interval survives downsampling without a black final video frame',async()=>{
+ const p=project();p.fps=120;
+ p.clips=[{...p.clips[0],duration:1+1/120,audioMuted:true},
+  {...p.clips[0],id:'tail-audio',kind:'audio',start:1,in:.5,duration:1/120}];
+ const out=path.join(dir,'short-tail.mp4');await exportProject(p,{...settings,fps:24},out);
+ const pixels=await run(ffmpeg,['-v','error','-i',out,'-vf','scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
+ assert.equal(pixels.length,25*3);
+ for(let i=2;i<pixels.length;i+=3)assert.ok(pixels[i]>180,`black tail at frame ${(i-2)/3}`);
+ const pcm=await run(ffmpeg,['-v','error','-i',out,'-vn','-ac','1','-ar','48000','-f','f32le','pipe:1']);
+ assert.ok(pcm.length>=48400*4);let energy=0;
+ for(let i=48000;i<48400;i++)energy+=pcm.readFloatLE(i*4)**2;
+ assert.ok(Math.sqrt(energy/400)>.02,'the final 1/120-second tone remains audible');
 });
 test('adjacent cuts keep every frame when source and sequence FPS differ',async()=>{
  for(const frames of [1,2,7,10]){

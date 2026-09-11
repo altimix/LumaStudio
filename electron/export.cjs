@@ -110,7 +110,9 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}) {
   const fps = finite(settings.fps, 1, 120, '書き出しFPS');
   const authoredDuration = Math.max(0, ...p.clips.map(c => c.start + c.duration));
   if (!authoredDuration) throw new Error('書き出すクリップがありません。');
-  const duration = Math.max(1,Math.round(authoredDuration*fps))/fps;
+  // Keep the final partial output frame so short trailing audio is not lost.
+  // Ignore only floating-point noise at an already exact frame boundary.
+  const duration = Math.max(1,Math.ceil(authoredDuration*fps-1e-7))/fps;
   const args = ['-hide_banner', '-y', '-filter_complex_threads', '2', '-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:r=${fps}:d=${number(duration)}`, '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${number(duration)}`];
   const visible = p.clips.filter(c => c.kind !== 'audio' && !p.tracks.find(t => t.id === c.trackId)?.hidden);
   const only = visible.length === 1 ? visible[0] : null, onlyAsset = p.assets.find(a => a.id === only?.assetId);
