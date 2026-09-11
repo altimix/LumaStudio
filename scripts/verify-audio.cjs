@@ -171,7 +171,11 @@ async function verify() {
       await captureStart(); await rapid(['k', 'l']); const data = await captured(true, 12000);
       const level = rms(data[0]); assert.ok(level > 0.07, `K/L cycle ${i}: ${level}`); metrics.push({ name: `K-L-${i}`, rms: level });
     }
-    await page.evaluate(() => window.audioCapture.context.suspend()); await captureStart(); await rapid(['k', 'l']); const resumed = await captured();
+    await page.evaluate(() => window.audioCapture.context.suspend()); await rapid(['k', 'l']);
+    // Resume is asynchronous. Start the test recorder only after the application
+    // has resumed the context; recording an inactive stream can stall WebM output.
+    await page.waitForFunction(() => window.audioCapture.context.state === 'running', null, { timeout: 15000 });
+    await captureStart(); const resumed = await captured();
     assert.equal(await page.evaluate(() => window.audioCapture.context.state), 'running'); assert.ok(rms(resumed[0]) > 0.07);
     checks.push('six same-frame K/L restarts and suspended-context recovery');
     await rapid(['j', 'k', 'l']); await captureStart(); assert.ok(rms((await captured())[0]) > 0.07); await page.keyboard.press('k');
