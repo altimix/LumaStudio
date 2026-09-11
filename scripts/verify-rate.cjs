@@ -11,7 +11,16 @@ async function verify(){
     await page.locator('.media-card').first().waitFor({timeout:60000});await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1100,760));const file=path.join(results,'レート調整.luma');
     await app.evaluate(({dialog},data)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:data.inputs});dialog.showSaveDialog=async()=>({canceled:false,filePath:data.file});},{inputs:[videoFile,audioFile],file});
     await page.getByRole('button',{name:'読み込み',exact:true}).click();await page.getByRole('button',{name:'速度変更の音声.wav を追加',exact:true}).waitFor({timeout:60000});
-    const save=async()=>{await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));return JSON.parse(await fs.readFile(file,'utf8'));};
+    const save=async()=>{
+      const before=(await fs.stat(file).catch(()=>null))?.mtimeMs;
+      await page.keyboard.press('Control+s');
+      // A clean snapshot has no dirty marker even while its save is pending.
+      // Do not let the following Undo/edit race that native atomic write.
+      const deadline=Date.now()+10000;
+      while((await fs.stat(file).catch(()=>null))?.mtimeMs===before){assert.ok(Date.now()<deadline,'native rate-test project save completed');await new Promise(resolve=>setTimeout(resolve,25));}
+      await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
+      return JSON.parse(await fs.readFile(file,'utf8'));
+    };
     const demo=await save(),v=demo.clips.find(c=>c.kind==='video'),a=demo.clips.find(c=>c.kind==='audio');
     const p={...demo,name:'レート調整の検証',width:320,height:180,markers:[],clips:[{...v,assetId:demo.assets.find(a=>a.path===videoFile).id,name:'映像の区間',start:2,in:1,duration:4,volume:1,fadeIn:0,fadeOut:0},{...a,assetId:demo.assets.find(a=>a.path===audioFile).id,name:'音声の区間',start:2,in:1,duration:4,volume:1,fadeIn:0,fadeOut:0}]};
     await fs.writeFile(file,JSON.stringify(p));await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},file);await page.keyboard.press('Control+o');await page.getByRole('button',{name:p.name,exact:true}).waitFor();await page.keyboard.press('Home');
