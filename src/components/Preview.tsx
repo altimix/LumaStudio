@@ -127,7 +127,7 @@ export default function Preview() {
       if(s.playing)for(const track of p.tracks){
         if(track.hidden||track.kind!=='video')continue;
         const forward=s.shuttleRate>0;
-        const upcoming=p.clips.filter(c=>c.trackId===track.id&&c.kind==='video').map(clip=>({clip,until:forward?clip.start-t:t-(clip.start+clip.duration)})).filter(c=>c.until>0&&c.until<=2*Math.abs(s.shuttleRate)).sort((a,b)=>a.until-b.until)[0];
+        const upcoming=p.clips.filter(c=>c.trackId===track.id&&c.kind==='video'&&!pairs.has(c.id)).map(clip=>({clip,until:forward?clip.start-t:t-(clip.start+clip.duration)})).filter(c=>c.until>0&&c.until<=2*Math.abs(s.shuttleRate)).sort((a,b)=>a.until-b.until)[0];
         if(!upcoming)continue;
         const clip=upcoming.clip,asset=p.assets.find(a=>a.id===clip.assetId);
         if(!asset||asset.offline)continue;
