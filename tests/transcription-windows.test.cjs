@@ -47,3 +47,9 @@ test('production word+segment fallback excludes words inside rejected silence se
   assert.throws(()=>timedTranscript({words:[{...words[1],start:NaN}],segments}),{code:'TRANSCRIPT_ALIGNMENT'});
   assert.throws(()=>timedTranscript({words,segments:[{...segments[1],start:NaN}]}),{code:'TRANSCRIPT_ALIGNMENT'});
 });
+
+test('audible intervals skip empty spans and overlapping intervals do not duplicate requests',async()=>{
+  const calls=[];
+  await transcribeWindows(86400*3+120,async w=>{calls.push(w.start);return {text:'',words:[],segments:[]};},undefined,()=>{},24,30,[{start:86400*3,end:86400*3+1},{start:60,end:61},{start:61,end:62}]);
+  assert.deepEqual(calls,[60,86400*3]);
+});

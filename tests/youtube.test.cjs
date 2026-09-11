@@ -135,3 +135,12 @@ test('direct transcription windows preserve fades and volume without rendering d
   assert.ok(args.includes('anullsrc=r=48000:cl=stereo:d=1'));assert.equal(args.filter(x=>x===source).length,1);
   await runAudio(args);assert.ok((await fs.stat(chunk)).size<33000);assert.equal((await pcm(chunk)).length,32000);
 }));
+
+test('sparse long timeline skips empty windows and retains absolute speech times', async()=>temporary(async dir=>{
+  const {ffmpeg,run}=require('../electron/media.cjs'),source=path.join(dir,'speech.wav');
+  await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','sine=frequency=440:duration=3','-c:a','pcm_s16le',source]);
+  const p=fixture(source,1),late=86400*3;p.clips[0].start=late;
+  let calls=0;
+  const result=await transcribeTimeline(p,'',{transcribe:async file=>{calls++;assert.ok((await fs.stat(file)).size<65000);return {text:'音声',words:[{word:'音声',start:1,end:1.8}]};}});
+  assert.equal(calls,1);assert.equal(result.cues[0].start,late);assert.equal(result.cues[0].end,late+.8);
+}));

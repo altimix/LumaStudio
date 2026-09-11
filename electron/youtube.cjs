@@ -79,12 +79,14 @@ async function transcribeTimeline(p, vocabulary, client, signal, progress = () =
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-transcript-'));
   try {
     progress({ progress: 0, message: '短い区間ごとに音声を準備します' });
-    const duration = totalTime(p);
+    const duration = totalTime(p), plans = transitionPlan(p), audible = audioClips(p);
+    if (!audible.length) throw new Error('文字起こしできる音声がありません。音声トラックのミュート・ソロ・音量を確認してください。');
+    const ranges = audible.map(c=>{const w=mediaWindow(c,p.assets.find(a=>a.id===c.assetId),plans,'audio');return {start:w.start,end:w.start+w.duration};});
     const { cues, transcriptionStats } = await transcribeWindows(duration, async ({ from, to, allowTimingFallback }) => {
       const file = path.join(directory, 'chunk.wav');
       await runAudio(buildTimelineAudio(p, file, audioPaths, { from, to }), signal);
       return client.transcribe(file, vocabulary, signal, { allowTimingFallback });
-    }, signal, progress, p.height > p.width ? 15 : 24, p.fps);
+    }, signal, progress, p.height > p.width ? 15 : 24, p.fps, ranges);
     const result = finalizeTranscription(p, cues, transcriptionStats);
     progress({ progress: 1, message: `${cues.length}件の字幕を作成しました` }); return result;
   } finally { await fs.rm(directory, { recursive: true, force: true }); }
