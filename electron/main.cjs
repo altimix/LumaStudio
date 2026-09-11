@@ -191,6 +191,9 @@ function installIPC() {
   }));
   handle('ai-metadata', p => job(signal => { progress({ progress: 0, message: 'タイトル・概要欄・検索ワードを生成中' }); return generateMetadata(p, ai, signal); }));
   handle('ai-thumbnail', (p, prompt) => job(async signal => {
+    validateProject(p);
+    for(const {asset}of require('../shared/youtube-thumbnail.mjs').thumbnailFrames(p))await registered(asset);
+    await credentials.get();
     progress({ progress: 0, message: 'サムネイル画像を生成中（数分かかることがあります）' });
     const file = await generateThumbnail(p, prompt, ai, signal, path.join(app.getPath('userData'), 'youtube-images'));
     return present(await inspectMedia(file, cacheDir()));
@@ -199,7 +202,7 @@ function installIPC() {
   handle('ai-save-output', async (p, format) => {
     validateProject(p); if (!['srt', 'vtt', 'txt', 'jpg'].includes(format) || !p.youtube) throw new Error('保存する投稿素材がありません。');
     let contents;
-    if (format === 'jpg') { const a = p.assets.find(a => a.id === p.youtube.thumbnailAssetId); if (!a || (await registered(a)).kind !== 'image') throw new Error('サムネイルを生成してください。'); contents = await fs.readFile(a.path); }
+    if (format === 'jpg') { const a = p.assets.find(a => a.id === p.youtube.thumbnailAssetId); if (!a || (await registered(a)).kind !== 'image') throw new Error('サムネイルを生成してください。'); contents = await require('./thumbnail-jpeg.cjs').thumbnailJpeg(a.path); }
     else contents = format === 'txt' ? youtubeText(p.youtube, totalTime(p)) : subtitleFile(p.youtube.cues, format);
     const result = await dialog.showSaveDialog(window, { title: 'YouTube投稿素材を保存', defaultPath: `${p.name.replace(/[<>:"/\\|?*]/g, '_')}.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] });
     if (result.canceled) return null;

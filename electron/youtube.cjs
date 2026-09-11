@@ -4,7 +4,9 @@ const path = require('node:path');
 const os = require('node:os');
 const { randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
-const { ffmpeg } = require('./media.cjs');
+const { ffmpeg, run, probe } = require('./media.cjs');
+const { thumbnailFormat, thumbnailFrames, thumbnailBrief } = require('../shared/youtube-thumbnail.mjs');
+const { thumbnailJpeg } = require('./thumbnail-jpeg.cjs');
 const { validateProject } = require('./export.cjs');
 const { number, clipAudioFilter, mixAudioFilter } = require('./audio-render.cjs');
 const { writeFilterScript } = require('./filter-script.cjs');
@@ -95,10 +97,25 @@ async function generateMetadata(p, client, signal) {
 }
 async function generateThumbnail(p, prompt, client, signal, directory) {
   validateProject(p);
-  if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 6000) throw new Error('画像プロンプトを1〜6000文字で入力してください。');
-  const portrait = p.height > p.width;
-  const bytes = await client.image(`YouTube用の${portrait ? '縦9:16' : '横16:9'}サムネイル。日本語の見出しは短く大きく、端から余白を取って読みやすくしてください。\n${prompt}`, portrait, signal);
+  if (typeof prompt !== 'string' || prompt.length > 6000) throw new Error('画像プロンプトは6000文字以内で入力してください。');
+  if(!prompt.trim()&&!p.clips.length)throw new Error('動画を配置するか、サムネイルで伝えたい内容を入力してください。');
+  const format=thumbnailFormat(p),references=[];
+  for(const {asset,sourceTime}of thumbnailFrames(p)){
+    signal?.throwIfAborted();
+    const args=['-v','error',...(asset.kind==='video'?['-ss',number(sourceTime)]:[]),'-i',asset.path,'-frames:v','1','-vf','scale=1024:1024:force_original_aspect_ratio=decrease','-q:v','3','-f','image2pipe','-c:v','mjpeg','pipe:1'];
+    const image=await run(ffmpeg,args,{signal});
+    if(!image.length)throw new Error('動画から参考画像を取得できませんでした。素材を確認してください。');
+    references.push(image);
+  }
+  const bytes = await client.image(thumbnailBrief(p,prompt), format.portrait, signal,references);
   signal?.throwIfAborted(); await fs.mkdir(directory, { recursive: true });
-  const file = path.join(directory, `thumbnail-${randomUUID()}.jpg`); await fs.writeFile(file, bytes, { flag: 'wx' }); return file;
+  const file = path.join(directory, `thumbnail-${randomUUID()}.jpg`),temporary=file+'.tmp.jpg';
+  try{
+    await fs.writeFile(temporary,bytes,{flag:'wx'});
+    const info=await probe(temporary),image=info.streams.find(s=>s.codec_type==='video');
+    if(image?.width!==format.width||image?.height!==format.height)throw new Error(`生成画像が${format.ratio}の指定サイズではありません。再生成してください。`);
+    await fs.writeFile(temporary,await thumbnailJpeg(temporary,signal));
+    signal?.throwIfAborted();await fs.rename(temporary,file);return file;
+  }finally{await fs.rm(temporary,{force:true});}
 }
 module.exports = { totalTime, audioClips, buildTimelineAudio, runAudio, transcribeTimeline, generateMetadata, generateThumbnail };
