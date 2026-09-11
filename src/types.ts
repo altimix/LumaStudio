@@ -36,6 +36,7 @@ export interface YoutubeData { sourceKey: string; cues: SubtitleCue[]; titles: s
 export interface AIStatus { configured: boolean; source: string; transcriptionModel: string; timingModel: string; textModel: string; imageModel: string }
 export interface AIProgress { message: string; progress: number }
 export interface Project { version: 1; id: string; name: string; width: number; height: number; fps: number; assets: Asset[]; clips: Clip[]; tracks: Track[]; markers: Marker[]; youtube?: YoutubeData; transitions?:Transition[] }
+export interface UpdateInfo { status: 'current' | 'available' | 'unsupported' | 'error'; currentVersion: string; latestVersion?: string; checkedAt: number; platform: string; arch: string; releaseUrl?: string; message?: string }
 export type ExportEncoder = 'auto' | 'cpu' | 'nvenc' | 'qsv' | 'amf';
 export interface EncoderCapabilities { recommended: ExportEncoder; encoders: { id: Exclude<ExportEncoder, 'auto'>; label: string; available: boolean; reason?: string }[] }
 export interface ExportSettings { width: number; height: number; fps: number; quality: 'draft' | 'standard' | 'high'; target?: 'youtube' | 'shorts'; encoder?: ExportEncoder }
@@ -85,6 +86,8 @@ export interface DesktopAPI {
   onSaveBeforeClose(cb: (requestId: number) => void): () => void;
   finishSaveBeforeClose(requestId: number, saved: boolean): Promise<void>;
   exportProject(project: Project, settings: ExportSettings, titles: Record<string, string>): Promise<string | null>;
+  checkUpdates(refresh?: boolean): Promise<UpdateInfo>;
+  openUpdatePage(): Promise<void>;
   exportEncoders(refresh?: boolean): Promise<EncoderCapabilities>;
   cancelExport(): Promise<void>;
   reveal(path: string): Promise<void>;
