@@ -36,3 +36,7 @@ jobs:
             sleep 1
           done
           node website/verify.cjs || { cat /tmp/lumastudio-site.log; exit 1; }
+      - name: Verify live release download links
+        env:
+          SITE_URL: https://lumastudio.altimix.jp
+        run: node website/verify.cjs

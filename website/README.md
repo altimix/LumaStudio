@@ -39,3 +39,5 @@ npm run deploy --prefix website
 会社情報の確認元: https://altimix.co.jp/company/ / https://altimix.co.jp/contact/
 
 画面例の映像: Sintel — © Blender Foundation、CC BY 3.0。サイトのaboutページで出典・ライセンス・加工を表示しています。
+
+本番HTTPSを指定した検証では、配布EXE・ZIP・起動手順・SHA256のリンクをリダイレクト対応HEADで確認します。Website CIはローカルの変更案と現在の公開サイトの両方を検証します。未公開版の配布リンクはリリース公開後、サイト更新後の本番検証で確認します。
