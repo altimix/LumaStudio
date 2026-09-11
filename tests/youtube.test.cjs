@@ -76,3 +76,9 @@ test('timing fallback is opt-in and keeps measured text and timestamps when mode
   assert.equal(result.text,'実際に時刻を取得した言葉です。');assert.equal(result.alignment.textModel,'whisper-1');
   assert.equal(result.words[0].start,.4);assert.equal(result.words.at(-1).end,3.2);
 }));
+
+test('transcription rejects overflowing sequence duration before starting an RF64 render', () => {
+  const {MAX_MEDIA_SECONDS}=require('../shared/time.mjs');
+  const p=fixture(path.resolve('unused.wav'));p.clips[0].start=MAX_MEDIA_SECONDS;
+  assert.throws(()=>buildTimelineAudio(p,path.resolve('unused-output.wav')),/音声の長さが不正/);
+});

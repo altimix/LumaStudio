@@ -1,4 +1,5 @@
 const { transcribeWindows } = require('./transcription-windows.cjs');
+const { MAX_MEDIA_SECONDS } = require('../shared/time.mjs');
 const { hasClipAudio } = require('../shared/clip-links.mjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -24,7 +25,7 @@ function audioClips(p) {
 function buildTimelineAudio(p, output, audioPaths = {}) {
   validateProject(p); const duration = totalTime(p); const clips = audioClips(p);
   if (!clips.length) throw new Error('文字起こしできる音声がありません。音声トラックのミュート・ソロ・音量を確認してください。');
-  if (!Number.isFinite(duration) || duration <= 0) throw new Error('文字起こしの音声の長さが不正です。');
+  if (!Number.isFinite(duration) || duration <= 0 || duration > MAX_MEDIA_SECONDS) throw new Error('文字起こしの音声の長さが不正です。');
   const args = ['-y', '-v', 'error', '-filter_complex_threads', '1', '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${number(duration)}`];
   const envelopes=audioEnvelopes(p),plans=transitionPlan(p);
   const filters = [], labels = ['[0:a]'];
