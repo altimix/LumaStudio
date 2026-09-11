@@ -5,7 +5,9 @@ altimixが開発する、Windows・macOS向けの日本語動画編集ソフト�
 
 [公式サイト](https://lumastudio.altimix.jp/) · [ダウンロード](https://github.com/altimix/LumaStudio/releases/latest) · [操作ガイド](README.html) · [開発手順](docs/DEVELOPMENT.md) · [開発に参加](CONTRIBUTING.md)
 
-## 1.3.0
+## 1.3.1
+
+- Mac版の不完全な署名を修正。配布ZIPの署名とリソースの整合性を検証します（Developer ID署名・公証は未対応）。
 
 - 長い音声を自動で区切り、時刻が合わない区間だけ細分化して再認識。短い区間でも一致しない場合は実測時刻付きの本文を採用します。
 - 中央から上へVideo1、Video2…、下へAudio1、Audio2…と番号順に表示。どの段でも映像・音声・画像・テロップを配置・編集できます。

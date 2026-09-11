@@ -20,7 +20,11 @@ const child=spawn(process.execPath,[path.join(root,'node_modules','electron-buil
   cwd:root,stdio:'inherit',windowsHide:true,
   env:{...process.env,ELECTRON_BUILDER_COMPRESSION_LEVEL:process.env.ELECTRON_BUILDER_COMPRESSION_LEVEL||'9'}
 });
-child.on('error',e=>{console.error(e);process.exitCode=1;});child.on('exit',code=>{process.exitCode=code??1;});
+await new Promise((resolve, reject) => {
+  child.on('error', reject);
+  child.on('exit', code => code === 0 ? resolve() : reject(new Error(`パッケージ作成に失敗しました (${code})`)));
+});
+if (process.platform === 'darwin') require('./verify-macos-signature.cjs').verifyMacArchive(root);
 
 }
 packageApp().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,6 +1,6 @@
 {
   "name": "luma-studio",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "private": true,
   "description": "Luma Studio - Windows / macOS multitrack video editor",
   "author": "altimix",
@@ -109,7 +109,8 @@
       ],
       "category": "public.app-category.video",
       "artifactName": "Luma-Studio-${version}-macOS-${arch}.${ext}",
-      "identity": null,
+      "identity": "-",
+      "hardenedRuntime": false,
       "icon": "electron/luma.png"
     },
     "electronLanguages": [

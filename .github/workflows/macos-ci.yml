@@ -43,7 +43,7 @@ jobs:
         run: npm run verify:readme
       - name: Test editing model and real FFmpeg output
         run: npm test
-      - name: Build and package macOS Apple Silicon
+      - name: Build, sign and verify macOS distribution ZIP
         env:
           GH_TOKEN: ${{ github.token }}
         run: npm run package
