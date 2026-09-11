@@ -90,11 +90,11 @@ async function verify() {
     const dialog = page.getByRole('dialog', { name: '使用中の素材を削除', exact: true }); await dialog.waitFor();
     assert.match(await dialog.textContent(), /6個のクリップ/); await page.keyboard.press('Delete'); assert.equal(await page.locator('.timeline-clip').count(), 6);
     await page.getByRole('button', { name: 'キャンセル', exact: true }).click(); checks.push('used-media review and cancel preserve the project');
-    await page.getByRole('button', { name: 'メイン映像 ロック', exact: true }).click();
+    await page.getByRole('button', { name: 'Video1 ロック', exact: true }).click();
     await page.getByRole('button', { name: '長い素材 75秒.mp4 を選択', exact: true }).click(); await page.keyboard.press('Delete');
     await page.getByText('この素材を使用しているトラックのロックを解除してください。', { exact: true }).waitFor();
     assert.equal(await page.locator('.timeline-clip').count(), 6); assert.equal(await dialog.count(), 0); checks.push('locked clip references protect media removal');
-    await page.getByRole('button', { name: 'メイン映像 ロック解除', exact: true }).click();
+    await page.getByRole('button', { name: 'Video1 ロック解除', exact: true }).click();
     await page.locator('.timeline-clip').first().focus(); await page.keyboard.press('Enter'); await page.keyboard.press('Delete');
     assert.equal(await page.locator('.timeline-clip').count(), 4); assert.equal(await page.locator('.media-card').count(), 1); await page.keyboard.press('Control+z'); checks.push('timeline Delete removes only clips');
     await page.getByRole('button', { name: '長い素材 75秒.mp4 を選択', exact: true }).click(); await page.keyboard.press('Delete');

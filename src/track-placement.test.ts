@@ -1,3 +1,4 @@
+import { numberTracks } from './track-names';
 import { expect, it } from 'vitest';
 import { emptyProject, makeClip, makeTrack } from './model';
 import { separateOverlappingClips } from './track-placement';
@@ -9,7 +10,7 @@ it('reuses an available audio interval so overlapping AV placement fits the last
   while(p.tracks.length<23)p.tracks.push(makeTrack('video','追加'));
   const videoTrack=p.tracks[1].id,audioTrack=p.tracks[2].id;
   p.clips=[{...makeClip(videoTrack,0,p.assets[0]),id:'old',audioMuted:true},{...makeClip(audioTrack,3,p.assets[0]),id:'later',kind:'audio'}];
-  s.load(p);s.addAsset('source',0,videoTrack);
+  p.tracks=numberTracks(p).tracks;s.load(p);s.addAsset('source',0,videoTrack);
   const next=useEditor.getState().project;expect(next.tracks).toHaveLength(24);expect(next.clips).toHaveLength(4);
   const [video,audio]=next.clips.slice(2);expect(video.trackId).not.toBe(videoTrack);expect(audio.trackId).toBe(audioTrack);
   expect(audio.linkId).toBe(video.linkId);expect(audio.start).toBe(0);expect(video.start).toBe(0);expect(next.clips.slice(0,2)).toEqual(p.clips);
@@ -26,7 +27,7 @@ it('does not reuse locked, differently muted/soloed, or occupied audio intervals
       if(blocked==='occupied')p.clips.push({...makeClip(t.id,0,p.assets[0]),id:t.id,kind:'audio'});
       else t[blocked]=true;
     }
-    s.load(p);s.addAsset('source',0,p.tracks[1].id);expect(useEditor.getState().project).toBe(p);expect(useEditor.getState().history).toHaveLength(0);
+    p.tracks=numberTracks(p).tracks;s.load(p);s.addAsset('source',0,p.tracks[1].id);expect(useEditor.getState().project).toBe(p);expect(useEditor.getState().history).toHaveLength(0);
   }
 });
 
@@ -61,7 +62,7 @@ it('retains mute/solo/hidden behavior and places new video tracks above the orig
   expect(next.clips[1].trackId).toBe(next.tracks[0].id);expect(next.tracks[1]).toBe(p.tracks[0]);
 });
 it('stores title auto-placement and tracks in one Undo step, with stable Redo IDs',()=>{
-  const p=emptyProject(),s=useEditor.getState();s.load(p);s.seek(0);s.addTitle('minimal');const one=useEditor.getState().project;
+  const p=emptyProject(),s=useEditor.getState();p.tracks=numberTracks(p).tracks;s.load(p);s.seek(0);s.addTitle('minimal');const one=useEditor.getState().project;
   s.addTitle('subtitle');const two=useEditor.getState().project;
   expect(two.tracks).toHaveLength(5);expect(two.clips[0].trackId).not.toBe(two.clips[1].trackId);expect(two.clips[1].start).toBe(0);
   s.undo();expect(useEditor.getState().project).toEqual(one);s.redo();expect(useEditor.getState().project).toEqual(two);
@@ -71,14 +72,14 @@ it('pastes linked audio and video at the original times on distinct fresh lanes'
   const p=emptyProject(),s=useEditor.getState();
   p.assets=[{id:'source',name:'source',path:'source.mp4',url:'',thumbnail:'',kind:'video',duration:20,width:320,height:180,fps:30,hasAudio:true,waveform:[],size:1,codec:'h264'}];
   const v={...makeClip(p.tracks[1].id,2.017),id:'v',kind:'video' as const,assetId:'source',audioDetached:true,linkId:'pair'};
-  p.clips=[v,{...v,id:'a',kind:'audio',trackId:p.tracks[2].id,audioDetached:undefined}];s.load(p);s.select(['v']);s.copy();useEditor.setState({playhead:2.017});s.paste();
+  p.clips=[v,{...v,id:'a',kind:'audio',trackId:p.tracks[2].id,audioDetached:undefined}];p.tracks=numberTracks(p).tracks;s.load(p);s.select(['v']);s.copy();useEditor.setState({playhead:2.017});s.paste();
   const next=useEditor.getState().project,copies=next.clips.slice(2);expect(next.tracks).toHaveLength(6);expect(copies.every(c=>c.start===2.017)).toBe(true);
   expect(copies[0].linkId).toBe(copies[1].linkId);expect(copies[0].linkId).not.toBe('pair');
   copies.forEach((c,i)=>expect(c.trackId).not.toBe(p.clips[i].trackId));expect(next.clips.slice(0,2)).toEqual(p.clips);
 });
 it('rejects an overlapping addition at track capacity without changing project/history/selection',()=>{
   const p=emptyProject(),s=useEditor.getState();while(p.tracks.length<24)p.tracks.push(makeTrack('video','追加'));
-  p.clips=[makeClip(p.tracks[0].id,0)];s.load(p);s.seek(0);const before=useEditor.getState();s.addTitle('minimal');
+  p.clips=[makeClip(p.tracks[0].id,0)];p.tracks=numberTracks(p).tracks;s.load(p);s.seek(0);const before=useEditor.getState();s.addTitle('minimal');
   expect(useEditor.getState().project).toBe(p);expect(useEditor.getState().history).toEqual(before.history);expect(useEditor.getState().selected).toEqual(before.selected);
 });
 

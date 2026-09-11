@@ -126,7 +126,7 @@ export default function Preview() {
       // only the nearest incoming clip per visible track, so long edits do not
       // open every decoder at once.
       if(s.playing)for(const track of p.tracks){
-        if(track.hidden||track.kind!=='video')continue;
+        if(track.hidden)continue;
         const forward=s.shuttleRate>0;
         const upcoming=ordinaryCutPrefetch(p.clips,plans,track.id,t,s.shuttleRate);
         if(!upcoming)continue;

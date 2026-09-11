@@ -13,11 +13,11 @@ export function applySubtitles(p: Project): Project {
   const remaining = p.clips.filter(c => !c.subtitle);
   if (remaining.length + y.cues.length > 2000) throw new Error('字幕を含めて2000クリップを超えます。シーケンスを分けてください。');
   const priorTracks = new Set(prior.map(c => c.trackId));
-  let track = p.tracks.find(t => t.kind === 'video' && t.id === prior[0]?.trackId && !t.locked)
-    || p.tracks.find(t => t.kind === 'video' && priorTracks.has(t.id) && !t.locked)
+  let track = p.tracks.find(t => t.id === prior[0]?.trackId && !t.locked)
+    || p.tracks.find(t => priorTracks.has(t.id) && !t.locked)
     || p.tracks.find(t => t.kind === 'video' && t.name === '日本語字幕' && !t.locked);
   const added = !track;
-  if (!track) { if (p.tracks.length >= 24) throw new Error('字幕用のトラックを追加するには、不要なトラックを減らしてください。'); track = makeTrack('video', '日本語字幕'); }
+  if (!track) { if (p.tracks.length >= 24) throw new Error('字幕用のトラックを追加するには、不要なトラックを減らしてください。'); track = makeTrack('video'); }
   const limit = endTime(p);
   let clips = y.cues.map(c => {
     const start = roundFrame(c.start, p.fps), end = Math.min(limit, roundFrame(c.end, p.fps));

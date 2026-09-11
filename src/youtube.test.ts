@@ -1,3 +1,4 @@
+import { numberTracks } from './track-names';
 import { describe, expect, it } from 'vitest';
 import { emptyProject, makeClip, makeTrack } from './model';
 import { useEditor } from './store';
@@ -41,18 +42,18 @@ describe('YouTube timing and Japanese captions', () => {
 });
 describe('subtitle timeline application', () => {
   it('reuses a renamed caption track before a same-name track even at the track limit', () => {
-    const p = applySubtitles(fixture()), captionTrack = p.tracks[0]; captionTrack.name = '話者Aの字幕';
+    const p = applySubtitles(fixture()), captionTrack = p.tracks[0]; captionTrack.name = '話者Aの字幕'; captionTrack.autoName = false;
     p.tracks.unshift(makeTrack('video', '日本語字幕'));
     while (p.tracks.length < 24) p.tracks.push(makeTrack('video', '別のトラック'));
     p.youtube!.cues[0].text = '字幕を更新します。';
     const next = applySubtitles(p);
-    expect(next.tracks).toEqual(p.tracks); expect(next.tracks).toHaveLength(24);
+    expect(next.tracks).toEqual(numberTracks(p).tracks); expect(next.tracks).toHaveLength(24);
     expect(next.clips.filter(c => c.subtitle).every(c => c.trackId === captionTrack.id)).toBe(true);
     expect(next.clips.find(c => c.subtitle)!.text).toBe('字幕を更新します。');
     p.tracks = p.tracks.filter(t => t.name !== '日本語字幕'); p.tracks.push(makeTrack('video', '最後のトラック'));
-    expect(applySubtitles(p).tracks).toEqual(p.tracks);
+    expect(applySubtitles(p).tracks).toEqual(numberTracks(p).tracks);
   });
-  it('adds and updates only automatic captions and can undo atomically', () => { const p = fixture(); useEditor.getState().load(p); const next = applySubtitles(p); expect(next.clips.filter(c => c.subtitle)).toHaveLength(2); expect(next.clips.filter(c=>c.subtitle).every(c=>c.textShadow===false&&c.textStroke===true&&c.strokeColor==='#0064ff')).toBe(true); expect(next.clips[0].text).toBe('元のタイトル'); expect(next.tracks[0].name).toBe('日本語字幕'); expect(applySubtitles(next).clips).toHaveLength(3); useEditor.getState().commit(next); useEditor.getState().undo(); expect(useEditor.getState().project).toEqual(p); });
+  it('adds and updates only automatic captions and can undo atomically', () => { const p = fixture(); useEditor.getState().load(p); const next = applySubtitles(p); expect(next.clips.filter(c => c.subtitle)).toHaveLength(2); expect(next.clips.filter(c=>c.subtitle).every(c=>c.textShadow===false&&c.textStroke===true&&c.strokeColor==='#0064ff')).toBe(true); expect(next.clips[0].text).toBe('元のタイトル'); expect(next.tracks[0].name).toBe('Video3'); expect(applySubtitles(next).clips).toHaveLength(3); useEditor.getState().commit(next); useEditor.getState().undo(); expect(useEditor.getState().project).toEqual(p); });
   it('protects locked subtitle tracks and clip/track limits', () => { const p = applySubtitles(fixture()); p.tracks[0].locked = true; expect(() => applySubtitles(p)).toThrow('ロック'); const q = fixture(); q.tracks = Array.from({ length: 24 }, () => makeTrack('video', 'トラック')); q.clips[0].trackId = q.tracks[0].id; expect(() => applySubtitles(q)).toThrow('トラック'); });
   it('uses portrait-safe typography while keeping sequence times', () => { const p = fixture(); p.width = 1080; p.height = 1920; const next = applySubtitles(p); const c = next.clips.find(c => c.subtitle)!; expect(c.start).toBe(1); expect(c.duration).toBe(2); expect(c.fontSize).toBe(64); expect(c.y).toBeCloseTo(39.533333,5); });
   it('preserves manual cue line breaks in subtitles and burned-in text for both formats', () => {
@@ -71,7 +72,7 @@ it('reuses prior caption lanes through repeated rounded overlapping replacements
   let p=fixture();p.youtube!.cues=[{start:0,end:1.0169,text:'先の字幕'},{start:1.0162,end:2,text:'後の字幕'}];
   p=applySubtitles(p);expect(new Set(p.clips.filter(c=>c.subtitle).map(c=>c.trackId)).size).toBe(2);
   while(p.tracks.length<24)p.tracks.push(makeTrack('video','既存の空トラック'));
-  const tracks=p.tracks,placements=p.clips.filter(c=>c.subtitle).map(c=>[c.text,c.trackId]);
+  p=numberTracks(p);const tracks=p.tracks,placements=p.clips.filter(c=>c.subtitle).map(c=>[c.text,c.trackId]);
   for(let i=0;i<30;i++){
     p=applySubtitles(p);expect(p.tracks).toEqual(tracks);
     expect(p.clips.filter(c=>c.subtitle).map(c=>[c.text,c.trackId])).toEqual(placements);

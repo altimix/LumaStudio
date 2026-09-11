@@ -1,3 +1,4 @@
+import { numberTracks } from './track-names';
 import { trackDeletionReason } from './track-editing';
 import { separateOverlappingClips } from './track-placement';
 import { resetAudioMeter } from './meter-store';
@@ -77,11 +78,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   removeTransition:id=>{const s=get(),t=s.project.transitions?.find(t=>t.id===id);if(!t)return;if(clipsLocked(s.project,[t.fromId,t.toId])){s.notify('トラックのロックを解除してください。');return;}s.commit({...s.project,transitions:s.project.transitions!.filter(t=>t.id!==id)},'トランジションを削除');s.notify('つなぎ目の効果を削除しました。素材の配置や動画の長さは変わりません。');},
   drawTool:null,drawSettings:{color:'#ff0000',duration:3,sound:'chime',volume:.9},
   addDrawing:(input,sound,volume=.9)=>{
-    const s=get(),p=s.project,track=p.tracks.find(t=>t.kind==='video'&&!t.locked&&!t.hidden);
-    if(!track){s.notify('図形を置く映像トラックを表示し、ロックを解除してください。');return false;}
+    const s=get(),p=s.project,track=p.tracks.find(t=>!t.locked&&!t.hidden);
+    if(!track){s.notify('図形を置くトラックを表示し、ロックを解除してください。');return false;}
     if(!input.graphic||!capacity(p.clips.length,sound?2:1)||!capacity(p.assets.length,sound&&!p.assets.some(a=>a.id===sound.id)?1:0,'素材'))return false;
-    let tracks=p.tracks,soundTrack=tracks.find(t=>t.kind==='audio'&&t.name==='効果音'&&!t.locked);
-    if(sound&&!soundTrack){if(tracks.length<24){soundTrack=makeTrack('audio','効果音');tracks=[...tracks,soundTrack];}else soundTrack=tracks.find(t=>t.kind==='audio'&&!t.locked);if(!soundTrack){s.notify('効果音を追加する音声トラックのロックを解除してください。');return false;}}
+    let tracks=p.tracks,soundTrack=tracks.find(t=>t.kind==='audio'&&!t.locked);
+    if(sound&&!soundTrack){if(tracks.length<24){soundTrack=makeTrack('audio');tracks=[...tracks,soundTrack];}else soundTrack=tracks.find(t=>t.kind==='audio'&&!t.locked);if(!soundTrack){s.notify('効果音を追加する音声トラックのロックを解除してください。');return false;}}
     const clip=normalizeClip({...makeClip(track.id,s.playhead),...input,text:'',name:SHAPE_NAMES[input.graphic.shape],textStyle:'minimal',textShadow:false},p);
     try{validateGraphic(clip);}catch(error){s.notify((error as Error).message);return false;}
     const assets=sound&&!p.assets.some(a=>a.id===sound.id)?[...p.assets,sound]:p.assets;
@@ -106,7 +107,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   history: [], future: [], historyLabels: [], futureLabels: [], currentAction: '開始', dirty: false, savedPath: null, clipboard: [], toast: '', sourceId: null, ready: false, autosavedAt: '', previewQuality: 0.5, safeGuides: false, gestureActive: false, gestureOwner:null, gestureCancel:null, trackMenuOpen: false,
   beginGesture:(owner,cancel)=>{if(get().gestureActive)return false;set({gestureActive:true,gestureOwner:owner,gestureCancel:cancel});return true;},
   endGesture:owner=>{if(get().gestureOwner===owner)set({gestureActive:false,gestureOwner:null,gestureCancel:null});},
-  load: (p, savedPath) => {get().gestureCancel?.();set(s => ({ projectGeneration: s.projectGeneration + 1, project: p, activeVolumePoint:null, historyPlayheads:[], futurePlayheads:[], clipMenuOpen:false, drawTool:null, savedPath: savedPath || null, selected: p.clips.filter(c => c.kind === 'video').slice(0,1).map(c => c.id), playhead: Math.min(2.4, endTime(p)), zoom: boundedZoom(s.zoom, endTime(p)), seekRevision: s.seekRevision + 1, playing: false, shuttleRate: 1, history: [], future: [], historyLabels: [], futureLabels: [], currentAction: '開始', dirty: false, ready: true, gestureActive: false, gestureOwner:null, gestureCancel:null, trackMenuOpen: false, sourceId: null, clipboard: [] }));resetAudioMeter();},
+  load: (p, savedPath) => {get().gestureCancel?.();p=numberTracks(p);set(s => ({ projectGeneration: s.projectGeneration + 1, project: p, activeVolumePoint:null, historyPlayheads:[], futurePlayheads:[], clipMenuOpen:false, drawTool:null, savedPath: savedPath || null, selected: p.clips.filter(c => c.kind === 'video').slice(0,1).map(c => c.id), playhead: Math.min(2.4, endTime(p)), zoom: boundedZoom(s.zoom, endTime(p)), seekRevision: s.seekRevision + 1, playing: false, shuttleRate: 1, history: [], future: [], historyLabels: [], futureLabels: [], currentAction: '開始', dirty: false, ready: true, gestureActive: false, gestureOwner:null, gestureCancel:null, trackMenuOpen: false, sourceId: null, clipboard: [] }));resetAudioMeter();},
   place: (p,label) => {
     const s=get();if(s.gestureActive){s.notify('ドラッグ中の編集を完了してください。');return false;}
     const existing=new Set(s.project.clips.map(c=>c.id));
@@ -114,11 +115,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     catch(error){s.notify((error as Error).message);return false;}
   },
   commit: (p, label = 'クリップのプロパティを変更', undoPlayhead) => {
-    const s=get(); try {p=pruneTransitions(syncLinkedEdits(s.project,p,uid));} catch(e){s.notify((e as Error).message);return false;}
+    const s=get(); try {p=numberTracks(pruneTransitions(syncLinkedEdits(s.project,p,uid)));} catch(e){s.notify((e as Error).message);return false;}
     set({project:p,activeVolumePoint:volumeSelectionAfterEdit(s,p),zoom:boundedZoom(s.zoom,Math.max(endTime(p),s.playhead)),history:[...s.history.slice(-79),s.project],historyPlayheads:[...s.historyPlayheads.slice(-79),undoPlayhead??null],historyLabels:[...s.historyLabels.slice(-79),s.currentAction],currentAction:label,future:[],futurePlayheads:[],futureLabels:[],dirty:true});return true;
   },
   checkpoint: (label = 'プロパティを変更') => set(s => ({ history: [...s.history.slice(-79), s.project], historyPlayheads:[...s.historyPlayheads.slice(-79),null], historyLabels: [...s.historyLabels.slice(-79), s.currentAction], currentAction: label, future: [], futurePlayheads:[], futureLabels: [], dirty: true })),
-  transient: (p,baseline) => {const s=get();try{p=reflowEditedCaptions(baseline||s.project,p);p=pruneTransitions(syncLinkedEdits(baseline||s.project,p,uid));set({project:p,activeVolumePoint:volumeSelectionAfterEdit(s,p),zoom:boundedZoom(s.zoom,Math.max(endTime(p),s.playhead)),dirty:true});}catch(e){s.notify((e as Error).message);}},
+  transient: (p,baseline) => {const s=get();try{p=reflowEditedCaptions(baseline||s.project,p);p=numberTracks(pruneTransitions(syncLinkedEdits(baseline||s.project,p,uid)));set({project:p,activeVolumePoint:volumeSelectionAfterEdit(s,p),zoom:boundedZoom(s.zoom,Math.max(endTime(p),s.playhead)),dirty:true});}catch(e){s.notify((e as Error).message);}},
   select: selected => set(s=>({ selected, activeVolumePoint:selected.length===1&&selected[0]===s.activeVolumePoint?.clipId?s.activeVolumePoint:null })),
   seek: t => { if (Number.isFinite(t)) set(s => ({ playhead: Math.max(0, Math.min(MAX_MEDIA_SECONDS, roundFrame(t, s.project.fps))), zoom: boundedZoom(s.zoom, Math.max(endTime(s.project), Math.min(MAX_MEDIA_SECONDS, t))), seekRevision: s.seekRevision + 1 })); },
   togglePlay: () => set(s => ({ playing: endTime(s.project) > 0 && !s.playing, shuttleRate: 1, zoom: boundedZoom(s.zoom, endTime(s.project)), playhead: s.playhead >= endTime(s.project) ? 0 : s.playhead })),
@@ -133,6 +134,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   updateClip: (id, patch) => {
     const s = get(); const clip = s.project.clips.find(c => c.id === id);
     if (!clip || s.project.tracks.find(t => t.id === clip.trackId)?.locked) return;
+    if (patch.trackId !== undefined) { const destination = s.project.tracks.find(t => t.id === patch.trackId); if (!destination || destination.locked) { s.notify('配置先トラックのロックを解除してください。'); return; } }
     const next = { ...clip, ...patch };
     if (next.captionAutoPosition && (['x','y','scale','rotation','textBox'].some(key=>Object.hasOwn(patch,key)) || next.textStyle!=='subtitle')) next.captionAutoPosition=false;
     if (next.captionAutoPosition) next.y=captionBottomY(s.project,next.text,next.fontSize);
@@ -143,7 +145,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     try { validateOpacityKeys(normalized); validateVolumeKeys(normalized); validateGraphic(normalized); if (normalized.kind === 'title') validateTextStyle(normalized); } catch (e) { s.notify((e as Error).message); return; }
     s.commit({ ...s.project, clips: s.project.clips.map(c => c.id === id ? normalized : c) }, patch.volumeKeyframes !== undefined ? '音量ポイントを変更' : patch.opacityKeyframes !== undefined ? '不透明度キーフレームを変更' : patch.speed !== undefined ? '再生速度を変更' : 'クリップのプロパティを変更');
   },
-  updateTrack: (id, patch) => { const s = get(); const track = s.project.tracks.find(t => t.id === id); if (!track || (track.locked && patch.name !== undefined)) return; s.commit({ ...s.project, tracks: s.project.tracks.map(t => t.id === id ? { ...t, ...patch } : t) }, patch.locked !== undefined ? (patch.locked ? 'トラックをロック' : 'トラックのロックを解除') : 'トラックを変更'); },
+  updateTrack: (id, patch) => { const s = get(); const track = s.project.tracks.find(t => t.id === id); if (!track || (track.locked && patch.name !== undefined)) return; s.commit({ ...s.project, tracks: s.project.tracks.map(t => t.id === id ? { ...t, ...patch, ...(patch.name !== undefined ? { autoName: false } : {}) } : t) }, patch.locked !== undefined ? (patch.locked ? 'トラックをロック' : 'トラックのロックを解除') : 'トラックを変更'); },
   importAssets: assets => { const s = get(); const known = new Set(s.project.assets.map(a => a.id)); const fresh = assets.filter(a => { if (known.has(a.id)) return false; known.add(a.id); return true; }); if (!capacity(s.project.assets.length, fresh.length, '素材')) return; if (fresh.length) s.commit({ ...s.project, assets: [...s.project.assets, ...fresh] }, '素材を読み込み'); s.notify(`${assets.length} 件の素材を読み込みました`); },
   removeAsset: (id, removeUsed = false) => {
     const s = get(), asset = s.project.assets.find(a => a.id === id);
@@ -161,17 +163,18 @@ export const useEditor = create<EditorState>((set, get) => ({
   addAsset: (id, at, trackId) => {
     const s = get(); const asset = s.project.assets.find(a => a.id === id); if (!asset) return;
     if (!capacity(s.project.clips.length, asset.kind==='video'&&asset.hasAudio?2:1)) return;
-    const track = s.project.tracks.find(t => t.id === trackId) || [...s.project.tracks].reverse().find(t => !t.locked && t.kind === (asset.kind === 'audio' ? 'audio' : 'video'));
-    if (!track || track.locked || (track.kind === 'audio' && asset.kind !== 'audio')) { s.notify('素材に合うロックされていないトラックを選択してください'); return; }
+    const preferred = asset.kind === 'audio' ? s.project.tracks : [...s.project.tracks].reverse();
+    const track = trackId ? s.project.tracks.find(t => t.id === trackId) : preferred.find(t => !t.locked && t.kind === (asset.kind === 'audio' ? 'audio' : 'video')) || preferred.find(t => !t.locked);
+    if (!track || track.locked) { s.notify('ロックされていないトラックを選択してください'); return; }
     const start = at ?? Math.max(0, ...s.project.clips.filter(c => c.trackId === track.id).map(c => c.start + c.duration));
     const clip = normalizeClip(makeClip(track.id, start, asset), s.project);
     let next={...s.project,clips:[...s.project.clips,clip]};try{if(asset.kind==='video'&&asset.hasAudio)next=separateAudio(next,[clip.id],true,true);}catch(e){s.notify((e as Error).message);return;}
     if(!s.place(next, '素材をタイムラインに追加'))return; set(state => ({ activeVolumePoint:null, selected: [clip.id], playhead: clip.start, zoom: boundedZoom(state.zoom, endTime(state.project)), seekRevision: state.seekRevision + 1 }));
   },
   addTitle: (style = 'hero') => {
-    const s = get(); const track = s.project.tracks.find(t => t.kind === 'video' && !t.locked && !t.hidden);
+    const s = get(); const track = s.project.tracks.find(t => !t.locked && !t.hidden);
     if (!capacity(s.project.clips.length, 1)) return;
-    if (!track) { s.notify('映像トラックを表示し、ロックを解除してください'); return; }
+    if (!track) { s.notify('トラックを表示し、ロックを解除してください'); return; }
     const clip = { ...makeClip(track.id, s.playhead), textStyle: style, fontWeight: style === 'hero' ? 700 : 500, fontSize: style === 'subtitle' ? 58 : 94, y: style === 'subtitle' ? 33 : 0, name: style === 'subtitle' ? '字幕' : 'タイトル' };
     if(style==='subtitle')Object.assign(clip,captionStyle(s.project,clip.text));
     if(!s.place({ ...s.project, clips: [...s.project.clips, clip] }, 'テロップを追加'))return; set({ activeVolumePoint:null, selected: [clip.id], inspectorTab: 'video' });
@@ -255,7 +258,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     s.stop();set({selected:s.selected.filter(id=>!ids.includes(id))});
     s.notify(`「${track.name}」を削除しました。Ctrl+Zで戻せます。`);return true;
   },
-  addTrack: kind => { const s = get(); if (s.project.tracks.length >= 24) { s.notify('トラックは最大24本です'); return; } const t = makeTrack(kind, kind === 'video' ? '映像トラック' : '音声トラック'); s.commit({ ...s.project, tracks: kind === 'video' ? [t, ...s.project.tracks] : [...s.project.tracks, t] }); },
+  addTrack: kind => { const s = get(); if (s.project.tracks.length >= 24) { s.notify('トラックは最大24本です'); return; } const t = makeTrack(kind); s.commit({ ...s.project, tracks: kind === 'video' ? [t, ...s.project.tracks] : [...s.project.tracks, t] }); },
   addMarker: () => { const s = get(); if (s.project.markers.length >= MAX_MARKERS) { s.notify(`マーカーは${MAX_MARKERS}個までです。`); return; } s.commit({ ...s.project, markers: [...s.project.markers, { id: uid(), time: s.playhead, label: `マーカー ${s.project.markers.length + 1}` }] }); s.notify('マーカーを追加しました'); },
   removeMarker: id => { const s = get(); s.commit({ ...s.project, markers: s.project.markers.filter(m => m.id !== id) }); },
   notify: toast => { clearTimeout(toastTimer); set({ toast }); toastTimer = setTimeout(() => set({ toast: '' }), 4500); }

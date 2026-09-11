@@ -30,10 +30,11 @@ function validateProject(p, { allowForeignPaths = false } = {}) {
   const ids = new Set();
   for (const t of p.tracks) {
     if (!t || !validId(t.id) || !['video', 'audio'].includes(t.kind) || ids.has(t.id)) throw new Error('トラックが不正です。');
+    if (t.audioSourceTrackId !== undefined && !validId(t.audioSourceTrackId)) throw new Error('音声トラックの分離元IDが不正です。');
     // Older/minimal projects may omit optional display/flag fields. Missing
     // flags retain their false behavior; explicitly malformed values are errors.
     if (t.name !== undefined && (typeof t.name !== 'string' || t.name.length > 256)) throw new Error('トラック名が不正です。');
-    for (const [field, label] of Object.entries({ muted: 'ミュート', hidden: '非表示', locked: 'ロック', solo: 'ソロ' })) {
+    for (const [field, label] of Object.entries({ muted: 'ミュート', hidden: '非表示', locked: 'ロック', solo: 'ソロ', autoName: '自動番号' })) {
       if (t[field] !== undefined && typeof t[field] !== 'boolean') throw new Error(`トラックの${label}は真偽値で指定してください。`);
     }
     ids.add(t.id);
@@ -71,7 +72,6 @@ function validateProject(p, { allowForeignPaths = false } = {}) {
       if (!a || (a.kind !== c.kind && !(c.kind === 'audio' && a.kind === 'video' && a.hasAudio))) throw new Error('素材が見つからないか種類が一致しません。');
       if (a.kind !== 'image' && c.in + c.duration * c.speed > a.duration + 0.06) throw new Error('クリップが素材の長さを超えています。');
     }
-    if (p.tracks.find(t => t.id === c.trackId).kind === 'audio' && c.kind !== 'audio') throw new Error('音声トラックに映像は置けません。');
   }
   const markerIds = new Set();
   for (const m of p.markers) { if (!m || !validId(m.id) || markerIds.has(m.id) || typeof m.label !== 'string' || m.label.length > 1024) throw new Error('マーカーが不正です。'); markerIds.add(m.id); finite(m.time, 0, MAX_MEDIA_SECONDS, 'マーカー位置'); }

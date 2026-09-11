@@ -1,4 +1,4 @@
-Luma Studio 1.2.0 — Mac公開版
+Luma Studio 1.3.0 — Mac公開版
 
 対応するMac
 ・Apple Silicon搭載Mac（M1以降）。Intel Macには対応していません。
@@ -6,7 +6,7 @@ Luma Studio 1.2.0 — Mac公開版
 ・Node.jsやFFmpegを別途インストールする必要はありません。
 
 インストールと初回起動
-1. Luma-Studio-1.2.0-macOS-arm64.zipを解凍します。
+1. Luma-Studio-1.3.0-macOS-arm64.zipを解凍します。
 2. Luma Studio.appを「アプリケーション」フォルダへ移動します。
 3. Luma Studio.appを開きます。
 4. 開発元を確認できない旨の警告で起動できない場合は、警告を閉じます。
@@ -46,5 +46,5 @@ https://support.apple.com/ja-jp/guide/mac-help/mh40616/mac
 公開元: https://github.com/altimix/LumaStudio
 コード: GPL-3.0-only。BGM: CC BY 4.0（利用時はaltimixのクレジットを記載）。
 
-1.2.0の変更: カット・図形を重ねた映像の黒化と音声の境界ノイズを修正。動画の内容に沿ったサムネイルを横16:9・縦9:16で生成し、2MB未満のJPEGで保存できます。GPU書き出し・ヘルプ・更新確認も利用できます。更新は案内に従ってダウンロード・手動で入れ替えます。
+1.3.0の変更: 中央から上へVideo1、Video2…、下へAudio1、Audio2…と番号順に表示。すべての段で映像・音声・画像・テロップを配置・編集できます。カット・図形を重ねた映像の黒化と音声の境界ノイズを修正。動画の内容に沿ったサムネイルを横16:9・縦9:16で生成し、2MB未満のJPEGで保存できます。GPU書き出し・ヘルプ・更新確認も利用できます。更新は案内に従ってダウンロード・手動で入れ替えます。
 公式サイト: https://lumastudio.altimix.jp/

@@ -11,7 +11,7 @@ export default function DrawLayer(){
   useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==='Escape'){cleanup.current?.();useEditor.setState({drawTool:null});}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
   const draw=(e:ReactPointerEvent<HTMLDivElement>)=>{
     if(e.button!==0||!tool||cleanup.current||useEditor.getState().gestureActive)return;e.preventDefault();e.stopPropagation();const s=useEditor.getState(),snapshot=s.project;
-    if(!snapshot.tracks.some(t=>t.kind==='video'&&!t.locked&&!t.hidden)){s.notify('図形を置く映像トラックを表示し、ロックを解除してください。');return;}
+    if(!snapshot.tracks.some(t=>!t.locked&&!t.hidden)){s.notify('図形を置くトラックを表示し、ロックを解除してください。');return;}
     const owner={};if(!s.beginGesture(owner,()=>cancel()))return;s.stop();const target=e.currentTarget,rect=target.getBoundingClientRect(),pointer=e.pointerId;
     const point=(event:PointerEvent|ReactPointerEvent)=>({x:Math.max(0,Math.min(p.width,(event.clientX-rect.left)/rect.width*p.width)),y:Math.max(0,Math.min(p.height,(event.clientY-rect.top)/rect.height*p.height))});
     const from=point(e);let to=from,closed=false;setPoints({from,to});target.setPointerCapture(pointer);

@@ -1,3 +1,4 @@
+import { numberTracks } from './track-names';
 import type { Asset, Clip, Project, Track } from './types';
 import { windowOpacity } from '../shared/opacity.mjs';
 import { retimeVolume, windowVolume } from '../shared/volume-automation.mjs';
@@ -13,9 +14,9 @@ export function timecode(seconds: number, fps = 30) {
   return [Math.floor(sec / 3600), Math.floor(sec / 60) % 60, sec % 60, frames % fps].map(n => String(n).padStart(2, '0')).join(':');
 }
 export function shortTime(seconds: number) { return `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`; }
-export function makeTrack(kind: Track['kind'], name: string): Track { return { id: uid(), name, kind, muted: false, hidden: false, locked: false, solo: false }; }
+export function makeTrack(kind: Track['kind'], name?: string): Track { return { id: uid(), name: name ?? '', ...(name === undefined ? { autoName: true } : {}), kind, muted: false, hidden: false, locked: false, solo: false }; }
 export function emptyProject(): Project {
-  return { version: 1, id: uid(), name: '新しいプロジェクト', width: 1920, height: 1080, fps: 30, assets: [], clips: [], markers: [], tracks: [makeTrack('video', 'テロップ・オーバーレイ'), makeTrack('video', 'メイン映像'), makeTrack('audio', 'ミュージック'), makeTrack('audio', 'ナレーション')] };
+  return numberTracks({ version: 1, id: uid(), name: '新しいプロジェクト', width: 1920, height: 1080, fps: 30, assets: [], clips: [], markers: [], tracks: [makeTrack('video'), makeTrack('video'), makeTrack('audio'), makeTrack('audio')] });
 }
 export function makeClip(trackId: string, start: number, asset?: Asset): Clip {
   return { id: uid(), assetId: asset?.id, trackId, start, in: 0, duration: asset?.duration ?? 5, speed: 1,
@@ -42,7 +43,7 @@ export function openingProject(assets: Asset[]): Project {
   const duration = Math.floor(video.duration * p.fps + 1e-7) / p.fps;
   const main = { ...makeClip(p.tracks[1].id, 0, video), duration };
   if (video.hasAudio) {
-    const track = makeTrack('audio', 'メイン音声'); p.tracks.splice(2, 0, track);
+    const track = makeTrack('audio'); p.tracks.splice(2, 0, track);
     const linkId = uid();
     p.clips.push({ ...main, audioDetached: true, linkId });
     p.clips.push({ ...makeClip(track.id, 0, video), kind: 'audio', name: video.name + '（音声）', duration, linkId });
@@ -52,9 +53,9 @@ export function openingProject(assets: Asset[]): Project {
   const music = assets.find(a => a.kind === 'audio' && a.name === '英雄の奪っていったもの.mp3');
   if (music) {
     const length = Math.min(duration, Math.floor(music.duration * p.fps) / p.fps);
-    p.clips.push({ ...makeClip(p.tracks.find(t => t.name === 'ミュージック')!.id, 0, music), duration: length, volume: .1, fadeIn: Math.min(1, length / 3), fadeOut: Math.min(2, length / 3) });
+    p.clips.push({ ...makeClip(p.tracks.filter(t => t.kind === 'audio')[video.hasAudio ? 1 : 0].id, 0, music), duration: length, volume: .1, fadeIn: Math.min(1, length / 3), fadeOut: Math.min(2, length / 3) });
   }
-  return p;
+  return numberTracks(p);
 }
 export function normalizeClip(c: Clip, p: Project): Clip {
   const asset = p.assets.find(a => a.id === c.assetId);
