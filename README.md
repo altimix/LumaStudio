@@ -5,7 +5,10 @@ altimixが開発する、Windows・macOS向けの日本語動画編集ソフト�
 
 [公式サイト](https://lumastudio.altimix.jp/) · [ダウンロード](https://github.com/altimix/LumaStudio/releases/latest) · [操作ガイド](README.html) · [開発手順](docs/DEVELOPMENT.md) · [開発に参加](CONTRIBUTING.md)
 
-## 1.1.0
+## 1.2.0
+
+- カット境界と図形の重ね合わせで映像が黒くなる問題、音声のつなぎ目のノイズを修正。
+- 動画の代表フレーム・字幕などを使うサムネイル生成。横16:9・縦9:16を編集から自動選択し、2MB未満のJPEGで保存。
 
 - Windows x64 / macOS Apple Silicon（M1以降）に対応。
 - 素材・タイムラインは空で起動。BGMタブから初期BGM5曲を試聴・追加できます。
