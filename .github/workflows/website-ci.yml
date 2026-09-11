@@ -40,3 +40,11 @@ jobs:
         env:
           SITE_URL: https://lumastudio.altimix.jp
         run: node website/verify.cjs --downloads-only
+      - name: Upload website verification evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: website-test-evidence-${{ github.sha }}
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 7
