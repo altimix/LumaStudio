@@ -37,7 +37,7 @@ export function thumbnailBrief(p,prompt){
   const visible=new Set(p.tracks.filter(t=>!t.hidden).map(t=>t.id));
   const context={project:p.name,titles:y?.titles||[],description:y?.description?.slice(0,2000)||'',keywords:y?.keywords||[],
     transcript:sample(y?.cues||[],24).map(c=>c.text.slice(0,300)),
-    onScreenText:sample(p.clips.filter(c=>c.kind==='title'&&!c.graphic&&visible.has(c.trackId)),12).map(c=>c.text.slice(0,200)),
+    onScreenText:sample(p.clips.filter(c=>c.kind==='title'&&!c.graphic&&visible.has(c.trackId)&&(c.opacityKeyframes?.length?c.opacityKeyframes.some(k=>k.value>0):c.opacity>0)),12).map(c=>c.text.slice(0,200)),
     direction:prompt.trim()};
   return `YouTubeのフィードで小さく表示されても内容と魅力が一瞬で伝わる、完成したサムネイルを1枚制作する。\n`+
     `出力は${format.width}×${format.height}、${format.ratio}。余白帯やモックアップ枠なしで全面を使う。\n`+
