@@ -12,7 +12,7 @@ Issue: https://github.com/altimix/LumaStudio/issues/8
 - `/support/`: 任意の開発支援、会社への支援問い合わせ、Issue・PRによる参加方法。
 - `/about/`: 運営会社、著作権・ライセンス、画面例の映像クレジット、プライバシー、問い合わせ先。
 
-本体はGitHub Releasesから配布し、サイトにEXEやアプリを複製しない。公開版は1.0.0。開発中のGPU書き出しや更新確認を、公開版の提供済み機能として表示しない。
+本体はGitHub Releasesから配布し、サイトにEXEやアプリを複製しない。公開版は1.1.0。GPU書き出し（MacのVideoToolbox、WindowsのNVENC・Quick Sync・AMF）と起動時の更新確認・手動入れ替え案内を紹介する。GPUの利用可否は環境による。未公開の機能を提供済みとして表示しない。
 
 ## 会社情報
 
@@ -23,7 +23,7 @@ Issue: https://github.com/altimix/LumaStudio/issues/8
 1. 指定ドメインでHTTPS配信される。独自ドメイン以外の既存サイトやDNS設定を変更しない。
 2. 各ページ・内部リンク・マニュアルの目次が動作し、PCと390px幅で横スクロールしない。
 3. マニュアル検索と検索結果なしの表示が動作する。404には404ステータスと復帰リンクを返す。
-4. 配布先は実在する安定版のWindows x64 EXE / Mac arm64 ZIP。対応CPU、未署名、公開版のCPU書き出しを明示する。
+4. 配布先は実在する安定版のWindows x64 EXE / Mac arm64 ZIP。対応CPU、未署名、GPU書き出しの対応方式と環境条件を明示する。更新は自動置換ではなく確認と手動入れ替えの案内であることを説明する。
 5. BGMのCC BY 4.0と画面例のSintel / Blender Foundation（CC BY 3.0）のクレジットを保持する。
 6. 公開後のページ・リンク・検索を再確認する。Cloudflare認証情報はGitに保存しない。
 
