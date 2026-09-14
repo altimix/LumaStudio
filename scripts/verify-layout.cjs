@@ -131,6 +131,14 @@ const storageKey = 'luma.workspace-layout.v1';
     await screenshot('compact');
     await windowSize(1600, 960); assert.deepEqual(await sizes(), expanded); assert.deepEqual(await prefs(), preferred);
     checks.push('1100 × 720 window retains preview, timeline, menu and statusbar; widening restores preferred dimensions without overwriting them');
+    await windowSize(1100, 720);
+    const compactLibrary = await size(names[0]);
+    await drag(names[0], 30, 0); assert.equal(await size(names[0]), compactLibrary + 30);
+    await waitStored({ libraryWidth: compactLibrary + 30, inspectorWidth: 520 });
+    await app.close(); app = null; await launch();
+    assert.equal(await size(names[0]), compactLibrary + 30); assert.equal(await size(names[1]), 520);
+    await openProject();
+    checks.push('compact resizing follows the pointer and preserves the untouched panel preference when restarting in a larger window');
 
     await button('ウィンドウ').click(); await button('レイアウトを初期状態に戻す').click();
     assert.deepEqual(await sizes(), [288, 286, 354]);

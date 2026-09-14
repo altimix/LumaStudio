@@ -88,10 +88,7 @@ export default function WorkspaceLayout({ preferences, onChange, library, inspec
     onDragCancel: () => onChange(beforeDrag.current),
   };
   const resizeSide = (side: 'libraryWidth' | 'inspectorWidth', value: number) => onChange(current => ({
-    ...current,
-    libraryWidth: current.libraryCollapsed ? current.libraryWidth : sizes.libraryWidth,
-    inspectorWidth: current.inspectorCollapsed ? current.inspectorWidth : sizes.inspectorWidth,
-    [side]: value,
+    ...current, [side]: value, lastResizedPanel: side === 'libraryWidth' ? 'library' : 'inspector',
   }));
   return <div className="editor-layout" ref={container}>
     <main className="workspace" style={{ gridTemplateColumns: `${sizes.libraryWidth}px 8px minmax(400px, 1fr) 8px ${sizes.inspectorWidth}px` }}>

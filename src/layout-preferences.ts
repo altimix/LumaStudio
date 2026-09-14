@@ -14,10 +14,11 @@ export type LayoutPreferences = {
   timelineHeight: number;
   libraryCollapsed: boolean;
   inspectorCollapsed: boolean;
+  lastResizedPanel: 'library' | 'inspector' | null;
 };
 export const DEFAULT_LAYOUT: LayoutPreferences = {
   version: 1, libraryWidth: 288, inspectorWidth: 286, timelineHeight: 354,
-  libraryCollapsed: false, inspectorCollapsed: false,
+  libraryCollapsed: false, inspectorCollapsed: false, lastResizedPanel: null,
 };
 export const clampSize = (value: number, min: number, max: number) => Math.round(Math.max(min, Math.min(max, value)));
 
@@ -35,6 +36,7 @@ export function parseLayout(raw: string | null): LayoutPreferences {
       timelineHeight: size('timelineHeight', LAYOUT_LIMITS.timeline),
       libraryCollapsed: saved.libraryCollapsed === true,
       inspectorCollapsed: saved.inspectorCollapsed === true,
+      lastResizedPanel: saved.lastResizedPanel === 'library' || saved.lastResizedPanel === 'inspector' ? saved.lastResizedPanel : null,
     };
   } catch { return { ...DEFAULT_LAYOUT }; }
 }
@@ -49,13 +51,22 @@ export function fitLayout(preferences: LayoutPreferences, width: number, height:
   const inspectorExtra = preferences.inspectorCollapsed ? 0 : Math.max(0, preferences.inspectorWidth - inspectorMin);
   const extra = libraryExtra + inspectorExtra;
   const ratio = extra ? Math.min(1, (budget - libraryMin - inspectorMin) / extra) : 1;
-  const libraryWidth = libraryMin + Math.floor(libraryExtra * ratio);
-  const inspectorWidth = inspectorMin + Math.floor(inspectorExtra * ratio);
+  let libraryWidth = libraryMin + Math.floor(libraryExtra * ratio);
+  let inspectorWidth = inspectorMin + Math.floor(inspectorExtra * ratio);
+  // Keep the dragged edge under the pointer. The opposite side fits around it
+  // without losing its preferred width, including after a restart.
+  if (preferences.lastResizedPanel === 'library' && !preferences.libraryCollapsed) {
+    libraryWidth = Math.min(preferences.libraryWidth, budget - inspectorMin);
+    inspectorWidth = Math.min(inspectorMin + inspectorExtra, budget - libraryWidth);
+  } else if (preferences.lastResizedPanel === 'inspector' && !preferences.inspectorCollapsed) {
+    inspectorWidth = Math.min(preferences.inspectorWidth, budget - libraryMin);
+    libraryWidth = Math.min(libraryMin + libraryExtra, budget - inspectorWidth);
+  }
   const timelineMax = Math.max(limits.timeline.min, Math.min(limits.timeline.max, height - limits.workspace - limits.separator));
   return {
     libraryWidth, inspectorWidth,
-    libraryMax: Math.max(limits.library.min, Math.min(limits.library.max, budget - inspectorWidth)),
-    inspectorMax: Math.max(limits.inspector.min, Math.min(limits.inspector.max, budget - libraryWidth)),
+    libraryMax: Math.max(limits.library.min, Math.min(limits.library.max, budget - inspectorMin)),
+    inspectorMax: Math.max(limits.inspector.min, Math.min(limits.inspector.max, budget - libraryMin)),
     timelineHeight: clampSize(preferences.timelineHeight, limits.timeline.min, timelineMax), timelineMax,
   };
 }

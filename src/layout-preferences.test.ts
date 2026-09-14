@@ -24,4 +24,13 @@ describe('workspace layout preferences', () => {
     expect(preferences).toEqual(saved);
     expect(fitLayout(preferences, 2560, 1100)).toMatchObject({ libraryWidth: 520, inspectorWidth: 520, timelineHeight: 700 });
   });
+  it('keeps the resized edge exact without changing the opposite preference', () => {
+    const preferences = { ...DEFAULT_LAYOUT, libraryWidth: 300, inspectorWidth: 520, lastResizedPanel: 'library' as const };
+    expect(fitLayout(preferences, 1100, 800)).toMatchObject({ libraryWidth: 300, inspectorWidth: 372 });
+    expect(fitLayout(preferences, 1600, 800)).toMatchObject({ libraryWidth: 300, inspectorWidth: 520 });
+    const opposite = { ...preferences, libraryWidth: 520, inspectorWidth: 310, lastResizedPanel: 'inspector' as const };
+    expect(fitLayout(opposite, 1100, 800)).toMatchObject({ libraryWidth: 362, inspectorWidth: 310 });
+    expect(fitLayout(opposite, 1600, 800)).toMatchObject({ libraryWidth: 520, inspectorWidth: 310 });
+    expect(parseLayout(JSON.stringify(opposite))).toEqual(opposite);
+  });
 });
