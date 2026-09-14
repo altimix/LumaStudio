@@ -117,6 +117,8 @@ const storageKey = 'luma.workspace-layout.v1';
     const expanded = await sizes();
     await windowSize(1100, 720);
     const small = await sizes(); assert.ok(small[0] < expanded[0] && small[1] < expanded[1] && small[2] < expanded[2]);
+    await drag(names[0], -35, 0, true);
+    await waitStored(preferred); assert.deepEqual(await sizes(), small);
     const bounds = await page.locator('.workspace').evaluate(element => {
       const preview = element.querySelector('.preview-panel').getBoundingClientRect();
       return { preview: preview.width, workspace: element.clientHeight, overflow: document.documentElement.scrollWidth > innerWidth, bottom: document.querySelector('.statusbar').getBoundingClientRect().bottom, height: innerHeight };
@@ -132,6 +134,10 @@ const storageKey = 'luma.workspace-layout.v1';
 
     await button('ウィンドウ').click(); await button('レイアウトを初期状態に戻す').click();
     assert.deepEqual(await sizes(), [288, 286, 354]);
+    await page.locator('.timeline-clip.image').click();
+    await page.getByRole('navigation', { name: 'ワークスペース' }).getByRole('button', { name: 'カラー', exact: true }).click();
+    await button('素材パネルを折りたたむ').click(); await button('ルックを選ぶ').click();
+    assert.ok(await page.getByRole('tab', { name: 'エフェクト', exact: true }).isVisible());
     assert.equal(await page.getByRole('navigation', { name: 'ワークスペース' }).getByRole('button', { name: 'テキスト', exact: true }).count(), 0);
     await button('素材パネルを折りたたむ').click(); await button('プロパティパネルを折りたたむ').click();
     await button('使い方').click(); await button('文字を追加する').click();
