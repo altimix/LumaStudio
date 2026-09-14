@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { PanelLeftOpen, PanelRightOpen } from 'lucide-react';
 import { clampSize, fitLayout, LAYOUT_LIMITS, type LayoutPreferences } from '../layout-preferences';
+import { useEditor } from '../store';
 
 function LayoutSeparator({ label, controls, axis, direction = 1, value, min, max, onChange, onDragStart, onDragCancel }: {
   label: string; controls: string; axis: 'x' | 'y'; direction?: number;
@@ -28,7 +29,7 @@ function LayoutSeparator({ label, controls, axis, direction = 1, value, min, max
     aria-orientation={axis === 'x' ? 'vertical' : 'horizontal'} aria-valuemin={min} aria-valuemax={max} aria-valuenow={value} aria-valuetext={`${value} ピクセル`}
     title={`${label}（ドラッグ / 矢印キー）`}
     onPointerDown={event => {
-      if (event.button !== 0 || drag.current) return;
+      if (event.button !== 0 || drag.current || useEditor.getState().gestureActive) return;
       event.preventDefault(); event.stopPropagation(); event.currentTarget.focus();
       onDragStart();
       drag.current = { id: event.pointerId, start: axis === 'x' ? event.clientX : event.clientY, value };
@@ -41,13 +42,15 @@ function LayoutSeparator({ label, controls, axis, direction = 1, value, min, max
     }}
     onPointerUp={() => finish()} onPointerCancel={() => finish(true)} onLostPointerCapture={() => finish()}
     onKeyDown={event => {
-      // A focused separator owns its keys; arrows must not seek or edit clips.
-      event.stopPropagation();
-      if (event.key === 'Escape') { event.preventDefault(); finish(true); return; }
+      if (event.ctrlKey || event.metaKey || event.altKey || event.nativeEvent.isComposing) return;
+      if (event.key === 'Escape' && drag.current) { event.preventDefault(); event.stopPropagation(); finish(true); return; }
+      // A later timeline drag can retain focus here. Its Escape and other keys
+      // must reach the gesture owner, even though this separator is still focused.
+      if (useEditor.getState().gestureActive) return;
       const arrows = axis === 'x' ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown'];
       const arrow = arrows.indexOf(event.key);
       if (arrow >= 0 || event.key === 'Home' || event.key === 'End') {
-        event.preventDefault();
+        event.preventDefault(); event.stopPropagation();
         if (!drag.current) onChange(event.key === 'Home' ? min : event.key === 'End' ? max : clampSize(value + (arrow ? 1 : -1) * direction * (event.shiftKey ? 40 : 10), min, max));
       }
     }}><span/></div>;

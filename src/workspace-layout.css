@@ -77,6 +77,7 @@
 .asset-duration{font-size:10px}
 .list-view .media-card-info>.proxy-tag{font-size:10px}
 .meter-heading,.meter-scale,.meter-maximum{font-size:11px}
+.audio-meter{gap:3px}
 .preview-panel{container-type:inline-size}
 .preview-bottom select,.preview-bottom .timecode{font-size:12px}
 .preview-meta{gap:8px}

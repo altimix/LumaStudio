@@ -134,6 +134,9 @@ const storageKey = 'luma.workspace-layout.v1';
 
     await button('ウィンドウ').click(); await button('レイアウトを初期状態に戻す').click();
     assert.deepEqual(await sizes(), [288, 286, 354]);
+    await separator(names[2]).focus(); await page.keyboard.press('Home');
+    assert.ok(await page.locator('.meter-maximum').evaluate(element => element.getBoundingClientRect().bottom <= element.closest('.audio-meter').getBoundingClientRect().bottom));
+    await button('ウィンドウ').click(); await button('レイアウトを初期状態に戻す').click();
     await page.locator('.timeline-clip.image').click();
     await page.getByRole('navigation', { name: 'ワークスペース' }).getByRole('button', { name: 'カラー', exact: true }).click();
     await button('素材パネルを折りたたむ').click(); await button('ルックを選ぶ').click();
