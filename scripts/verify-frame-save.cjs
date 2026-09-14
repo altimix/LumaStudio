@@ -68,6 +68,19 @@ const root = path.join(__dirname, '..');
     await page.screenshot({path:path.join(results,'result.png')});
     await page.locator('.preview-bottom').screenshot({path:path.join(results,'monitor-controls.png')});
     // Full-resolution capture must also wait for async transition composition.
+    await page.evaluate(() => {
+      globalThis.__frameWorkerRequests=[];
+      const getContext=HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext=function(type,...args){
+        if(type==='webgl2')return null;
+        return getContext.call(this,type,...args);
+      };
+      const postMessage=Worker.prototype.postMessage;
+      Worker.prototype.postMessage=function(message,...args){
+        if(['pageTurn','pagePeel'].includes(message?.kind))globalThis.__frameWorkerRequests.push({kind:message.kind,width:message.width,height:message.height});
+        return postMessage.call(this,message,...args);
+      };
+    });
     const stills = [];
     for (const [name,time] of [['red',0],['blue',1]]) {
       const file=path.join(profile,name+'.png');await run(ffmpeg,['-v','error','-ss',String(time),'-i',source,'-frames:v','1',file]);
@@ -83,10 +96,15 @@ const root = path.join(__dirname, '..');
       await page.waitForFunction(()=>{const c=document.querySelector('canvas[aria-label="動画プレビュー"]');return c.width===1280&&c.dataset.transitionsReady==='true'&&c.dataset.transitionKind;});
       const expected=await page.locator('canvas[aria-label="動画プレビュー"]').evaluate(c=>[...c.getContext('2d').getImageData(10,10,1,1).data].slice(0,3));
       await page.getByLabel('プレビュー画質').selectOption('0.25');
+      const workerRequestStart=await page.evaluate(()=>globalThis.__frameWorkerRequests.length);
       const output=path.join(results,kind+'.png');await setSave(output);await open();await dialog().getByRole('checkbox').uncheck();await dialog().getByRole('button',{name:'保存先を選んで保存',exact:true}).click();await dialog().getByText('写真を保存しました。',{exact:true}).waitFor({timeout:30000});
       const pixel=await pixels(output);assert.deepEqual(pixel(10,10),expected,kind);assert.deepEqual(pixel(640,360),[0,255,0]);await close();
+      if(kind!=='dissolve'){
+        const requests=await page.evaluate(start=>globalThis.__frameWorkerRequests.slice(start),workerRequestStart);
+        assert.ok(requests.some(request=>request.kind===kind&&request.width===1280&&request.height===720),`${kind} did not use the project dimensions in the worker fallback: ${JSON.stringify(requests)}`);
+      }
     }
-    checks.push('dissolve, page turn and page peel saved pixels match full-resolution preview while original quality remains quarter');
+    checks.push('dissolve, page turn and page peel saved pixels match full-resolution preview; forced worker fallback receives 1280x720 while original quality remains quarter');
     assert.deepEqual(errors,[]);
     await fs.copyFile(png,path.join(results,'saved.png'));await fs.copyFile(jpg,path.join(results,'saved.jpg'));
     await fs.writeFile(path.join(results,'verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,checks},null,2));console.log(JSON.stringify({passed:true,checks},null,2));

@@ -259,10 +259,11 @@ export default function Preview() {
             continue;
           }
           const sourceState=[pair.from,pair.to].map(c=>{const video=media.get(c.id);return video?[video.frameTime,video.element.readyState,video.element.seeking]:pictures.get(c.assetId!)?.complete;});
-          const key=JSON.stringify([projectRevision,pair.video,t,w,h,sourceState]);buffers.renderer.request(key,pair.video!,buffers.a,buffers.b,(t-pair.start)/pair.duration,{time:t,revision:projectRevision,width:w,height:h,kind:pair.video!});
+          const key=JSON.stringify([projectRevision,pair.video,t,w,h,sourceState,!!capture]);buffers.renderer.request(key,pair.video!,buffers.a,buffers.b,(t-pair.start)/pair.duration,{time:t,revision:projectRevision,width:w,height:h,kind:pair.video!},!!capture);
           const rendered=buffers.renderer.frameStamp,matching=rendered&&rendered.revision===projectRevision&&rendered.kind===pair.video&&rendered.width===w&&rendered.height===h;
-          if(buffers.renderer.bitmap&&matching&&(s.playing||buffers.renderer.key===key))ctx.drawImage(buffers.renderer.bitmap,0,0,w,h);else{transitionsPresented=false;ctx.drawImage(buffers.a,0,0);}
-          if(buffers.renderer.key!==key)transitionsReady=false;
+          const fullSize=!capture||(buffers.renderer.bitmap?.width===w&&buffers.renderer.bitmap.height===h);
+          if(buffers.renderer.bitmap&&matching&&fullSize&&(s.playing||buffers.renderer.key===key))ctx.drawImage(buffers.renderer.bitmap,0,0,w,h);else{transitionsPresented=false;ctx.drawImage(buffers.a,0,0);}
+          if(buffers.renderer.key!==key||!fullSize)transitionsReady=false;
         }
       }
       for (const [id, item] of titles) if (!activeTitles.has(id)) { item.canvas.width = item.canvas.height = 0; titles.delete(id); }
