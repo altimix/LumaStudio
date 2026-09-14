@@ -32,6 +32,7 @@ const root = path.join(__dirname, '..');
     await button('プロジェクトを保存 (Ctrl+S)').click();
     const deadline = Date.now() + 10000;
     while ((await fs.stat(file).catch(() => null))?.mtimeMs === before) { assert.ok(Date.now() < deadline, 'project saved'); await new Promise(resolve => setTimeout(resolve, 25)); }
+    await page.getByRole('dialog', { name: 'プロジェクトを保存しています', exact: true }).waitFor({ state: 'hidden' }); await settle();
     return JSON.parse(await fs.readFile(file, 'utf8'));
   };
   const open = async project => {
@@ -52,6 +53,7 @@ const root = path.join(__dirname, '..');
     assert.deepEqual((await save()).transitions, project.transitions, 'unrelated selections cannot resize a previously selected effect');
   };
   const drag = async (side, change, cancellation) => {
+    await settle();
     const handle = edge(side), box = await handle.boundingBox();
     const zoom = Number(await page.getByRole('slider', { name: 'タイムラインのズーム', exact: true }).inputValue());
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
@@ -111,6 +113,17 @@ const root = path.join(__dirname, '..');
     await button(track + ' ロック').click(); assert.equal(await edge('end').isDisabled(), true); assert.equal(await duration().isDisabled(), true);
     await button(track + ' ロック解除').click();
     checks.push('numeric edits and keyboard steps remain frame-aligned; minimum, maximum and track locks are enforced');
+
+    await save(); await open({ ...baseline, name: 'カテゴリごとの効果解除' }); await band().locator('.timeline-transition').click();
+    await button('音声').click(); await button('効果を解除').click();
+    const videoOnly = await save(); assert.equal(videoOnly.transitions[0].video, 'dissolve'); assert.equal(videoOnly.transitions[0].audio, undefined);
+    assert.deepEqual(videoOnly.clips, baseline.clips); assert.equal(videoOnly.transitions[0].id, baseline.transitions[0].id);
+    await button('元に戻す (Ctrl+Z)').click(); assert.deepEqual((await save()).transitions, baseline.transitions);
+    await button('切り替え').click(); await button('効果を解除').click();
+    const audioOnly = await save(); assert.equal(audioOnly.transitions[0].video, undefined); assert.equal(audioOnly.transitions[0].audio, 'constantPower');
+    await button('元に戻す (Ctrl+Z)').click(); await button('やり直す (Ctrl+Shift+Z)').click(); assert.deepEqual((await save()).transitions, audioOnly.transitions);
+    await button('音声').click(); await button('効果を解除').click(); assert.deepEqual((await save()).transitions, []);
+    checks.push('category removal preserves the other half of a combined effect, its identity and clip placement with Undo/Redo');
 
     const linked = { ...baseline, id: 'linked-resize', name: 'リンク音声の長さ', clips: baseline.clips.flatMap((clip, index) => [{ ...clip, audioDetached: true, linkId: 'link' + index }, { ...clip, id: 'a' + index, kind: 'audio', trackId: baseline.tracks.find(t => t.kind === 'audio').id, linkId: 'link' + index }]), transitions: [{ ...baseline.transitions[0], video: 'pagePeel', audio: undefined }, { ...baseline.transitions[0], id: 'linked-audio', fromId: 'a0', toId: 'a1', video: undefined, audio: 'constantGain' }] };
     await save(); await open(linked); await tab('エフェクト'); await band().locator('.timeline-transition').click();

@@ -26,7 +26,7 @@ type EditorState = {
   setBgmVolumeDb(db:number,ids?:string[]):void;
   separateAudio(ids?:string[],link?:boolean):void; unlink(ids?:string[]):void; relink(ids?:string[]):void; setRate(speed:number,ids?:string[]):void; patchAudio(patch: { audioTreatment?:'speech'|'normalize'; audioMuted?:boolean },ids?:string[]):void;
   historyPlayheads:(number|null)[]; futurePlayheads:(number|null)[]; clipMenuOpen:boolean;
-  addTransition(options:TransitionOptions,fromId?:string,toId?:string):void; removeTransition(id:string):void;
+  addTransition(options:TransitionOptions,fromId?:string,toId?:string):void; removeTransition(id:string,kind?:'video'|'audio'):void;
   activeTransitionId:string|null; effectCategory:'transitions'|'looks'|'audio'; resizeTransition(id:string,duration:number):boolean;
   drawTool: Graphic['shape'] | null; drawSettings: { color:string; duration:number; sound:'none'|SoundId; volume:number };
   addDrawing(input:Pick<Clip,'graphic'|'x'|'y'|'rotation'|'color'|'duration'>&{start?:number},sound?:Asset,volume?:number):boolean;
@@ -81,7 +81,15 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   activeTransitionId:null,effectCategory:'transitions',
   resizeTransition:(id,duration)=>{const s=get();if(s.gestureActive)return false;try{const next=resizeTransition(s.project,id,duration);if(next===s.project)return true;s.stop();return s.commit(next,'トランジションの長さを変更');}catch(error){s.notify((error as Error).message);return false;}},
-  removeTransition:id=>{const s=get(),t=s.project.transitions?.find(t=>t.id===id);if(!t||s.gestureActive)return;if(clipsLocked(s.project,[t.fromId,t.toId])){s.notify('トラックのロックを解除してください。');return;}s.commit({...s.project,transitions:s.project.transitions!.filter(t=>t.id!==id)},'トランジションを削除');if(s.activeTransitionId===id)set({activeTransitionId:null});s.notify('つなぎ目の効果を削除しました。素材の配置や動画の長さは変わりません。');},
+  removeTransition:(id,kind)=>{
+    const s=get(),t=s.project.transitions?.find(t=>t.id===id);if(!t||s.gestureActive||(kind&&!t[kind]))return;
+    if(clipsLocked(s.project,[t.fromId,t.toId])){s.notify('トラックのロックを解除してください。');return;}
+    const remaining={...t};if(kind)delete remaining[kind];
+    const transitions=s.project.transitions!.flatMap(current=>current.id!==id?[current]:kind&&(remaining.video||remaining.audio)?[remaining]:[]);
+    if(!s.commit({...s.project,transitions},'トランジションを削除'))return;
+    if(s.activeTransitionId===id)set({activeTransitionId:null});
+    s.notify(kind?`${kind==='video'?'映像':'音声'}の効果を解除しました。`:'つなぎ目の効果を削除しました。素材の配置や動画の長さは変わりません。');
+  },
   drawTool:null,drawSettings:{color:'#ff0000',duration:3,sound:'chime',volume:.9},
   addDrawing:(input,sound,volume=.9)=>{
     const s=get(),p=s.project,track=p.tracks.find(t=>!t.locked&&!t.hidden);

@@ -78,3 +78,16 @@ it('selects the actual linked audio effect after applying an audio preset to vid
   expect(active).toMatchObject({audio:'constantPower',duration:1.5});expect(active?.video).toBeUndefined();
   expect(active?.fromId).not.toBe('c0');
 });
+it('removes only the selected category of a combined effect with Undo/Redo and stable placement',()=>{
+  const p=fixture(),s=useEditor.getState();
+  for(const kind of ['video','audio'] as const){
+    s.load(p);useEditor.setState({activeTransitionId:'effect'});
+    s.removeTransition('effect',kind);
+    const {[kind]:_removed,...remaining}=p.transitions![0];
+    expect(useEditor.getState().project.transitions).toEqual([remaining]);expect(useEditor.getState().project.clips).toEqual(p.clips);
+    expect(useEditor.getState().activeTransitionId).toBe(null);expect(useEditor.getState().history).toHaveLength(1);
+    s.undo();expect(useEditor.getState().project.transitions).toEqual(p.transitions);s.redo();expect(useEditor.getState().project.transitions).toEqual([remaining]);
+    s.removeTransition('effect',kind==='video'?'audio':'video');expect(useEditor.getState().project.transitions).toEqual([]);
+  }
+  s.load(p);s.removeTransition('effect');expect(useEditor.getState().project.transitions).toEqual([]);
+});
