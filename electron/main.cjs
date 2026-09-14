@@ -80,7 +80,11 @@ function present(a) {
   return { ...a, url, thumbnail: a.thumbnailPath ? `media://local/thumb/${assetKey(a)}` : '' };
 }
 async function hydrate(p) {
-  return hydrateProject(p, file => inspectMedia(file, cacheDir()), present);
+  const hydrated = await hydrateProject(p, file => inspectMedia(file, cacheDir()), present);
+  // Failed inspection keeps an asset offline. Its saved path is still source
+  // media and must never become a photo, project, or export destination.
+  for (const asset of hydrated.assets) protectedSourcePaths.add(asset.path);
+  return hydrated;
 }
 const serialize = serializeProject;
 function handle(channel, fn) {

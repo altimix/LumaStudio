@@ -65,6 +65,18 @@ const root = path.join(__dirname, '..');
     await app.evaluate(({dialog})=>{dialog.showOpenDialog=async(_window,options)=>{globalThis.lastImportDialog=options;return {canceled:true,filePaths:[]};};});await page.getByRole('button',{name:'素材を読み込む',exact:true}).first().click();
     assert.equal((await app.evaluate(()=>globalThis.lastImportDialog)).defaultPath,importFolder);
     checks.push('save/reopen and app restart preserve imported photo and separate photo/import folder preferences');
+    // A corrupt image remains offline, but its source path is still protected.
+    const offlineSource=path.join(importFolder,'壊れたオフライン.png');
+    await run(ffmpeg,['-v','error','-ss','0','-i',source,'-frames:v','1',offlineSource]);
+    const offlineAsset={...await inspectMedia(offlineSource,path.join(profile,'cache')),url:'',thumbnail:''};
+    const offlineContents=Buffer.from('original corrupt image');await fs.writeFile(offlineSource,offlineContents);
+    const offlineFixture={...project,id:'offline-frame-protection',name:'オフライン素材の保護',assets:[asset,offlineAsset]};
+    const offlineProject=path.join(profile,'offline.luma');await fs.writeFile(offlineProject,JSON.stringify(offlineFixture));
+    await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},offlineProject);
+    await page.keyboard.press('Control+o');await page.getByRole('button',{name:offlineFixture.name,exact:true}).waitFor();await page.locator('.media-card.offline').waitFor();
+    await setSave(offlineSource);await open();await dialog().getByRole('checkbox').uncheck();await dialog().getByRole('button',{name:'保存先を選んで保存',exact:true}).click();await dialog().getByRole('alert').filter({hasText:'元の素材'}).waitFor({timeout:30000});
+    assert.deepEqual(await fs.readFile(offlineSource),offlineContents);await close();
+    checks.push('offline source paths from a loaded project cannot be overwritten');
     await page.screenshot({path:path.join(results,'result.png')});
     await page.locator('.preview-bottom').screenshot({path:path.join(results,'monitor-controls.png')});
     // Full-resolution capture must also wait for async transition composition.
