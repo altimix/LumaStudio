@@ -1,0 +1,41 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const { frameName, unusedPath, createFrameSaver } = require('../electron/frame-save.cjs');
+const { recentFolder, rememberFolder } = require('../electron/recent-folder.cjs');
+const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAADElEQVR4nGP4zwACAA0AAf8BbwAAAAASUVORK5CYII=';
+const request = { name:'日本語 / 写真',time:1+1/30,fps:30,width:2,height:2,format:'png',addToProject:true,png };
+test('portable timecode filename and UTF-8 filename length', () => {
+  assert.equal(frameName('映像 / A:B',3661+29/30,30),'映像 _ A_B_01-01-01-29');
+  assert.ok(Buffer.byteLength(frameName('📷'.repeat(120),0,30)) < 200);
+});
+test('save transaction, cancellation, import failure, protection, and independent remembered folders', async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(),'luma-frame-test-'));
+  t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+  const configFile=path.join(dir,'save.json'),importConfig=path.join(dir,'import.json'),pictures=path.join(dir,'写真'),imports=path.join(dir,'素材');
+  await fs.mkdir(pictures);await fs.mkdir(imports);
+  const output=path.join(pictures,'写真.png');let cancel=true,importCalls=0,failImport=false,protectedFiles=[],selected=output;
+  const nativeImage={createFromDataURL:()=>({getSize:()=>({width:2,height:2}),isEmpty:()=>false,toPNG:()=>Buffer.from('new png'),toJPEG:()=>Buffer.from('new jpeg')})};
+  const save=createFrameSaver({configFile,defaultFolder:dir,nativeImage,dialog:async()=>({canceled:cancel,filePath:selected}),sourcePaths:()=>protectedFiles,importImage:async file=>{importCalls++;assert.equal(await fs.readFile(file,'utf8'),'new png');if(failImport)throw Error('import failed');return {id:'new'};}});
+  assert.equal(await save(request),null);assert.equal(importCalls,0);await assert.rejects(fs.stat(configFile));
+  cancel=false;assert.equal((await save(request)).asset.id,'new');assert.equal(importCalls,1);assert.equal(await recentFolder(configFile,dir),pictures);
+  await rememberFolder(importConfig,path.join(imports,'clip.mp4'));assert.equal(await recentFolder(importConfig,dir),imports);assert.equal(await recentFolder(configFile,dir),pictures);
+  const other=createFrameSaver({configFile,defaultFolder:dir,nativeImage,dialog:async options=>{assert.equal(path.dirname(options.defaultPath),pictures);return {canceled:true};},sourcePaths:()=>[],importImage:()=>{throw Error('should not import');}});await other(request);
+  await save({...request,addToProject:false});assert.equal(importCalls,1);
+  failImport=true;const partial=await save(request);assert.equal(partial.asset,undefined);assert.match(partial.warning,/写真は保存しました/);
+  protectedFiles=[output];await fs.writeFile(output,'original');await assert.rejects(save(request),/元の素材/);assert.equal(await fs.readFile(output,'utf8'),'original');
+  protectedFiles=[];selected=path.join(dir,'wrong.jpg');await assert.rejects(save(request),/拡張子/);
+  selected=path.join(dir,'directory.png');await fs.mkdir(selected);await assert.rejects(save(request));assert.ok((await fs.stat(selected)).isDirectory());
+  assert.equal((await fs.readdir(dir)).filter(n=>n.startsWith('.luma-')).length,0);
+  const first=await unusedPath(pictures,'sample','png');await fs.writeFile(first,'existing');assert.equal(path.basename(await unusedPath(pictures,'sample','png')),'sample_001.png');
+  await fs.rm(imports,{recursive:true});assert.equal(await recentFolder(importConfig,dir),dir);
+  await fs.writeFile(configFile,'bad json');assert.equal(await recentFolder(configFile,dir),dir);
+});
+test('malformed images and concurrent requests are rejected before file selection', async () => {
+  let release,opened=0;
+  const save=createFrameSaver({configFile:'/nonexistent/config',defaultFolder:os.tmpdir(),nativeImage:{createFromDataURL:()=>({getSize:()=>({width:2,height:2}),isEmpty:()=>false,toPNG:()=>Buffer.from('png')})},dialog:async()=>{opened++;await new Promise(r=>release=r);return {canceled:true};},sourcePaths:()=>[]});
+  await assert.rejects(save({...request,width:999999}),/不正/);await assert.rejects(save({...request,png:'data:image/png;base64,AAAA'}),/不正/);assert.equal(opened,0);
+  const pending=save(request);while(!release)await new Promise(r=>setTimeout(r,5));await assert.rejects(save(request),/完了するまで/);release();await pending;
+});

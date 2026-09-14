@@ -3,12 +3,13 @@ import { X } from 'lucide-react';
 export function IconButton({ label, active, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; active?: boolean }) {
   return <button className={`icon-button ${active ? 'active' : ''} ${props.className || ''}`} title={label} aria-label={label} aria-pressed={active === undefined ? undefined : active} {...props}>{children}</button>;
 }
-export function Modal({ title, children, onClose, wide }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean }) {
+export function Modal({ title, children, onClose, wide, blockEditorShortcuts }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean; blockEditorShortcuts?: boolean }) {
   const dialog = useRef<HTMLElement>(null);
   useEffect(() => { const previous = document.activeElement as HTMLElement | null; dialog.current?.querySelector<HTMLElement>('button')?.focus(); return () => previous?.focus(); }, []);
   return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}><section ref={dialog} className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={title} onKeyDown={e => {
     if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
     if (e.key === 'Tab') { const focusable = [...dialog.current!.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')]; const first = focusable[0]; const last = focusable.at(-1); if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); } }
+    if (blockEditorShortcuts) e.stopPropagation();
   }}><div className="modal-heading"><h2>{title}</h2><IconButton label="閉じる" onClick={onClose}><X size={18}/></IconButton></div>{children}</section></div>;
 }
 export function Waveform({ values, color = 'currentColor', from = 0, to = 1 }: { values: number[]; color?: string; from?: number; to?: number }) {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, Expand, Pause, Play, SkipBack, SkipForward, Scan, Monitor } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Expand, Pause, Play, SkipBack, SkipForward, Scan, Monitor, Camera } from 'lucide-react';
 import { useEditor } from '../store';
 import { endTime, timecode } from '../model';
 import { fadeAt, titleCanvas } from '../render';
@@ -18,10 +18,18 @@ import { ordinaryCutPrefetch } from '../video-prefetch';
 import DrawLayer from './DrawLayer';
 import MediaDragLayer from './MediaDragLayer';
 import { mediaSourceKey, type MediaSize } from '../media-transform';
-import type { Clip, Asset } from '../types';
+import FrameSaveDialog from './FrameSaveDialog';
+import type { Clip, Asset, Project } from '../types';
 
 export default function Preview() {
   const canvas = useRef<HTMLCanvasElement>(null); const stage = useRef<HTMLDivElement>(null); const mediaBin = useRef<HTMLDivElement>(null);
+  const captureRequest = useRef<{ project: Project; time: number; resolve: (png: string) => void; reject: (error: Error) => void } | null>(null);
+  const [frameDialog, setFrameDialog] = useState<{ project: Project; time: number } | null>(null);
+  const captureFrame = () => new Promise<string>((resolve, reject) => {
+    if (!frameDialog || captureRequest.current) { reject(new Error('写真の準備中です。')); return; }
+    const timer = setTimeout(() => { captureRequest.current = null; reject(new Error('コマを準備できませんでした。素材やフォントの読み込み状態を確認して、もう一度お試しください。')); }, 20000);
+    captureRequest.current = { ...frameDialog, resolve: png => { clearTimeout(timer); resolve(png); }, reject: error => { clearTimeout(timer); reject(error); } };
+  });
   const [audioLoading, setAudioLoading] = useState(false);
   const [mediaSizes, setMediaSizes] = useState<Record<string, MediaSize>>({});
   const [transformActions, setTransformActions] = useState<HTMLDivElement | null>(null);
@@ -106,6 +114,10 @@ export default function Preview() {
     };
     const draw = (now: number) => {
       let s = useEditor.getState(); const p = s.project;
+      let capture = captureRequest.current;
+      if (capture && (capture.project !== p || s.playing || Math.abs(s.playhead - capture.time) > 1e-7)) {
+        captureRequest.current = null; capture.reject(new Error('再生位置またはプロジェクトが変更されました。もう一度保存してください。')); capture = null;
+      }
       let sizesChanged = false;
       if (sizeProject !== p.id) { knownSizes.clear(); sizeProject = p.id; sizesChanged = true; }
       let t = s.playhead;
@@ -116,7 +128,7 @@ export default function Preview() {
         updatingClock = true; useEditor.setState({ playhead: t }); updatingClock = false;
         if (ended) { s.stop(); s = useEditor.getState(); }
       }
-      const w = Math.max(2, Math.round(p.width * s.previewQuality)); const h = Math.max(2, Math.round(p.height * s.previewQuality));
+      const w = Math.max(2, Math.round(p.width * (capture ? 1 : s.previewQuality))); const h = Math.max(2, Math.round(p.height * (capture ? 1 : s.previewQuality)));
       if (target.width !== w || target.height !== h) { target.width = w; target.height = h; }
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
       const alive = new Set<string>(), activeTitles = new Set<string>();
@@ -148,7 +160,7 @@ export default function Preview() {
       }
       for(const [id,buffers]of transitionBuffers)if(!active.some(pair=>pair.id===id)){buffers.renderer.dispose();for(const buffer of [buffers.a,buffers.b])buffer.width=buffer.height=0;transitionBuffers.delete(id);}
       for(const pair of active){let buffers=transitionBuffers.get(pair.id);if(!buffers){buffers={a:document.createElement('canvas'),b:document.createElement('canvas'),aReady:false,bReady:false,aUsable:false,bUsable:false,aAvailable:false,bAvailable:false,renderer:new TransitionPreview(message=>{useEditor.getState().stop();useEditor.getState().notify(message);},gpuPool)};transitionBuffers.set(pair.id,buffers);}buffers.aReady=buffers.bReady=buffers.aUsable=buffers.bUsable=buffers.aAvailable=buffers.bAvailable=false;for(const buffer of [buffers.a,buffers.b]){if(buffer.width!==w||buffer.height!==h){buffer.width=w;buffer.height=h;}buffer.getContext('2d')!.clearRect(0,0,w,h);}}
-      let transitionsReady=true,transitionsPresented=true;const tracks = [...p.tracks].reverse();
+      let frameReady=true; let transitionsReady=true,transitionsPresented=true;const tracks = [...p.tracks].reverse();
       for (const track of tracks) for (const clip of p.clips.filter(c => c.trackId === track.id).sort((a,b) => a.start - b.start)) {
         if ((t < clip.start || t >= clip.start + clip.duration) && !pairs.has(clip.id)) continue;
         const asset = p.assets.find(a => a.id === clip.assetId);
@@ -219,6 +231,7 @@ export default function Preview() {
             if (item.frame && (sourceUsable || !s.playing)) { source = item.frame; sw = item.frame.width; sh = item.frame.height; }
           }
         }
+        if (!track.hidden && clip.kind !== 'audio' && (!source || !sourceReady)) frameReady = false;
         const pair=pairs.get(clip.id),buffers=pair?transitionBuffers.get(pair.id):undefined;
         const drawContext=buffers?(clip.id===pair!.fromId?buffers.a:buffers.b).getContext('2d')!:ctx;
         if (source && !track.hidden && clip.kind !== 'audio') {
@@ -261,10 +274,14 @@ export default function Preview() {
         lastUi = now; setAudioLoading(audio.loading);
       }
       if (sizesChanged) setMediaSizes(Object.fromEntries(knownSizes));
+      if (capture && frameReady && transitionsReady && transitionsPresented) {
+        captureRequest.current = null;
+        try { capture.resolve(target.toDataURL('image/png')); } catch { capture.reject(new Error('写真を作成できませんでした。素材の読み込み状態を確認してください。')); }
+      }
       target.dataset.transitionsPresented=String(transitionsPresented);target.dataset.transitionBackend=active.map(pair=>transitionBuffers.get(pair.id)?.renderer.backend||'').join(',');target.dataset.previewTime=String(t);target.dataset.transitionKind=active.map(pair=>pair.video).join(',');target.dataset.transitionsReady=String(transitionsReady);frame = requestAnimationFrame(draw);
     };
     frame = requestAnimationFrame(draw);
-    return () => { cancelAnimationFrame(frame); unsubscribe(); unbindMeterReset(); audio.dispose();for(const buffers of transitionBuffers.values())buffers.renderer.dispose();gpuPool.dispose(); for (const item of media.values()) { clearFrame(item);item.element.pause(); item.element.removeAttribute('src'); item.element.load(); item.element.remove(); } };
+    return () => { captureRequest.current?.reject(new Error('写真の保存を中止しました。')); captureRequest.current = null; cancelAnimationFrame(frame); unsubscribe(); unbindMeterReset(); audio.dispose();for(const buffers of transitionBuffers.values())buffers.renderer.dispose();gpuPool.dispose(); for (const item of media.values()) { clearFrame(item);item.element.pause(); item.element.removeAttribute('src'); item.element.load(); item.element.remove(); } };
   }, []);
   const seek = useEditor(s => s.seek);
   return <section className="preview-panel panel">
@@ -274,6 +291,7 @@ export default function Preview() {
       <div className="monitor-badge"><span/> PROGRAM</div>
     </div>
     <div className="preview-bottom"><div className="preview-meta"><span className="timecode accent">{timecode(playhead, project.fps)}</span><span className="shuttle-status" role="status" aria-label="シャトル状態">{playing ? `${shuttleRate < 0 ? '逆再生' : '再生'} ${Math.abs(shuttleRate)}×${audioLoading ? '・音声準備中' : ''}` : '停止'}</span><div className="preview-options"><select aria-label="プレビュー画質" value={quality} onChange={e => useEditor.setState({ previewQuality: Number(e.target.value) })}><option value={1}>フル画質</option><option value={0.5}>1/2 画質</option><option value={0.25}>1/4 画質</option></select><span>フィット</span><ChevronDown size={12}/></div><span className="timecode subtle">{timecode(total, project.fps)}</span></div>
-    <div className="transport"><div><IconButton label="セーフマージン" active={safeGuides} onClick={() => useEditor.setState({ safeGuides: !safeGuides })}><Scan size={16}/></IconButton></div><div className="transport-center"><IconButton label="先頭へ (Home)" onClick={() => seek(0)}><SkipBack size={17}/></IconButton><IconButton label="1フレーム戻る (←)" onClick={() => { useEditor.getState().stop(); seek(playhead - 1 / project.fps); }}><ChevronLeft size={19}/></IconButton><button className="play-button" aria-label={playing ? '一時停止 (Space)' : '再生 (Space)'} onClick={() => useEditor.getState().togglePlay()}>{playing ? <Pause size={19} fill="currentColor"/> : <Play size={19} fill="currentColor"/>}</button><IconButton label="1フレーム進む (→)" onClick={() => { useEditor.getState().stop(); seek(playhead + 1 / project.fps); }}><ChevronRight size={19}/></IconButton><IconButton label="末尾へ (End)" onClick={() => seek(total)}><SkipForward size={17}/></IconButton></div><IconButton label="プレビューを全画面表示" onClick={() => { if (document.fullscreenElement) void document.exitFullscreen(); else void stage.current?.requestFullscreen(); }}><Expand size={16}/></IconButton></div></div>
+    <div className="transport"><div><button className="frame-save-trigger" title="現在のコマを写真として保存" aria-label="現在のコマを保存" disabled={!window.luma || !project.clips.length} onClick={() => { const state = useEditor.getState(); if (state.gestureActive) return; state.stop(); const time = Math.max(0, Math.min(state.playhead, (Math.ceil(endTime(state.project) * state.project.fps - 1e-7) - 1) / state.project.fps)); state.seek(time); setFrameDialog({ project: state.project, time: useEditor.getState().playhead }); }}><Camera size={15}/><span>コマを保存</span></button><IconButton label="セーフマージン" active={safeGuides} onClick={() => useEditor.setState({ safeGuides: !safeGuides })}><Scan size={16}/></IconButton></div><div className="transport-center"><IconButton label="先頭へ (Home)" onClick={() => seek(0)}><SkipBack size={17}/></IconButton><IconButton label="1フレーム戻る (←)" onClick={() => { useEditor.getState().stop(); seek(playhead - 1 / project.fps); }}><ChevronLeft size={19}/></IconButton><button className="play-button" aria-label={playing ? '一時停止 (Space)' : '再生 (Space)'} onClick={() => useEditor.getState().togglePlay()}>{playing ? <Pause size={19} fill="currentColor"/> : <Play size={19} fill="currentColor"/>}</button><IconButton label="1フレーム進む (→)" onClick={() => { useEditor.getState().stop(); seek(playhead + 1 / project.fps); }}><ChevronRight size={19}/></IconButton><IconButton label="末尾へ (End)" onClick={() => seek(total)}><SkipForward size={17}/></IconButton></div><IconButton label="プレビューを全画面表示" onClick={() => { if (document.fullscreenElement) void document.exitFullscreen(); else void stage.current?.requestFullscreen(); }}><Expand size={16}/></IconButton></div></div>
+    {frameDialog ? <FrameSaveDialog project={frameDialog.project} time={frameDialog.time} capture={captureFrame} onClose={() => setFrameDialog(null)}/> : null}
   </section>;
 }
