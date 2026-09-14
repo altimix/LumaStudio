@@ -1,4 +1,4 @@
-Luma Studio 1.3.1 — Mac公開版
+Luma Studio 1.4.0 — Mac公開版
 
 対応するMac
 ・Apple Silicon搭載Mac（M1以降）。Intel Macには対応していません。
@@ -6,7 +6,7 @@ Luma Studio 1.3.1 — Mac公開版
 ・Node.jsやFFmpegを別途インストールする必要はありません。
 
 インストールと初回起動
-1. Luma-Studio-1.3.1-macOS-arm64.zipを解凍します。
+1. Luma-Studio-1.4.0-macOS-arm64.zipを解凍します。
 2. Luma Studio.appを「アプリケーション」フォルダへ移動します。
 3. Luma Studio.appを開きます。
 4. 開発元を確認できない旨の警告で起動できない場合は、警告を閉じます。
@@ -46,6 +46,8 @@ https://support.apple.com/ja-jp/guide/mac-help/mh40616/mac
 
 公開元: https://github.com/altimix/LumaStudio
 コード: GPL-3.0-only。BGM: CC BY 4.0（利用時はaltimixのクレジットを記載）。
+
+1.4.0の追加: 現在のコマをPNG / JPEGで指定フォルダへ保存できます。「プロジェクトの素材にも追加」は初期値オン。写真保存先と素材読み込み先を別々に記憶します。素材の「追加」メニュー、左右パネルの幅変更・折りたたみ、タイムラインの高さの記憶、補助文字の読みやすさ、テキスト追加への入口も改善しました。
 
 1.3.1の修正: アプリ全体のad-hoc署名と配布ZIPの整合性検証を追加し、1.3.0で署名が不完全だった問題に対応しました。
 
