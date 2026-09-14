@@ -96,7 +96,7 @@ async function verify() {
     await page.getByRole('button',{name:'カラー',exact:true}).first().click();
     await page.getByRole('button',{name:'Cinematic 深い陰影、映画のように'}).click();
     await page.waitForFunction(()=>document.querySelector('#prop-saturation')?.value==='78');
-    await page.getByRole('button',{name:'テキスト',exact:true}).first().click();
+    await page.getByRole('tab',{name:'テキスト',exact:true}).click();
     await page.getByRole('button',{name:/YOUR STORY/}).click();
     await page.getByRole('textbox',{name:'テロップのテキスト',exact:true}).fill('日本語テロップ\nWindowsで動画編集');
     await page.getByRole('textbox',{name:'テロップのテキスト',exact:true}).blur();

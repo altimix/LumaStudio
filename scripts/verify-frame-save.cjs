@@ -34,17 +34,19 @@ const root = path.join(__dirname, '..');
     const pixels=async file=>{const meta=(await probe(file)).streams[0];assert.equal(meta.width,1280);assert.equal(meta.height,720);const rgb=await run(ffmpeg,['-v','error','-i',file,'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','pipe:1']);return (x,y)=>[...rgb.subarray((y*1280+x)*3,(y*1280+x)*3+3)];};
     await page.getByRole('button',{name:'先頭へ (Home)',exact:true}).click();
     await page.getByLabel('プレビュー画質',{exact:true}).selectOption('0.25');
+    await page.getByRole('button',{name:'素材パネルを折りたたむ',exact:true}).click();
     const initial=await count(); const png=path.join(folder,'最初のコマ.png');await setSave(png);await open();
     await page.keyboard.press('ArrowRight');
     assert.equal(await page.locator('.preview-meta .timecode').first().textContent(),'00:00:00:00');
     await page.screenshot({path:path.join(results,'dialog.png')});
     await dialog().getByRole('button',{name:'保存先を選んで保存',exact:true}).click();await dialog().getByText('写真を保存し、プロジェクトの素材に追加しました。',{exact:true}).waitFor({timeout:30000});
     assert.equal(await count(),initial+1);assert.match((await app.evaluate(()=>globalThis.lastFrameDialog)).defaultPath,/写真保存の検証_00-00-00-00\.png$/);
+    assert.ok(await page.getByRole('tab',{name:'メディア',exact:true}).isVisible());
     let px=await pixels(png);assert.ok(px(10,10)[0]>240&&px(10,10)[2]<10);assert.deepEqual(px(640,360),[0,255,0]);await close();assert.equal(await page.getByLabel('プレビュー画質').inputValue(),'0.25');
     await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();assert.equal(await count(),initial);await fs.access(png);
     await page.getByRole('button',{name:'やり直す (Ctrl+Shift+Z)',exact:true}).click();assert.equal(await count(),initial+1);
     const saved=await saveProject();assert.deepEqual(saved.clips,JSON.parse(JSON.stringify(project.clips)));assert.equal(saved.assets.length,2);
-    checks.push('PNG full resolution from quarter preview, red frame and green overlay pixels, default checked, modal blocks timeline shortcuts, undo/redo retains file and locked timeline');
+    checks.push('PNG full resolution from quarter preview, red frame and green overlay pixels, default checked, imported photo reveals the already selected media panel, modal blocks timeline shortcuts, undo/redo retains file and locked timeline');
     const jpg=path.join(folder,'青いコマ.jpg');await setSave(jpg);
     await page.keyboard.press('Home');for(let i=0;i<15;i++)await page.getByRole('button',{name:'1フレーム進む (→)',exact:true}).click();
     await open();await dialog().getByRole('combobox').selectOption('jpg');await dialog().getByRole('checkbox').uncheck();await dialog().getByRole('button',{name:'保存先を選んで保存',exact:true}).click();await dialog().getByText('写真を保存しました。',{exact:true}).waitFor({timeout:30000});
@@ -56,13 +58,13 @@ const root = path.join(__dirname, '..');
     checks.push('cancel and source overwrite rejection do not alter project or files');
     // Native import folder is independent, even when selecting an existing asset.
     await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async(_window,options)=>{globalThis.lastImportDialog=options;return {canceled:false,filePaths:[file]};};},source);
-    await page.getByRole('button',{name:'素材を読み込む',exact:true}).first().click();await page.waitForFunction(()=>!document.querySelector('.import-progress'));
+    await page.getByRole('button', { name: '素材を追加', exact: true }).click(); await page.getByRole('menuitem', { name: '素材を読み込む', exact: false }).click();await page.waitForFunction(()=>!document.querySelector('.import-progress'));
     for(let i=0;i<100;i++){try{await fs.access(path.join(profile,'import-folder.json'));break;}catch{await new Promise(r=>setTimeout(r,50));}}
     assert.equal(JSON.parse(await fs.readFile(path.join(profile,'import-folder.json'))).folder,importFolder);
     await saveProject();await app.close();page=await launch();
     assert.equal(await page.locator('.media-card').count(),2);assert.equal(await page.locator('.media-card.offline').count(),0);
     await setSave('',true);await open();await dialog().getByRole('button',{name:'保存先を選んで保存',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.frame-save-form [role=status]'));assert.equal(path.dirname((await app.evaluate(()=>globalThis.lastFrameDialog)).defaultPath),folder);await close();
-    await app.evaluate(({dialog})=>{dialog.showOpenDialog=async(_window,options)=>{globalThis.lastImportDialog=options;return {canceled:true,filePaths:[]};};});await page.getByRole('button',{name:'素材を読み込む',exact:true}).first().click();
+    await app.evaluate(({dialog})=>{dialog.showOpenDialog=async(_window,options)=>{globalThis.lastImportDialog=options;return {canceled:true,filePaths:[]};};});await page.getByRole('button', { name: '素材を追加', exact: true }).click(); await page.getByRole('menuitem', { name: '素材を読み込む', exact: false }).click();
     assert.equal((await app.evaluate(()=>globalThis.lastImportDialog)).defaultPath,importFolder);
     checks.push('save/reopen and app restart preserve imported photo and separate photo/import folder preferences');
     // A corrupt image remains offline, but its source path is still protected.

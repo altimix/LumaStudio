@@ -46,7 +46,7 @@ async function verify() {
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, projectFile);
     await page.keyboard.press('Control+o'); await page.getByRole('button', { name: fixture.name, exact: true }).waitFor();
     await app.evaluate(({ dialog }, files) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: files }); }, [source, unused]);
-    await page.getByRole('button', { name: '素材を読み込む', exact: true }).first().click();
+    await page.getByRole('button', { name: '素材を追加', exact: true }).click(); await page.getByRole('menuitem', { name: '素材を読み込む', exact: false }).click();
     await page.getByRole('button', { name: '長い素材 75秒.mp4 を追加', exact: true }).waitFor({ timeout: 60000 });
     await page.getByRole('button', { name: '長い素材 75秒.mp4 を追加', exact: true }).click();
     let saved = await save(); const asset = saved.assets.find(a => a.name === path.basename(source));

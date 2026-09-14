@@ -15,17 +15,17 @@ async function verify(){
     await page.keyboard.press('Control+o');await page.getByRole('button',{name:'黒背景の検証',exact:true}).waitFor();
     // Hold a real generation result while a different file with the same saved ID is opened.
     await app.evaluate(({ipcMain})=>{const original=ipcMain._invokeHandlers.get('black-video');ipcMain.removeHandler('black-video');ipcMain.handle('black-video',async(...args)=>{ipcMain.removeHandler('black-video');ipcMain.handle('black-video',original);const result=await original(...args);await new Promise(resolve=>{globalThis.releaseBlack=resolve;});return result;});});
-    await page.getByRole('button',{name:'ブラックビデオを追加',exact:true}).click();
+    await page.getByRole('button',{name:'素材を追加',exact:true}).click();await page.getByRole('menuitem',{name:'ブラックビデオを追加',exact:true}).click();
     await app.evaluate(async()=>{for(let i=0;i<200&&!globalThis.releaseBlack;i++)await new Promise(r=>setTimeout(r,50));if(!globalThis.releaseBlack)throw Error('Generation did not reach the held result.');});
     const copiedFile=path.join(profile,'same-id.luma'),copied={...JSON.parse(await fs.readFile(file,'utf8')),name:'同じIDの別プロジェクト'};await fs.writeFile(copiedFile,JSON.stringify(copied));
     await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},copiedFile);
     await page.keyboard.press('Control+o');await page.getByRole('button',{name:copied.name,exact:true}).waitFor();
     await app.evaluate(()=>{globalThis.releaseBlack();delete globalThis.releaseBlack;});
-    await page.getByRole('button',{name:'ブラックビデオを追加',exact:true}).waitFor();assert.equal(await page.locator('.media-card').count(),0);
+    await page.getByRole('button',{name:'素材を追加',exact:true}).waitFor();assert.equal(await page.locator('.media-card').count(),0);
     await page.getByText('プロジェクトが変更されたため追加を中止しました。もう一度追加してください。',{exact:true}).waitFor();
     await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},file);
     await page.keyboard.press('Control+o');await page.getByRole('button',{name:'黒背景の検証',exact:true}).waitFor();
-    await page.getByRole('button',{name:'ブラックビデオを追加',exact:true}).click();await page.locator('.media-card').waitFor();
+    await page.getByRole('button',{name:'素材を追加',exact:true}).click();await page.getByRole('menuitem',{name:'ブラックビデオを追加',exact:true}).click();await page.locator('.media-card').waitFor();
     await page.getByRole('button',{name:'選択素材をタイムラインに追加',exact:true}).click();await page.locator('.timeline-clip.image').waitFor();
     await page.locator('#prop-duration').fill('75');await page.locator('#prop-duration').press('Enter');
     const save=async()=>{await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));return JSON.parse(await fs.readFile(file,'utf8'));};
