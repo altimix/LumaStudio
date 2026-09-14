@@ -3,6 +3,16 @@ module.exports = async function verifyTransitionDelete({ app, page, save, file, 
   const transition = () => page.locator('.timeline-transition').first(), menu = () => page.getByRole('menu', { name: 'トランジションの編集', exact: true });
   const action = () => menu().getByRole('menuitem', { name: 'トランジションを削除', exact: true });
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1100, 760));
+  for (const viaMenu of [false, true]) {
+    await page.getByRole('button', { name: '素材パネルを折りたたむ', exact: true }).click();
+    await transition().click({ button: viaMenu ? 'right' : 'left' });
+    if (viaMenu) await menu().getByRole('menuitem', { name: '効果を調整', exact: true }).click();
+    const effects = page.getByRole('tab', { name: 'エフェクト', exact: true });
+    await effects.waitFor({ state: 'visible' }); assert.equal(await effects.getAttribute('aria-selected'), 'true');
+    assert.equal(await page.locator('.unsaved-dot').count(), 0);
+    assert.deepEqual(await save(), baseline);
+  }
+  checks.push('transition click and adjust menu reveal the already selected effects panel without changing the project');
   await transition().click({ button: 'right' }); await menu().waitFor(); const bounds = await menu().boundingBox(), view = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
   assert.ok(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= view.width && bounds.y + bounds.height <= view.height);
   await page.screenshot({ path: path.join(results, 'timeline-transition-delete.png') }); await action().click();

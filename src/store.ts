@@ -34,7 +34,7 @@ type EditorState = {
   load(p: Project, savedPath?: string): void; commit(p: Project, label?: string, undoPlayhead?: number): boolean; place(p: Project, label: string): boolean; checkpoint(label?: string): void; transient(p: Project, baseline?: Project): void;
   select(ids: string[]): void; seek(t: number): void; togglePlay(): void; stop(): void; shuttle(direction: -1 | 1): void; setZoom(n: number): void;
   setPanel(p: Panel): void; setInspectorTab(p: EditorState['inspectorTab']): void;
-  inspectorRequestId: number;
+  panelRequestId: number; inspectorRequestId: number;
   updateClip(id: string, patch: Partial<Clip>): void; updateTrack(id: string, patch: Partial<Track>): void;
   importAssets(assets: Asset[]): void; removeAsset(id: string, removeUsed?: boolean): void; addAsset(id: string, at?: number, trackId?: string): void; addTitle(style?: Clip['textStyle']): void;
   split(at?: number, ids?: string[]): void; remove(ripple?: boolean): void; duplicate(): void; copy(): void; paste(): void;
@@ -104,7 +104,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     } catch(e){s.notify((e as Error).message);}
   },
   setRate:(speed,ids)=>{const s=get(),targets=linkedIds(s.project,ids||s.selected);if(!Number.isFinite(speed)||speed<.25||speed>4)return;if(clipsLocked(s.project,targets)){s.notify('リンク相手を含むトラックのロックを解除してください。');return;}s.commit({...s.project,clips:s.project.clips.map(c=>targets.includes(c.id)&&['video','audio'].includes(c.kind)?normalizeClip({...c,speed,duration:c.duration*c.speed/speed,fadeIn:c.fadeIn*c.speed/speed,fadeOut:c.fadeOut*c.speed/speed,...(c.volumeKeyframes?{volumeKeyframes:retimeVolume(c,{in:c.in,speed,duration:c.duration*c.speed/speed})}:{})},s.project):c)},'再生速度を変更');},
-  projectGeneration: 0, project: emptyProject(), selected: [], playhead: 2.4, seekRevision: 0, playing: false, shuttleRate: 1, zoom: 48, snapping: true, tool: 'select', panel: 'media', inspectorTab: 'video', inspectorRequestId: 0,
+  projectGeneration: 0, project: emptyProject(), selected: [], playhead: 2.4, seekRevision: 0, playing: false, shuttleRate: 1, zoom: 48, snapping: true, tool: 'select', panel: 'media', inspectorTab: 'video', panelRequestId: 0, inspectorRequestId: 0,
   history: [], future: [], historyLabels: [], futureLabels: [], currentAction: '開始', dirty: false, savedPath: null, clipboard: [], toast: '', sourceId: null, ready: false, autosavedAt: '', previewQuality: 0.5, safeGuides: false, gestureActive: false, gestureOwner:null, gestureCancel:null, trackMenuOpen: false,
   beginGesture:(owner,cancel)=>{if(get().gestureActive)return false;set({gestureActive:true,gestureOwner:owner,gestureCancel:cancel});return true;},
   endGesture:owner=>{if(get().gestureOwner===owner)set({gestureActive:false,gestureOwner:null,gestureCancel:null});},
@@ -131,8 +131,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     return { playing: true, shuttleRate: direction * speed, zoom: boundedZoom(s.zoom, total), playhead: direction > 0 && s.playhead >= total ? 0 : direction < 0 && s.playhead <= 0 ? total : Math.min(total, s.playhead) };
   }),
   setZoom: zoom => { if (Number.isFinite(zoom)) set(s => ({ zoom: boundedZoom(zoom, Math.max(endTime(s.project), s.playhead)) })); },
-  setPanel: panel => set({ panel }),
-  // An explicit properties command must reveal the panel even for the same tab.
+  // Explicit panel commands must reveal their panel even for the same tab.
+  setPanel: panel => set(state => ({ panel, panelRequestId: state.panelRequestId + 1 })),
   setInspectorTab: inspectorTab => set(state => ({ inspectorTab, inspectorRequestId: state.inspectorRequestId + 1 })),
   updateClip: (id, patch) => {
     const s = get(); const clip = s.project.clips.find(c => c.id === id);
