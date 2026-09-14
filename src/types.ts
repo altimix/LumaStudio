@@ -85,6 +85,7 @@ export interface DesktopAPI {
   finishPrepareClose(requestId: number, dirty: boolean, canClose: boolean): Promise<void>;
   onSaveBeforeClose(cb: (requestId: number) => void): () => void;
   finishSaveBeforeClose(requestId: number, saved: boolean): Promise<void>;
+  saveFrame(request: { name: string; time: number; fps: number; width: number; height: number; format: 'png' | 'jpg'; addToProject: boolean; png: string }): Promise<{ path: string; asset?: Asset; warning?: string } | null>;
   exportProject(project: Project, settings: ExportSettings, titles: Record<string, string>): Promise<string | null>;
   checkUpdates(refresh?: boolean): Promise<UpdateInfo>;
   openUpdatePage(): Promise<void>;

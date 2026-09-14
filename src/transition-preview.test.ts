@@ -69,6 +69,16 @@ describe('transition rendering lifecycle', () => {
     expect(late.closed).toBe(true); expect(renderer.key).toBe('dissolve'); expect(renderer.bitmap).toBe(visible); expect(error).not.toHaveBeenCalled();
     renderer.dispose(); expect(worker.terminate).toHaveBeenCalledOnce();
   });
+  it('uses the project dimensions for a full-resolution fallback capture', async () => {
+    const renderer = new TransitionPreview(vi.fn()), a = canvas(), b = canvas();
+    const stamp = { time: 3, revision: 4, width: 1920, height: 1080, kind: 'pagePeel' };
+    renderer.request('capture', 'pagePeel', a, b, .5, stamp, true); const worker = await pending();
+    const message = worker.postMessage.mock.calls[0][0];
+    expect(message.width).toBe(1920); expect(message.height).toBe(1080);
+    expect(createImageBitmap).toHaveBeenNthCalledWith(1,a,{resizeWidth:1920,resizeHeight:1080});
+    expect(createImageBitmap).toHaveBeenNthCalledWith(2,b,{resizeWidth:1920,resizeHeight:1080});
+    renderer.dispose();
+  });
   it('drops delayed snapshots when the requested effect changes before worker dispatch', async () => {
     const resolvers: ((bitmap: Bitmap) => void)[] = [];
     vi.stubGlobal('createImageBitmap', vi.fn(() => new Promise<Bitmap>(resolve => resolvers.push(resolve))));

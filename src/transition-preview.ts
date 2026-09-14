@@ -22,7 +22,7 @@ export class TransitionPreview {
     this.bitmap=bitmap;this.key=key;this.frameStamp=stamp;
   }
   private fail(message:string){if(this.disposed||this.failed)return;this.failed=true;this.pending=false;this.onError('トランジションのプレビューを準備できません。'+message);}
-  request(key:string,kind:'dissolve'|'pageTurn'|'pagePeel',a:HTMLCanvasElement,b:HTMLCanvasElement,progress:number,stamp?:TransitionFrameStamp){
+  request(key:string,kind:'dissolve'|'pageTurn'|'pagePeel',a:HTMLCanvasElement,b:HTMLCanvasElement,progress:number,stamp?:TransitionFrameStamp,fullResolution=false){
     if(this.disposed||this.failed)return;
     const resized=this.inputWidth!==a.width||this.inputHeight!==a.height;
     if(resized){this.inputWidth=a.width;this.inputHeight=a.height;this.gpuUnavailable=false;}
@@ -59,7 +59,7 @@ export class TransitionPreview {
       };
     }
     const revision=this.revision;this.workerRevision=revision;this.workerStamp=stamp;
-    const ratio=Math.min(1,640/Math.max(a.width,a.height)),width=Math.max(2,Math.round(a.width*ratio)),height=Math.max(2,Math.round(a.height*ratio));
+    const ratio=fullResolution?1:Math.min(1,640/Math.max(a.width,a.height)),width=Math.max(2,Math.round(a.width*ratio)),height=Math.max(2,Math.round(a.height*ratio));
     void Promise.allSettled([createImageBitmap(a,{resizeWidth:width,resizeHeight:height}),createImageBitmap(b,{resizeWidth:width,resizeHeight:height})]).then(results=>{
       const bitmaps=results.flatMap(result=>result.status==='fulfilled'?[result.value]:[]),failed=results.find(result=>result.status==='rejected');
       if(this.disposed||revision!==this.revision||failed){for(const bitmap of bitmaps)bitmap.close();this.pending=false;if(revision===this.revision&&failed?.status==='rejected')this.fail(String(failed.reason));return;}

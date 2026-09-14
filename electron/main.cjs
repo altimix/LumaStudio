@@ -1,8 +1,10 @@
 const { readStartupProject, rebaseStartupYoutube } = require('./startup-project.cjs');
 const { blackVideo } = require('./black-video.cjs');
 const { hasClipAudio } = require('../shared/clip-links.mjs');
-const { app, BrowserWindow, ipcMain, protocol, net, dialog, shell, Menu, session, safeStorage, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, dialog, shell, Menu, session, safeStorage, clipboard, nativeImage } = require('electron');
 const { createUpdateChecker } = require('./updates.cjs');
+const { recentFolder, rememberFolder } = require('./recent-folder.cjs');
+const { createFrameSaver } = require('./frame-save.cjs');
 const { copyText } = require('./clipboard.cjs');
 const fs = require('node:fs/promises');
 const { createReadStream } = require('node:fs');
@@ -78,7 +80,11 @@ function present(a) {
   return { ...a, url, thumbnail: a.thumbnailPath ? `media://local/thumb/${assetKey(a)}` : '' };
 }
 async function hydrate(p) {
-  return hydrateProject(p, file => inspectMedia(file, cacheDir()), present);
+  const hydrated = await hydrateProject(p, file => inspectMedia(file, cacheDir()), present);
+  // Failed inspection keeps an asset offline. Its saved path is still source
+  // media and must never become a photo, project, or export destination.
+  for (const asset of hydrated.assets) protectedSourcePaths.add(asset.path);
+  return hydrated;
 }
 const serialize = serializeProject;
 function handle(channel, fn) {
@@ -97,6 +103,13 @@ function installIPC() {
     await shell.openExternal(result.releaseUrl);
   });
   handle('copy-text', text => copyText(clipboard, text));
+  handle('save-frame', createFrameSaver({
+    configFile: path.join(app.getPath('userData'), 'frame-save.json'), defaultFolder: app.getPath('pictures'),
+    dialog: options => dialog.showSaveDialog(window, options), nativeImage,
+    sourcePaths: () => [...protectedSourcePaths, ...startupProtectedPaths],
+    importImage: async file => present(await inspectMedia(file, cacheDir())),
+    onSaved: file => completedExports.add(file)
+  }));
   const waveformRequests=new Map();
   handle('waveform-read', async (url,start,end,bins,options,requestId) => {
     if(requestId===undefined)return waveformReader.read(url,start,end,bins,options);
@@ -238,10 +251,11 @@ function installIPC() {
     } catch {}
     return { assets, recovery, startupProject, startupError, version: app.getVersion() };
   });
+  const importFolderConfig = path.join(app.getPath('userData'), 'import-folder.json');
   const importFiles = async paths => {
     if (importing) throw new Error('前の素材を読み込み中です。');
     if (!paths) {
-      const result = await dialog.showOpenDialog(window, { title: '素材を読み込む', properties: ['openFile', 'multiSelections'], filters: [{ name: '動画・音声・画像', extensions: ['mp4','mov','mkv','avi','webm','m4v','mxf','mp3','wav','aac','m4a','flac','ogg','png','jpg','jpeg','webp','bmp','gif','tif','tiff'] }] });
+      const result = await dialog.showOpenDialog(window, { title: '素材を読み込む', defaultPath: await recentFolder(importFolderConfig, app.getPath('documents')), properties: ['openFile', 'multiSelections'], filters: [{ name: '動画・音声・画像', extensions: ['mp4','mov','mkv','avi','webm','m4v','mxf','mp3','wav','aac','m4a','flac','ogg','png','jpg','jpeg','webp','bmp','gif','tif','tiff'] }] });
       if (result.canceled) return { assets: [], errors: [] }; paths = result.filePaths;
     }
     if (!Array.isArray(paths) || paths.length > 100 || paths.some(p => typeof p !== 'string' || !path.isAbsolute(p))) throw new Error('読み込み先が不正です。');
@@ -252,6 +266,7 @@ function installIPC() {
         window.webContents.send('import-progress', { index: i + 1, total: paths.length, name: path.basename(file) });
         try { assets.push(present(await inspectMedia(file, cacheDir()))); } catch (e) { errors.push(`${path.basename(file)}: ${e.message.slice(-350)}`); }
       }
+      if (assets.length) await rememberFolder(importFolderConfig, assets[0].path).catch(() => { errors.push('素材は読み込みましたが、読み込み先フォルダを記憶できませんでした。'); });
       return { assets, errors };
     } finally { importing = false; }
   };

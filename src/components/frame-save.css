@@ -1,0 +1,4 @@
+.frame-save-form{padding:20px 23px;display:flex;flex-direction:column;gap:16px;font-size:12px;line-height:1.7}
+.frame-format{display:flex;align-items:center;gap:16px}.frame-format select{flex:1;font-size:12px}
+.frame-add{display:flex;align-items:center;gap:9px}.frame-add input{width:16px;height:16px;accent-color:var(--accent)}
+.frame-save-path{overflow-wrap:anywhere;color:var(--muted)}
