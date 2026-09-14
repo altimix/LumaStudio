@@ -145,7 +145,22 @@ const storageKey = 'luma.workspace-layout.v1';
     await button('ウィンドウ').click(); await button('レイアウトを初期状態に戻す').click();
     assert.deepEqual(await sizes(), [288, 286, 354]);
     await separator(names[2]).focus(); await page.keyboard.press('Home');
-    assert.ok(await page.locator('.meter-maximum').evaluate(element => element.getBoundingClientRect().bottom <= element.closest('.audio-meter').getBoundingClientRect().bottom));
+    const minimumMeters = [];
+    const checkMinimumMeter = async font => {
+      await settle();
+      const bounds = await page.locator('.audio-meter').evaluate(element => {
+        const rect = element.getBoundingClientRect(), style = getComputedStyle(element);
+        return { top: rect.top + parseFloat(style.paddingTop), bottom: rect.bottom - parseFloat(style.paddingBottom),
+          bodyHeight: element.querySelector('.meter-body').getBoundingClientRect().height,
+          rows: [...element.children].map(row => ({ name: row.className, top: row.getBoundingClientRect().top, bottom: row.getBoundingClientRect().bottom })) };
+      });
+      minimumMeters.push({ font, ...bounds });
+      assert.ok(bounds.bodyHeight >= 60 && bounds.rows.every(row => row.top >= bounds.top && row.bottom <= bounds.bottom), JSON.stringify({ font, ...bounds }));
+    };
+    await checkMinimumMeter('preferred'); await screenshot('minimum');
+    const fallbackFont = await page.addStyleTag({ content: '.meter-heading,.meter-scale,.meter-reading,.meter-maximum{font-family:Menlo,monospace}' });
+    await checkMinimumMeter('monospace fallback');
+    await fallbackFont.evaluate(element => element.remove());
     await button('ウィンドウ').click(); await button('レイアウトを初期状態に戻す').click();
     await page.locator('.timeline-clip.image').click();
     await button('プロパティパネルを折りたたむ').click();
@@ -167,7 +182,7 @@ const storageKey = 'luma.workspace-layout.v1';
     assert.equal(await page.locator('.timeline-clip.title').count(), 0);
     await button('やり直す (Ctrl+Shift+Z)').click(); await button('やり直す (Ctrl+Shift+Z)').click();
     await page.locator('.timeline-clip.title').waitFor();
-    checks.push('reset restores defaults; guide reveals collapsed panels and the sole text template tab supports add/edit/undo/redo');
+    checks.push('reset restores defaults; minimum timeline fits all meter rows with preferred and fallback fonts; guide reveals collapsed panels and the sole text template tab supports add/edit/undo/redo');
     await page.getByRole('tab', { name: 'メディア', exact: true }).click(); await settle();
     await page.locator('.timeline-clip.title').click();
     const textSizes = await page.evaluate(() => Object.fromEntries(['.media-card-info small', '.field-help', '.property-label label', '.statusbar', '.library-tabs button'].map(selector => [selector, parseFloat(getComputedStyle(document.querySelector(selector)).fontSize)])));
@@ -190,7 +205,7 @@ const storageKey = 'luma.workspace-layout.v1';
     await page.locator('.loading-screen').waitFor({ state: 'hidden' }); await settle(); assert.deepEqual(await sizes(), [288, 286, 354]);
     checks.push('main helper text is at least 11px; malformed preferences recover to usable defaults');
     assert.deepEqual(errors, []);
-    await fs.writeFile(path.join(results, 'verification.json'), JSON.stringify({ passed: true, packaged: !!executablePath, checks, textSizes, compactBounds: bounds, consoleErrors: errors }, null, 2));
+    await fs.writeFile(path.join(results, 'verification.json'), JSON.stringify({ passed: true, packaged: !!executablePath, checks, textSizes, compactBounds: bounds, minimumMeters, consoleErrors: errors }, null, 2));
     console.log(`Workspace layout verified: ${checks.length} cases.`);
   } catch (error) { if (page) await screenshot('failure').catch(() => {}); throw error; }
   finally { if (app) await app.close(); }
