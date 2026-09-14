@@ -12,7 +12,7 @@
 .side-resizer{display:flex;align-items:center;justify-content:center;cursor:ew-resize}
 .side-resizer>span{width:2px;height:36px;background:#56616e;border-radius:2px}
 .editor-layout .workspace-resizer{height:8px}
-.editor-layout .timeline-container{flex-shrink:0}
+.editor-layout .timeline-container{flex-shrink:1}
 .collapsed-panel{display:flex;flex:1;flex-direction:column;align-items:center;gap:12px;padding:12px 6px;background:var(--panel);border:1px solid var(--border);border-radius:5px;color:#b6c2d0}
 .collapsed-panel span{writing-mode:vertical-rl;letter-spacing:2px;font-size:12px}
 .collapsed-panel:hover{background:#283025;color:var(--accent)}
