@@ -1,0 +1,45 @@
+.library-panel{container-type:inline-size;min-height:0}
+.library-browser{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+.library-section-scroll{flex:1;min-height:36px;overflow:auto;padding:10px}
+.library-browser-footer{flex-shrink:0;max-height:65%;overflow:auto;padding:8px 10px;border-top:1px solid var(--border);background:#22262b}
+.library-browser-hint{padding:7px 10px;font-size:11px;line-height:1.5;color:#aeb9c7;flex-shrink:0}
+.library-browser-footer .library-browser-hint{padding:4px 0 0;margin:0}
+.effect-categories{display:flex;gap:5px;padding:8px 10px 0;flex-shrink:0}
+.effect-categories button{flex:1;border:1px solid #373e47;border-radius:5px;background:#242930;padding:5px;font-size:12px}
+.effect-categories button[aria-pressed=true]{background:#303b29;border-color:#9bbd7d;color:#d4e9bf}
+.effect-browser .transition-list,.effect-browser .look-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.effect-browser .library-preset{display:block;min-width:0;padding:0;border:1px solid #38414a;border-radius:5px;overflow:hidden;background:#242a30;text-align:left}
+.effect-browser .library-preset:hover:not(:disabled){border-color:#a1bc89;background:#2b342d}
+.effect-browser .library-preset strong{font-size:11px;font-weight:500;line-height:1.45;display:block;padding:7px 6px;margin:0;overflow-wrap:anywhere}
+.transition-sample{height:47px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;background:#263236;color:#c8dace}
+.transition-sample>span{position:absolute;top:8px;bottom:8px;width:42%;background:#9ab7b0;border-radius:2px;left:14%}
+.transition-sample>span+span{left:auto;right:14%;background:#c0bb99;opacity:.8}
+.transition-sample.pageTurn>span+span{transform:skewY(-13deg) scaleX(.6);transform-origin:right}
+.transition-sample.pagePeel>span+span{clip-path:polygon(0 0,100% 0,100% 55%,55% 100%,0 100%)}
+.effect-browser .look-card>div{height:52px;border-radius:0}
+.effect-browser .look-applied{opacity:1;background:none;inset:auto 4px 4px auto}
+.applied-transitions{display:grid;gap:5px;margin-top:12px;font-size:11px;color:#afb9c7}
+.effect-browser .applied-transition{display:flex;align-items:center;gap:3px;border:1px solid #3e4651;border-radius:4px;padding:2px;background:#242930}
+.effect-browser .applied-transition.selected{border-color:#a993d2;background:#302a3c}
+.applied-transition-select{display:flex;align-items:center;justify-content:space-between;gap:7px;min-width:0;flex:1;text-align:left}
+.applied-transition-select strong{font-size:11px;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.applied-transition-select>span{white-space:nowrap;font-variant-numeric:tabular-nums}
+.transition-editing-target{display:flex;gap:6px;align-items:center;justify-content:space-between;font-size:11px;color:#b6c1ce;margin-bottom:5px}
+.transition-editing-target .text-button{font-size:11px;color:#d2dfc4}
+.transition-settings .transition-duration{font-size:12px;gap:8px}
+.transition-settings .transition-duration>span{display:flex;align-items:center;gap:6px;font-size:11px}
+.transition-settings .transition-duration input{width:78px;padding:4px;font-size:12px}
+.transition-settings .transition-audio{align-items:center;margin:6px 0 0;font-size:11px;gap:5px}
+.transition-settings .transition-audio input{margin:0}
+.title-presets{display:grid;grid-auto-rows:max-content;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:8px}
+.title-presets .title-template{margin:0;min-width:0}
+.title-presets .title-template:last-child{grid-column:1/-1}
+.title-presets .title-template>div{height:67px;font-size:13px;letter-spacing:.3px;padding:4px}
+.title-presets .title-template.minimal>div{font-size:13px}
+.title-presets .title-template.subtitle>div{font-size:12px;text-decoration:none}
+.title-presets .subtitle>div>span{background:#101617;padding:3px 5px}
+.title-presets .title-template footer{padding:7px 6px;gap:5px;min-height:32px}
+.title-presets .title-template strong{font-size:11px;font-weight:500;overflow-wrap:anywhere}
+@container(max-width:270px){.title-presets{grid-template-columns:1fr}.title-presets .title-template{display:flex}.title-presets .title-template:last-child{grid-column:auto}.title-presets .title-template>div,.title-presets .title-template.minimal>div{flex-shrink:0;width:92px;font-size:11px}.title-presets .title-template footer{flex:1;min-width:0}.title-presets .title-template.subtitle>div{font-size:11px}.transition-editing-target{flex-wrap:wrap}}
+
+.library-panel.library-panel>.library-tabs{grid-template-columns:1.05fr 1.3fr 1.05fr .65fr .65fr;gap:3px}

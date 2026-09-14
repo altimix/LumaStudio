@@ -10,7 +10,7 @@ async function verify(){
     const blank={version:1,id:'drawing',name:'図形と効果音の検証',width:640,height:360,fps:30,assets:[],markers:[],tracks:[{id:'hidden',name:'非表示の映像',kind:'video',muted:false,hidden:true,locked:false,solo:false},{id:'shapes',name:'図形用',kind:'video',muted:false,hidden:false,locked:false,solo:false}],clips:[]};
     await fs.writeFile(file,JSON.stringify(blank));await page.keyboard.press('Control+o');await page.getByRole('button',{name:blank.name,exact:true}).waitFor();await page.keyboard.press('Home');
     await page.locator('.timeline-ruler').click({position:{x:Number(await page.getByRole('slider',{name:'タイムラインのズーム',exact:true}).inputValue()),y:25}});
-    await page.getByRole('tab',{name:'図形',exact:true}).click();
+    await page.getByRole('tab',{name:'図形',exact:true}).click();await page.locator('.drawing-sound summary').click();
     assert.equal(await page.getByLabel('図形と同時に追加',{exact:true}).inputValue(),'chime');
     assert.equal(await page.getByLabel('追加する効果音の音量',{exact:true}).inputValue(),'90');
     assert.equal(await page.getByLabel('線の色',{exact:true}).inputValue(),'#ff0000');

@@ -2,3 +2,23 @@
 
 .drawing-tools{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.drawing-tools button{flex-direction:column;gap:5px;padding:10px 3px;font-size:10px}.app:has(.drawing-panel) .preview-empty,.app:has(.drawing-panel) .timeline-empty-guide{display:none}
 .graphic-resize-handle{pointer-events:auto}
+
+.drawing-panel.library-browser{padding:0;overflow:hidden;line-height:1.5}
+.drawing-options .drawing-tools{margin:0 0 12px}
+.drawing-options .drawing-tools button{font-size:12px;gap:6px;padding:10px 4px}
+.drawing-options .drawing-setting{margin:9px 0;font-size:12px}
+.drawing-setting>span{display:flex;align-items:center;gap:6px;font-size:11px}
+.drawing-options .drawing-setting input[type=number]{width:72px;padding:4px;font-size:12px}
+.drawing-options .drawing-setting input[type=color]{width:39px;height:27px;padding:3px}
+.drawing-options .drawing-sound{margin-top:12px;padding-top:8px}
+.drawing-sound summary{cursor:pointer;font-size:12px}
+.drawing-sound summary>span{float:right;font-size:11px;color:#b6c2b0;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drawing-sound-settings{display:grid;gap:8px;padding-top:9px}
+.drawing-sound-settings>label{display:flex;align-items:center;flex-wrap:wrap;gap:7px;font-size:11px}
+.drawing-sound-settings select,.drawing-sound-settings input[type=range]{width:100%}
+.drawing-sound-settings output{margin-left:auto}
+.drawing-sound-settings button{justify-content:center;min-height:29px}
+.drawing-actionbar{display:grid;gap:6px}
+.drawing-actionbar .library-browser-hint{margin:0;padding:0;font-size:11px;color:#b7c2b1}
+.drawing-actionbar .primary-button{justify-content:center;min-height:31px;padding:6px}
+.drawing-actionbar .drawing-cancel{margin:0;justify-content:center;font-size:11px}

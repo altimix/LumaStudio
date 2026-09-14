@@ -94,10 +94,12 @@ async function verify() {
     await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();
     await page.locator('.timeline-clip.video').first().click();
     await page.getByRole('button',{name:'カラー',exact:true}).first().click();
-    await page.getByRole('button',{name:'Cinematic 深い陰影、映画のように'}).click();
+    await page.getByRole('tab',{name:'エフェクト',exact:true}).click();
+    await page.getByRole('button',{name:'色調',exact:true}).click();
+    await page.getByRole('button',{name:'シネマ 深い陰影、映画のように'}).click();
     await page.waitForFunction(()=>document.querySelector('#prop-saturation')?.value==='78');
     await page.getByRole('tab',{name:'テキスト',exact:true}).click();
-    await page.getByRole('button',{name:/YOUR STORY/}).click();
+    await page.getByRole('button',{name:'シネマタイトルを追加',exact:true}).click();
     await page.getByRole('textbox',{name:'テロップのテキスト',exact:true}).fill('日本語テロップ\nWindowsで動画編集');
     await page.getByRole('textbox',{name:'テロップのテキスト',exact:true}).blur();
     await page.getByLabel('スタイル',{exact:true}).selectOption('subtitle');
