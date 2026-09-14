@@ -83,6 +83,7 @@ export default function App() {
   const revealPanels = () => setLayout(current => ({ ...current, libraryCollapsed: false, inspectorCollapsed: false }));
   useEffect(() => useEditor.subscribe((state, previous) => {
     if (state.panel !== previous.panel) setLayout(current => current.libraryCollapsed ? { ...current, libraryCollapsed: false } : current);
+    if (state.inspectorRequestId !== previous.inspectorRequestId) setLayout(current => current.inspectorCollapsed ? { ...current, inspectorCollapsed: false } : current);
   }), [setLayout]);
   const [preset, setPreset] = useState('match'); const [settingsDraft, setSettingsDraft] = useState({ name: '', width: 1920, height: 1080, fps: 30 });
   const [settingsError, setSettingsError] = useState('');
