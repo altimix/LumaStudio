@@ -17,8 +17,8 @@ const root = path.join(__dirname, '..');
   }
   const env = { ...process.env, LUMA_TEST_DATA: profile, LUMA_DEMO_FIXTURE: '0' }; delete env.ELECTRON_RUN_AS_NODE;
   const executablePath = process.env.LUMA_VERIFY_EXE;
-  const app = await electron.launch({ executablePath, args: executablePath ? [] : [root], env, timeout: 60000 });
-  const page = await app.firstWindow(), checks = [], errors = [];
+  let app = await electron.launch({ executablePath, args: executablePath ? [] : [root], env, timeout: 60000 });
+  let page = await app.firstWindow(); const checks = [], errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const button = name => page.getByRole('button', { name, exact: true });
   const tab = name => page.getByRole('tab', { name, exact: true }).click();
@@ -56,7 +56,8 @@ const root = path.join(__dirname, '..');
     const zoom = Number(await page.getByRole('slider', { name: 'タイムラインのズーム', exact: true }).inputValue());
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2 + change * zoom / 2 * (side === 'start' ? -1 : 1), box.y + box.height / 2, { steps: 6 });
-    if (cancellation === 'escape') await page.keyboard.press('Escape');
+    if (cancellation === 'heldEscape') await new Promise(resolve => setTimeout(resolve, 1900));
+    if (cancellation === 'escape' || cancellation === 'heldEscape') await page.keyboard.press('Escape');
     if (cancellation === 'blur') await page.evaluate(() => window.dispatchEvent(new Event('blur')));
     if (cancellation === 'pointer') await handle.dispatchEvent('pointercancel', { pointerId: 1 });
     if (cancellation === 'return') await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 6 });
@@ -185,6 +186,26 @@ const root = path.join(__dirname, '..');
     await open(legacy); await band().locator('.timeline-transition').click(); assert.equal(await edge('end').isDisabled(), true);
     await page.getByText('以前の重なり方式の効果は、クリップの重なりが長さになります。', { exact: true }).waitFor(); assert.deepEqual((await save()).clips, legacy.clips);
     checks.push('legacy overlaps retain their placement and clearly explain the read-only duration');
+    const recoveryFile = path.join(profile, 'autosave.luma');
+    const restart = async () => {
+      await app.close();
+      app = await electron.launch({ executablePath, args: executablePath ? [] : [root], env, timeout: 60000 });
+      page = await app.firstWindow(); page.on('pageerror', error => errors.push(error.message));
+      await page.locator('.loading-screen').waitFor({ state: 'hidden', timeout: 60000 });
+    };
+    await open(baseline); await band().locator('.timeline-transition').click();
+    await drag('end', .3, 'heldEscape');
+    await assert.rejects(fs.access(recoveryFile), { code: 'ENOENT' });
+    await restart(); assert.equal(await button('復元する').count(), 0, 'a canceled clean edit is not offered after restart');
+    await open(baseline); await band().locator('.timeline-transition').click(); await drag('end', .3);
+    const deadline = Date.now() + 10000; let backup;
+    while (!backup) {
+      try { backup = JSON.parse(await fs.readFile(recoveryFile, 'utf8')); } catch { assert.ok(Date.now() < deadline, 'committed resize autosaves'); await new Promise(resolve => setTimeout(resolve, 50)); }
+    }
+    assert.equal(backup.project.transitions[0].duration, .8);
+    await drag('end', .3, 'heldEscape'); assert.deepEqual(JSON.parse(await fs.readFile(recoveryFile, 'utf8')).project, backup.project);
+    await restart(); await button('復元する').click(); await band().waitFor(); assert.equal(await seconds(), .8);
+    checks.push('held canceled resizes never overwrite recovery; clean restart has no recovery and committed edits survive dirty cancellation and restart');
     assert.deepEqual(errors, []);
     await fs.writeFile(path.join(results, 'verification.json'), JSON.stringify({ passed: true, packaged: !!executablePath, checks, errors }, null, 2));
     console.log('Library layout and transition resizing verified: ' + checks.length + ' cases.');

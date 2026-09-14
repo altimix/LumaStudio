@@ -36,6 +36,7 @@ function downloadJSON(p: Project) {
 }
 export default function App() {
   const p = useEditor(s => s.project); const ready = useEditor(s => s.ready); const dirty = useEditor(s => s.dirty); const toast = useEditor(s => s.toast); const tab = useEditor(s => s.inspectorTab); const savedAt = useEditor(s => s.autosavedAt); const sourceId = useEditor(s => s.sourceId);
+  const gestureActive = useEditor(s => s.gestureActive);
   const [modal, setModal] = useState<'export' | 'shortcuts' | 'settings' | 'new' | 'youtube' | 'guide' | 'updates' | null>(null); const [fileMenu, setFileMenu] = useState(false); const [importLabel, setImportLabel] = useState(''); const [recovery, setRecovery] = useState<{ project: Project; savedAt: string } | null>(null); const [pending, setPending] = useState<(() => void) | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo|null>(null);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
@@ -103,12 +104,14 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (!ready) return; void window.luma?.setDirty(dirty);
-    if (!dirty) return;
+    if (!dirty || gestureActive) return;
     const timer = setTimeout(() => {
+      const current = useEditor.getState();
+      if (current.gestureActive || !current.dirty || current.project !== p) return;
       if (window.luma) void window.luma.autosave(p).then(() => useEditor.setState({ autosavedAt: new Date().toLocaleTimeString('ja-JP') })).catch(e => useEditor.getState().notify(`自動保存に失敗しました: ${errorText(e)}`));
     }, 1500);
     return () => clearTimeout(timer);
-  }, [p, dirty, ready]);
+  }, [p, dirty, ready, gestureActive]);
   useEffect(() => {
     const desktop = window.luma;
     return desktop?.onPrepareClose(async requestId => {
