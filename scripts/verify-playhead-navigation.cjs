@@ -67,9 +67,13 @@ async function verify() {
     checks.push('manual scrolling while paused does not snap back');
     await page.locator('.timeline-scroll').evaluate(v => { v.scrollTop = 0; });
     const heightBefore = await page.locator('.timeline-scroll').evaluate(v => ({ height: v.clientHeight, width: v.clientWidth, left: v.scrollLeft }));
-    const separator = await page.getByRole('separator', { name: 'タイムラインの高さを変更', exact: true }).boundingBox();
+    const resizeHandle = page.getByRole('separator', { name: 'タイムラインの高さを変更', exact: true });
+    const separator = await resizeHandle.boundingBox();
+    // A small desktop can start at the maximum height allowed by the preview.
+    // Resize into the available range instead of trying to grow past that limit.
+    const resizeDown = Number(await resizeHandle.getAttribute('aria-valuenow')) > Number(await resizeHandle.getAttribute('aria-valuemin'));
     await page.mouse.move(separator.x + separator.width / 2, separator.y + separator.height / 2);
-    await page.mouse.down(); await page.mouse.move(separator.x + separator.width / 2, separator.y - 40, { steps: 5 }); await page.mouse.up(); await sample(150);
+    await page.mouse.down(); await page.mouse.move(separator.x + separator.width / 2, separator.y + separator.height / 2 + (resizeDown ? 40 : -40), { steps: 5 }); await page.mouse.up(); await sample(150);
     const heightAfter = await page.locator('.timeline-scroll').evaluate(v => ({ height: v.clientHeight, width: v.clientWidth, left: v.scrollLeft }));
     assert.notEqual(heightAfter.height, heightBefore.height); assert.equal(heightAfter.width, heightBefore.width); assert.equal(heightAfter.left, heightBefore.left);
     checks.push('timeline height-only resize preserves paused horizontal browsing');
