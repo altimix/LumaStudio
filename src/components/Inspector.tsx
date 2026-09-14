@@ -2,7 +2,7 @@ import { volumeAt } from '../../shared/volume-automation.mjs';
 import { sameVolumeCurve, setEffectiveVolume } from '../volume-editing';
 import AudioVolumeAutomation from './AudioVolumeAutomation';
 import { useEffect, useRef, useState } from 'react';
-import { SlidersHorizontal, RotateCcw, ChevronDown, Move, Scan, Palette, Volume2, Film, Type, Info, Lock } from 'lucide-react';
+import { PanelRightClose, SlidersHorizontal, RotateCcw, ChevronDown, Move, Scan, Palette, Volume2, Film, Type, Info, Lock } from 'lucide-react';
 import { useEditor } from '../store';
 import { normalizeClip, timecode } from '../model';
 import { IconButton } from './UI';
@@ -58,7 +58,7 @@ function NumericField({ clip, property, label, min, max, step = 1, factor = 1, o
 function Section({ title, icon: Icon, children, onReset, open = true }: { title: string; icon: typeof Move; children: React.ReactNode; onReset?: () => void; open?: boolean }) {
   return <details className="inspector-section" open={open}><summary><ChevronDown size={12}/><Icon size={14}/><span>{title}</span>{onReset ? <button className="reset-section" type="button" aria-label={`${title}をリセット`} title="リセット" onClick={e => { e.preventDefault(); onReset(); }}><RotateCcw size={12}/></button> : null}</summary><div className="section-properties">{children}</div></details>;
 }
-export default function Inspector() {
+export default function Inspector({ onCollapse }: { onCollapse: () => void }) {
   const p = useEditor(s => s.project); const selected = useEditor(s => s.selected); const tab = useEditor(s => s.inspectorTab);
   const clip = p.clips.find(c => c.id === selected[0]); const asset = p.assets.find(a => a.id === clip?.assetId);
   const track = p.tracks.find(t => t.id === clip?.trackId);
@@ -71,7 +71,7 @@ export default function Inspector() {
     s.transient({ ...s.project, clips: s.project.clips.map(c => c.id === current.id ? { ...c, [property]: value } : c) });
   };
   const patch = (values: Partial<Clip>) => { if (clip) useEditor.getState().updateClip(clip.id, values); };
-  return <aside className="inspector-panel panel"><div className="panel-heading"><div className="panel-title"><SlidersHorizontal size={15}/><span>プロパティ</span></div><span className="inspector-count">{selected.length ? `${selected.length} 選択` : '選択なし'}</span></div>
+  return <aside className="inspector-panel panel"><div className="panel-heading"><div className="panel-title"><SlidersHorizontal size={15}/><span>プロパティ</span></div><div className="inspector-heading-actions"><span className="inspector-count">{selected.length ? `${selected.length} 選択` : '選択なし'}</span><button className="icon-button panel-collapse" aria-label="プロパティパネルを折りたたむ" title="プロパティパネルを折りたたむ" aria-controls="workspace-inspector" aria-expanded={true} onClick={onCollapse}><PanelRightClose size={16}/></button></div></div>
     {clip ? <><div className="inspector-clip"><span className={`inspector-clip-icon ${clip.kind}`}>{clip.kind === 'title' ? <Type size={18}/> : clip.kind === 'audio' ? <Volume2 size={18}/> : <Film size={18}/>}</span><div><input aria-label="クリップ名" value={clip.name} disabled={track?.locked} onFocus={() => { textEdit.current = null; }} onBlur={() => { textEdit.current = null; }} onChange={e => editText('name', e.target.value)}/><span>{clip.graphic ? '図形レイヤー' : clip.kind === 'title' ? 'テキストレイヤー' : asset?.codec?.toUpperCase() || 'MEDIA'} <span>·</span> {timecode(clip.duration, p.fps)}</span></div>{track?.locked ? <Lock size={15}/> : null}</div><div className="inspector-tabs">{[{ id: 'video', label: clip.graphic ? '図形' : clip.kind === 'title' ? 'テキスト' : 'ビデオ' }, { id: 'color', label: 'カラー' }, { id: 'audio', label: 'オーディオ' }].map(t => <button className={tab === t.id ? 'selected' : ''} key={t.id} onClick={() => useEditor.getState().setInspectorTab(t.id as typeof tab)}>{t.label}</button>)}</div>
     <div className="inspector-content"><fieldset disabled={track?.locked}>
       {tab === 'video' ? <>

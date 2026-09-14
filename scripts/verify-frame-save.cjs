@@ -56,13 +56,13 @@ const root = path.join(__dirname, '..');
     checks.push('cancel and source overwrite rejection do not alter project or files');
     // Native import folder is independent, even when selecting an existing asset.
     await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async(_window,options)=>{globalThis.lastImportDialog=options;return {canceled:false,filePaths:[file]};};},source);
-    await page.getByRole('button',{name:'素材を読み込む',exact:true}).first().click();await page.waitForFunction(()=>!document.querySelector('.import-progress'));
+    await page.getByRole('button', { name: '素材を追加', exact: true }).click(); await page.getByRole('menuitem', { name: '素材を読み込む', exact: false }).click();await page.waitForFunction(()=>!document.querySelector('.import-progress'));
     for(let i=0;i<100;i++){try{await fs.access(path.join(profile,'import-folder.json'));break;}catch{await new Promise(r=>setTimeout(r,50));}}
     assert.equal(JSON.parse(await fs.readFile(path.join(profile,'import-folder.json'))).folder,importFolder);
     await saveProject();await app.close();page=await launch();
     assert.equal(await page.locator('.media-card').count(),2);assert.equal(await page.locator('.media-card.offline').count(),0);
     await setSave('',true);await open();await dialog().getByRole('button',{name:'保存先を選んで保存',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.frame-save-form [role=status]'));assert.equal(path.dirname((await app.evaluate(()=>globalThis.lastFrameDialog)).defaultPath),folder);await close();
-    await app.evaluate(({dialog})=>{dialog.showOpenDialog=async(_window,options)=>{globalThis.lastImportDialog=options;return {canceled:true,filePaths:[]};};});await page.getByRole('button',{name:'素材を読み込む',exact:true}).first().click();
+    await app.evaluate(({dialog})=>{dialog.showOpenDialog=async(_window,options)=>{globalThis.lastImportDialog=options;return {canceled:true,filePaths:[]};};});await page.getByRole('button', { name: '素材を追加', exact: true }).click(); await page.getByRole('menuitem', { name: '素材を読み込む', exact: false }).click();
     assert.equal((await app.evaluate(()=>globalThis.lastImportDialog)).defaultPath,importFolder);
     checks.push('save/reopen and app restart preserve imported photo and separate photo/import folder preferences');
     // A corrupt image remains offline, but its source path is still protected.

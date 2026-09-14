@@ -1,0 +1,161 @@
+const { _electron: electron } = require('playwright');
+const fs = require('node:fs/promises'), path = require('node:path'), assert = require('node:assert/strict');
+const { ffmpeg, run } = require('../electron/media.cjs');
+const root = path.join(__dirname, '..');
+const storageKey = 'luma.workspace-layout.v1';
+
+(async () => {
+  const results = path.join(root, 'test-results', 'layout');
+  await fs.mkdir(results, { recursive: true }); await fs.mkdir(path.join(root, '.local'), { recursive: true });
+  const profile = await fs.mkdtemp(path.join(root, '.local', 'layout-profile-'));
+  const source = path.join(profile, 'レイアウト確認 青い写真.png'), projectFile = path.join(profile, 'layout.luma');
+  await run(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=0x346879:s=640x360', '-frames:v', '1', source]);
+  const executablePath = process.env.LUMA_VERIFY_EXE;
+  const env = { ...process.env, LUMA_TEST_DATA: profile, LUMA_DEMO_FIXTURE: '0' }; delete env.ELECTRON_RUN_AS_NODE;
+  const checks = [], errors = [];
+  let app, page;
+  const settle = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const button = name => page.getByRole('button', { name, exact: true });
+  const separator = name => page.getByRole('separator', { name, exact: true });
+  const size = async name => Number(await separator(name).getAttribute('aria-valuenow'));
+  const names = ['素材パネルの幅を変更', 'プロパティパネルの幅を変更', 'タイムラインの高さを変更'];
+  const sizes = () => Promise.all(names.map(size));
+  const prefs = () => page.evaluate(key => JSON.parse(localStorage.getItem(key)), storageKey);
+  const waitStored = expected => page.waitForFunction(({ key, expected }) => {
+    const data = JSON.parse(localStorage.getItem(key));
+    return data && Object.entries(expected).every(([name, value]) => data[name] === value);
+  }, { key: storageKey, expected });
+  const windowSize = async (width, height) => {
+    await app.evaluate(({ BrowserWindow }, dimensions) => BrowserWindow.getAllWindows()[0].setContentSize(...dimensions), [width, height]);
+    await page.waitForFunction(([w, h]) => innerWidth === w && innerHeight === h, [width, height]); await settle();
+  };
+  async function launch() {
+    app = await electron.launch({ executablePath, args: executablePath ? [] : [root], env, timeout: 60000 });
+    page = await app.firstWindow(); page.on('pageerror', error => errors.push(error.message));
+    await page.locator('.loading-screen').waitFor({ state: 'hidden', timeout: 60000 });
+    await windowSize(1600, 960);
+    await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }); }, projectFile);
+  }
+  const save = async () => {
+    await button('プロジェクトを保存 (Ctrl+S)').click();
+    await page.waitForFunction(() => !document.querySelector('.unsaved-dot'));
+    return JSON.parse(await fs.readFile(projectFile, 'utf8'));
+  };
+  const openProject = async () => {
+    await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, projectFile);
+    await page.locator('.brand').click(); await page.keyboard.press('Control+o');
+    await page.locator('.media-card').first().waitFor();
+  };
+  const drag = async (name, dx, dy, cancel = false) => {
+    const box = await separator(name).boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { steps: 6 });
+    if (cancel) await page.keyboard.press('Escape');
+    await page.mouse.up(); await settle();
+  };
+  const screenshot = name => page.screenshot({ path: path.join(results, name + '.png'), scale: 'css' });
+  try {
+    await launch();
+    assert.deepEqual(await sizes(), [288, 286, 354]);
+    assert.equal(await page.locator('.import-zone').count(), 0);
+    await button('ファイルを選択').waitFor();
+    await button('素材を追加').focus(); await page.keyboard.press('ArrowDown');
+    assert.ok(await page.getByRole('menuitem', { name: /素材を読み込む/ }).evaluate(element => element === document.activeElement));
+    await page.keyboard.press('ArrowDown');
+    assert.ok(await page.getByRole('menuitem', { name: 'ブラックビデオを追加', exact: true }).evaluate(element => element === document.activeElement));
+    await page.keyboard.press('Delete'); assert.equal(await page.locator('.unsaved-dot').count(), 0);
+    await page.keyboard.press('Escape'); assert.equal(await page.getByRole('menu').count(), 0);
+    assert.ok(await button('素材を追加').evaluate(element => element === document.activeElement));
+    await screenshot('empty');
+    checks.push('empty-state import and accessible add menu, arrow navigation and Escape; menu keys do not edit project');
+
+    await button('素材を追加').click(); await page.getByRole('menuitem', { name: 'ブラックビデオを追加', exact: true }).click();
+    await page.locator('.media-card').waitFor();
+    await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, source);
+    await button('素材を追加').click(); await page.getByRole('menuitem', { name: /素材を読み込む/ }).click();
+    await page.getByRole('button', { name: path.basename(source) + ' を追加', exact: true }).waitFor();
+    assert.equal(await page.getByRole('menu').count(), 0);
+    assert.equal(await page.locator('.media-card').count(), 2);
+    await button(path.basename(source) + ' を追加').click(); await page.locator('.timeline-clip.image').waitFor();
+    const original = await save();
+    const undoBefore = await button('元に戻す (Ctrl+Z)').isEnabled();
+    const playhead = await page.locator('.preview-meta .timecode').first().textContent();
+    checks.push('native import and black background are available from the consolidated menu and remain usable on timeline');
+
+    await drag(names[0], 80, 0); await drag(names[1], -64, 0); await drag(names[2], 0, -54);
+    assert.deepEqual(await sizes(), [368, 350, 408]);
+    await separator(names[0]).focus(); await page.keyboard.press('ArrowRight');
+    await separator(names[1]).focus(); await page.keyboard.press('ArrowLeft');
+    await separator(names[2]).focus(); await page.keyboard.press('ArrowUp');
+    assert.deepEqual(await sizes(), [378, 360, 418]);
+    assert.equal(await page.locator('.preview-meta .timecode').first().textContent(), playhead);
+    await drag(names[0], 45, 0, true); assert.deepEqual(await sizes(), [378, 360, 418]);
+    assert.equal(await button('元に戻す (Ctrl+Z)').isEnabled(), undoBefore);
+    assert.equal(await page.locator('.unsaved-dot').count(), 0);
+    assert.deepEqual(await save(), original);
+    await waitStored({ libraryWidth: 378, inspectorWidth: 360, timelineHeight: 418 });
+    checks.push('mouse and keyboard resizing, Escape cancellation, persistence, and unchanged project/history/playhead');
+
+    const search = page.getByRole('textbox', { name: '素材を検索', exact: true });
+    await search.fill('レイアウト');
+    await button('素材パネルを折りたたむ').click(); await button('プロパティパネルを折りたたむ').click();
+    assert.equal(await page.locator('#workspace-library').isVisible(), false);
+    assert.equal(await page.locator('#workspace-inspector').isVisible(), false);
+    await screenshot('collapsed');
+    await button('素材パネルを表示').click(); assert.equal(await search.inputValue(), 'レイアウト');
+    await button('素材パネルを折りたたむ').click();
+    await waitStored({ libraryCollapsed: true, inspectorCollapsed: true });
+    await app.close(); app = null; await launch();
+    await button('素材パネルを表示').waitFor(); await button('プロパティパネルを表示').waitFor();
+    await button('素材パネルを表示').click(); await button('プロパティパネルを表示').click();
+    assert.deepEqual(await sizes(), [378, 360, 418]);
+    await openProject();
+    checks.push('collapse/reopen retains search within session; application restart restores both panel widths, collapsed state and timeline height');
+
+    for (const name of names) { await separator(name).focus(); await page.keyboard.press('End'); }
+    await waitStored({ libraryWidth: 520, inspectorWidth: 520 }); const preferred = await prefs();
+    const expanded = await sizes();
+    await windowSize(1100, 720);
+    const small = await sizes(); assert.ok(small[0] < expanded[0] && small[1] < expanded[1] && small[2] < expanded[2]);
+    const bounds = await page.locator('.workspace').evaluate(element => {
+      const preview = element.querySelector('.preview-panel').getBoundingClientRect();
+      return { preview: preview.width, workspace: element.clientHeight, overflow: document.documentElement.scrollWidth > innerWidth, bottom: document.querySelector('.statusbar').getBoundingClientRect().bottom, height: innerHeight };
+    });
+    assert.ok(bounds.preview >= 400 && bounds.workspace >= 280 && !bounds.overflow && bounds.bottom <= bounds.height, JSON.stringify(bounds));
+    await button('素材を追加').click();
+    const menu = await page.getByRole('menu').boundingBox(), library = await page.locator('.library-panel').boundingBox();
+    assert.ok(menu.x >= library.x && menu.x + menu.width <= library.x + library.width);
+    await page.keyboard.press('Escape');
+    await screenshot('compact');
+    await windowSize(1600, 960); assert.deepEqual(await sizes(), expanded); assert.deepEqual(await prefs(), preferred);
+    checks.push('1100 × 720 window retains preview, timeline, menu and statusbar; widening restores preferred dimensions without overwriting them');
+
+    await button('ウィンドウ').click(); await button('レイアウトを初期状態に戻す').click();
+    assert.deepEqual(await sizes(), [288, 286, 354]);
+    assert.equal(await page.getByRole('navigation', { name: 'ワークスペース' }).getByRole('button', { name: 'テキスト', exact: true }).count(), 0);
+    await button('素材パネルを折りたたむ').click(); await button('プロパティパネルを折りたたむ').click();
+    await button('使い方').click(); await button('文字を追加する').click();
+    assert.ok(await page.getByRole('tab', { name: 'テキスト', exact: true }).isVisible());
+    assert.ok(await page.locator('.inspector-panel').isVisible());
+    await page.getByRole('button', { name: /ミニマル/ }).click(); await page.locator('.timeline-clip.title').waitFor();
+    await page.getByRole('textbox', { name: 'テロップのテキスト', exact: true }).fill('自分に合う編集画面');
+    await page.getByRole('textbox', { name: 'テロップのテキスト', exact: true }).blur();
+    await button('元に戻す (Ctrl+Z)').click(); await button('元に戻す (Ctrl+Z)').click();
+    assert.equal(await page.locator('.timeline-clip.title').count(), 0);
+    await button('やり直す (Ctrl+Shift+Z)').click(); await button('やり直す (Ctrl+Shift+Z)').click();
+    await page.locator('.timeline-clip.title').waitFor();
+    checks.push('reset restores defaults; guide reveals collapsed panels and the sole text template tab supports add/edit/undo/redo');
+    await page.getByRole('tab', { name: 'メディア', exact: true }).click(); await settle();
+    await page.locator('.timeline-clip.title').click();
+    const textSizes = await page.evaluate(() => Object.fromEntries(['.media-card-info small', '.field-help', '.property-label label', '.statusbar', '.library-tabs button'].map(selector => [selector, parseFloat(getComputedStyle(document.querySelector(selector)).fontSize)])));
+    assert.ok(Object.values(textSizes).every(value => value >= 11), JSON.stringify(textSizes));
+    await screenshot('workspace'); await save();
+    await page.evaluate(key => localStorage.setItem(key, '{broken'), storageKey); await page.reload();
+    await page.locator('.loading-screen').waitFor({ state: 'hidden' }); await settle(); assert.deepEqual(await sizes(), [288, 286, 354]);
+    checks.push('main helper text is at least 11px; malformed preferences recover to usable defaults');
+    assert.deepEqual(errors, []);
+    await fs.writeFile(path.join(results, 'verification.json'), JSON.stringify({ passed: true, packaged: !!executablePath, checks, textSizes, compactBounds: bounds, consoleErrors: errors }, null, 2));
+    console.log(`Workspace layout verified: ${checks.length} cases.`);
+  } catch (error) { if (page) await screenshot('failure').catch(() => {}); throw error; }
+  finally { if (app) await app.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });
