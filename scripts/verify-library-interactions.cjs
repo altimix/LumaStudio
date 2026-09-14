@@ -142,6 +142,15 @@ const root = path.join(__dirname, '..');
     await button('曲 1.wav を試聴').click(); await page.waitForFunction(() => { const audio = document.querySelector('.bgm-player'); return audio && !audio.paused && audio.currentTime > .1; });
     await button('曲 0.wav を試聴').click(); await button('曲 0.wav の試聴を停止').waitFor(); await page.keyboard.press('Escape');
     assert.ok(await page.locator('.bgm-player').evaluate(audio => audio.paused));
+    await page.evaluate(() => {
+      const player = document.querySelector('.bgm-player'), play = player.play.bind(player);
+      player.play = async () => { player.play = play; await play(); await new Promise(resolve => { globalThis.releaseFirstAudition = resolve; }); };
+    });
+    await button('曲 0.wav を試聴').click(); await page.waitForFunction(() => !!globalThis.releaseFirstAudition);
+    await button('曲 1.wav を試聴').click(); await button('曲 1.wav の試聴を停止').waitFor();
+    await page.evaluate(() => globalThis.releaseFirstAudition()); await settle();
+    assert.equal(await page.locator('.bgm-player').evaluate(audio => audio.paused), false, 'a delayed earlier audition cannot pause the new song');
+    await page.keyboard.press('Escape');
     await page.getByLabel('BGMを検索', { exact: true }).fill('1'); assert.equal(await page.locator('.bgm-track').count(), 1);
     await page.locator('.bgm-track-select').click(); await page.getByLabel('BGMの追加する長さ', { exact: true }).selectOption('full');
     await button('BGMをタイムラインに追加').click(); const withMusic = await save(); assert.ok(withMusic.clips.some(c => c.name === '曲 1.wav'));

@@ -4,8 +4,8 @@ import type { Project } from './types';
 
 // A separated, linked audio transition follows the same cut. Do not create an
 // audio effect or change unrelated effects when resizing a video-only cut.
-export function transitionResizeInfo(project: Project, id: string) {
-  const plans = transitionPlan(project), transition = plans.find(t => t.id === id);
+export function transitionResizeInfo(project: Project, id: string, plans = transitionPlan(project)) {
+  const transition = plans.find(t => t.id === id);
   if (!transition) throw new Error('調整するトランジションが見つかりません。');
   const from = new Set(linkedIds(project, [transition.fromId]));
   const to = new Set(linkedIds(project, [transition.toId]));

@@ -18,7 +18,7 @@ export default function TransitionPanel() {
   const p=useEditor(s=>s.project),selected=useEditor(s=>s.selected),category=useEditor(s=>s.effectCategory),activeId=useEditor(s=>s.activeTransitionId),busy=useEditor(s=>s.gestureActive);
   const [newDuration,setNewDuration]=useState(.5),[autoAudio,setAutoAudio]=useState(true);
   const plans=transitionPlan(p),related=linkedIds(p,selected),active=plans.find(t=>t.id===activeId);
-  const resize=active?transitionResizeInfo(p,active.id):null;
+  const resize=active?transitionResizeInfo(p,active.id,plans):null;
   const changeCategory=(next:typeof category)=>{
     const kind=next==='audio'?'audio':'video';
     const target=next==='looks'?active:plans.find(t=>resize?.ids.includes(t.id)&&t[kind]);

@@ -8,14 +8,14 @@ import type { Project } from '../types';
 import '../clip-context-menu.css';
 import './timeline-transition.css';
 
-export default function TimelineTransition({ transition: t, zoom }: { transition: ReturnType<typeof transitionPlan>[number]; zoom: number }) {
+export default function TimelineTransition({ transition: t, plans, zoom }: { transition: ReturnType<typeof transitionPlan>[number]; plans: ReturnType<typeof transitionPlan>; zoom: number }) {
   const button = useRef<HTMLButtonElement>(null), menu = useRef<HTMLDivElement>(null);
   const cancelDrag = useRef<(() => void) | null>(null);
   const [dragging, setDragging] = useState(false);
   const [anchor, setAnchor] = useState<{ x: number; y: number; project: Project } | null>(null);
   const project = useEditor(s => s.project), menuOpen = useEditor(s => s.clipMenuOpen);
   const locked = clipsLocked(project, [t.fromId, t.toId]);
-  const resizeInfo = useMemo(() => transitionResizeInfo(project, t.id), [project, t.id]);
+  const resizeInfo = useMemo(() => transitionResizeInfo(project, t.id, plans), [project, t.id, plans]);
   const close = useCallback(() => { setAnchor(null); useEditor.setState({ clipMenuOpen: false }); }, []);
   const selectEffect = () => { const s=useEditor.getState();s.select([t.toId]);useEditor.setState({activeTransitionId:t.id,effectCategory:t.video?'transitions':'audio'}); };
   const adjust = () => { if(useEditor.getState().gestureActive)return;selectEffect();useEditor.getState().setPanel('effects');useEditor.getState().seek(t.start); };

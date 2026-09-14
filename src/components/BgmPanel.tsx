@@ -34,7 +34,7 @@ export default function BgmPanel() {
       const asset=await window.luma.loadBgm(id);
       if(!alive.current||request.current!==token||useEditor.getState().project!==state.project||useEditor.getState().seekRevision!==state.seekRevision)return;
       if(insert){useEditor.getState().addBgm(asset,fit,volume/100);}
-      else if(audio.current){const player=audio.current;player.src=asset.url;player.volume=volume/100;await player.play();if(request.current===token&&alive.current)setPreviewing(true);else player.pause();}
+      else if(audio.current){const player=audio.current;player.src=asset.url;player.volume=volume/100;await player.play();if(request.current===token&&alive.current)setPreviewing(true);}
     }catch(e){if(alive.current&&request.current===token)setError((e as Error).message);}
     finally{if(alive.current&&request.current===token)setBusy(false);}
   };
