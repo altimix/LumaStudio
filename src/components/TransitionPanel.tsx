@@ -17,14 +17,16 @@ function DurationInput({duration,maximum,disabled,onChange}:{duration:number;max
 export default function TransitionPanel() {
   const p=useEditor(s=>s.project),selected=useEditor(s=>s.selected),category=useEditor(s=>s.effectCategory),activeId=useEditor(s=>s.activeTransitionId),busy=useEditor(s=>s.gestureActive);
   const [newDuration,setNewDuration]=useState(.5),[autoAudio,setAutoAudio]=useState(true);
-  const plans=transitionPlan(p),related=linkedIds(p,selected),active=plans.find(t=>t.id===activeId);
+  const plans=transitionPlan(p),related=linkedIds(p,selected);
+  const isRelated=(t:typeof plans[number])=>related.includes(t.toId)||related.includes(t.fromId);
+  const active=plans.find(t=>t.id===activeId&&isRelated(t));
   const resize=active?transitionResizeInfo(p,active.id,plans):null;
   const changeCategory=(next:typeof category)=>{
     const kind=next==='audio'?'audio':'video';
     const target=next==='looks'?active:plans.find(t=>resize?.ids.includes(t.id)&&t[kind]);
     useEditor.setState({effectCategory:next,activeTransitionId:target?.id??null});
   };
-  const applied=plans.filter(t=>(category==='audio'?t.audio:t.video)&&(related.includes(t.toId)||related.includes(t.fromId)));
+  const applied=plans.filter(t=>(category==='audio'?t.audio:t.video)&&isRelated(t));
   const duration=active?.duration??newDuration;
   const effects:[string,string,string,Omit<TransitionOptions,'duration'>][] = category==='audio'
     ? Object.entries(AUDIO_TRANSITIONS).map(([id,name])=>[id,name,id==='constantGain'?'音量を直線的に切り替える':'異なる音を自然につなぐ',{audio:id as TransitionOptions['audio']}])

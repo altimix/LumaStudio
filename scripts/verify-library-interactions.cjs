@@ -44,6 +44,13 @@ const root = path.join(__dirname, '..');
   const edge = side => band().locator('.transition-resize-' + side);
   const duration = () => page.getByLabel('トランジションの長さ', { exact: true });
   const seconds = async () => Number(await edge('end').getAttribute('aria-valuenow'));
+  const unrelatedSelection = async project => {
+    await tab('エフェクト');
+    assert.equal(await page.locator('.applied-transition').count(), 0);
+    assert.equal(await page.locator('.transition-editing-target').innerText(), '新しく追加する効果');
+    await duration().fill('1.2'); await duration().press('Enter');
+    assert.deepEqual((await save()).transitions, project.transitions, 'unrelated selections cannot resize a previously selected effect');
+  };
   const drag = async (side, change, cancellation) => {
     const handle = edge(side), box = await handle.boundingBox();
     const zoom = Number(await page.getByRole('slider', { name: 'タイムラインのズーム', exact: true }).inputValue());
@@ -128,16 +135,18 @@ const root = path.join(__dirname, '..');
     checks.push('the resized linked effect exports at the unchanged full length with matching preview pixels');
 
 
-    await tab('テキスト'); assert.equal(await page.locator('.title-template').count(), 3);
+    await band().locator('.timeline-transition').click(); await tab('テキスト'); assert.equal(await page.locator('.title-template').count(), 3);
     await button('シネマタイトルを追加').click(); const title = await save(); assert.equal(title.clips.filter(c => c.kind === 'title').length, 1);
+    await unrelatedSelection(title);
     await button('元に戻す (Ctrl+Z)').click();
+    await band().locator('.timeline-transition').click();
     await tab('図形'); assert.equal(await page.locator('.drawing-sound').getAttribute('open'), null);
     await page.locator('.drawing-sound summary').click(); await page.getByLabel('図形と同時に追加', { exact: true }).selectOption('none'); await page.locator('.drawing-sound summary').click();
     await button('四角で囲む').click(); await button('選択した図形を中央に追加').click();
-    assert.equal((await save()).clips.filter(c => c.graphic).length, 1); await button('元に戻す (Ctrl+Z)').click();
+    const drawing = await save(); assert.equal(drawing.clips.filter(c => c.graphic).length, 1); await unrelatedSelection(drawing); await button('元に戻す (Ctrl+Z)').click();
     checks.push('compact title cards add at the playhead; collapsed sound options and centered drawing retain their actions');
 
-    await tab('BGM'); await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, music);
+    await band().locator('.timeline-transition').click(); await tab('BGM'); await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, music);
     await button('フォルダを選択').click(); await page.locator('.bgm-track').filter({ hasText: '曲 1.wav' }).waitFor();
     await button('曲 1.wav を試聴').click(); await page.waitForFunction(() => { const audio = document.querySelector('.bgm-player'); return audio && !audio.paused && audio.currentTime > .1; });
     await button('曲 0.wav を試聴').click(); await button('曲 0.wav の試聴を停止').waitFor(); await page.keyboard.press('Escape');
@@ -154,6 +163,7 @@ const root = path.join(__dirname, '..');
     await page.getByLabel('BGMを検索', { exact: true }).fill('1'); assert.equal(await page.locator('.bgm-track').count(), 1);
     await page.locator('.bgm-track-select').click(); await page.getByLabel('BGMの追加する長さ', { exact: true }).selectOption('full');
     await button('BGMをタイムラインに追加').click(); const withMusic = await save(); assert.ok(withMusic.clips.some(c => c.name === '曲 1.wav'));
+    await unrelatedSelection(withMusic);
     await button('元に戻す (Ctrl+Z)').click();
     checks.push('per-song buttons directly audition and switch songs; search, length and insertion remain usable');
 
