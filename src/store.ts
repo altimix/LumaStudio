@@ -59,7 +59,7 @@ function capacity(current: number, added: number, label = 'クリップ') {
 export const useEditor = create<EditorState>((set, get) => ({
   addBgm:(asset,fit,volume)=>{
     const s=get();if(s.gestureActive){s.notify('ドラッグ中の編集を完了してください。');return false;}
-    try{const result=insertBgm(s.project,asset,s.playhead,fit,volume);if(!s.place(result.project,'BGMを追加'))return false;s.stop();set({activeVolumePoint:null,selected:result.ids,inspectorTab:'audio',sourceId:null});s.notify(`BGMを追加しました${result.repeats>1?`（${result.repeats}回の繰り返し）`:''}。右側で音量とフェードを調整できます。`);return true;}
+    try{const result=insertBgm(s.project,asset,s.playhead,fit,volume);if(!s.place(result.project,'BGMを追加'))return false;s.stop();set({activeVolumePoint:null,selected:result.ids,sourceId:null});s.setInspectorTab('audio');s.notify(`BGMを追加しました${result.repeats>1?`（${result.repeats}回の繰り返し）`:''}。右側で音量とフェードを調整できます。`);return true;}
     catch(error){s.notify((error as Error).message);return false;}
   },
   addTransition:(options,fromId,toId)=>{
@@ -89,7 +89,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const assets=sound&&!p.assets.some(a=>a.id===sound.id)?[...p.assets,sound]:p.assets;
     const audio=sound?normalizeClip({...makeClip(soundTrack!.id,clip.start,sound),volume}, {...p,assets}):undefined;
     if(!s.place({...p,tracks,assets,clips:[...p.clips,clip,...(audio?[audio]:[])]},audio?'図形と効果音を追加':'図形を追加'))return false;
-    set({activeVolumePoint:null,selected:[clip.id],inspectorTab:'video',drawTool:null});return true;
+    set({activeVolumePoint:null,selected:[clip.id],drawTool:null});s.setInspectorTab('video');return true;
   },
   activeVolumePoint:null, historyPlayheads:[], futurePlayheads:[], clipMenuOpen:false,
   separateAudio:(ids,link=true)=>{const s=get();try {s.commit(separateAudio(s.project,ids||s.selected,link),'映像と音声を分離');}catch(e){s.notify((e as Error).message);}},
@@ -180,7 +180,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!track) { s.notify('トラックを表示し、ロックを解除してください'); return; }
     const clip = { ...makeClip(track.id, s.playhead), textStyle: style, fontWeight: style === 'hero' ? 700 : 500, fontSize: style === 'subtitle' ? 58 : 94, y: style === 'subtitle' ? 33 : 0, name: style === 'subtitle' ? '字幕' : 'タイトル' };
     if(style==='subtitle')Object.assign(clip,captionStyle(s.project,clip.text));
-    if(!s.place({ ...s.project, clips: [...s.project.clips, clip] }, 'テロップを追加'))return; set({ activeVolumePoint:null, selected: [clip.id], inspectorTab: 'video' });
+    if(!s.place({ ...s.project, clips: [...s.project.clips, clip] }, 'テロップを追加'))return; set({ activeVolumePoint:null, selected: [clip.id] });s.setInspectorTab('video');
   },
   split: (at, ids) => {
     const s = get(); let targets = linkedIds(s.project,ids || s.selected); let count = 0;
