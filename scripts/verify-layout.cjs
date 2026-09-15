@@ -219,6 +219,7 @@ const storageKey = 'luma.workspace-layout.v1';
     await page.locator('.timeline-clip.image').click();
     await page.getByRole('tab', { name: '図形', exact: true }).click();
     await page.locator('.inspector-tabs button').first().click();
+    await page.locator('.drawing-sound summary').click();
     await page.getByLabel('図形と同時に追加', { exact: true }).selectOption('none');
     await button('四角で囲む').click(); await button('プロパティパネルを折りたたむ').click();
     await button('選択した図形を中央に追加').click();

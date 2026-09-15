@@ -21,7 +21,7 @@ const root = path.join(__dirname, '..');
     const page = await app.firstWindow();page.on('pageerror',e=>errors.push(e.message));
     await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});
     await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},projectFile);
-    await page.keyboard.press('Control+o');await page.getByRole('button',{name:project.name,exact:true}).waitFor();return page;
+    await page.getByRole('button',{name:'ファイル',exact:true}).click();await page.getByRole('button',{name:/^プロジェクトを開く/}).click();await page.getByRole('button',{name:project.name,exact:true}).waitFor();return page;
   }
   try {
     let page = await launch();
@@ -30,7 +30,15 @@ const root = path.join(__dirname, '..');
     const open=async()=>{await page.getByRole('button',{name:'現在のコマを保存',exact:true}).click();assert.equal(await dialog().getByRole('checkbox').isChecked(),true);};
     const close=async()=>{await dialog().getByRole('button',{name:'閉じる',exact:true}).last().click();};
     const setSave=async(file,cancel=false)=>app.evaluate(({dialog},{file,cancel})=>{dialog.showSaveDialog=async(_window,options)=>{globalThis.lastFrameDialog=options;return {canceled:cancel,filePath:file};};},{file,cancel});
-    const saveProject=async()=>{await setSave(projectFile);await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));return JSON.parse(await fs.readFile(projectFile,'utf8'));};
+    const saveProject=async()=>{
+      await setSave(projectFile);const before=(await fs.stat(projectFile)).mtimeMs;
+      await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();
+      const deadline=Date.now()+10000;
+      while((await fs.stat(projectFile)).mtimeMs===before){assert.ok(Date.now()<deadline,'native save completed before restart');await new Promise(resolve=>setTimeout(resolve,25));}
+      await page.getByRole('dialog',{name:'プロジェクトを保存しています',exact:true}).waitFor({state:'hidden'});
+      await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
+      return JSON.parse(await fs.readFile(projectFile,'utf8'));
+    };
     const pixels=async file=>{const meta=(await probe(file)).streams[0];assert.equal(meta.width,1280);assert.equal(meta.height,720);const rgb=await run(ffmpeg,['-v','error','-i',file,'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','pipe:1']);return (x,y)=>[...rgb.subarray((y*1280+x)*3,(y*1280+x)*3+3)];};
     await page.getByRole('button',{name:'先頭へ (Home)',exact:true}).click();
     await page.getByLabel('プレビュー画質',{exact:true}).selectOption('0.25');
@@ -122,5 +130,8 @@ const root = path.join(__dirname, '..');
     assert.deepEqual(errors,[]);
     await fs.copyFile(png,path.join(results,'saved.png'));await fs.copyFile(jpg,path.join(results,'saved.jpg'));
     await fs.writeFile(path.join(results,'verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,checks},null,2));console.log(JSON.stringify({passed:true,checks},null,2));
+  } catch(error) {
+    if(app)await app.firstWindow().then(page=>page.screenshot({path:path.join(results,'failure.png')})).catch(()=>{});
+    throw error;
   } finally { if(app)await app.close().catch(()=>{}); await fs.rm(profile,{recursive:true,force:true}); }
 })().catch(e=>{console.error(e);process.exitCode=1;});

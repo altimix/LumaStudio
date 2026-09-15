@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Plus, LayoutGrid, List, Film, Music2, Image as ImageIcon, FolderOpen, SlidersHorizontal, Type, ArrowUpRight, Play, Link2, Check, Trash2, PanelLeftClose, LoaderCircle } from 'lucide-react';
+import { Search, Plus, LayoutGrid, List, Film, Music2, Image as ImageIcon, FolderOpen, SlidersHorizontal, Type, ArrowUpRight, Play, Link2, Trash2, PanelLeftClose, LoaderCircle } from 'lucide-react';
 import { useEditor } from '../store';
 import { shortTime } from '../model';
 import { IconButton, Waveform } from './UI';
@@ -8,17 +8,10 @@ import TransitionPanel from './TransitionPanel';
 import DrawingPanel from './DrawingPanel';
 import BgmPanel from './BgmPanel';
 import type { Asset, Clip } from '../types';
+import './library-browser.css';
 
-export const looks: { name: string; description: string; color: string; patch: Partial<Clip> }[] = [
-  { name: 'オリジナル', description: 'ニュートラル', color: 'linear-gradient(140deg,#6b949a,#a1987e)', patch: { exposure: 0, contrast: 1, saturation: 1 } },
-  { name: 'Cinematic', description: '深い陰影、映画のように', color: 'linear-gradient(140deg,#3f7177,#d9aa73)', patch: { exposure: -0.12, contrast: 1.2, saturation: 0.78 } },
-  { name: 'Vivid', description: '鮮やかな色彩', color: 'linear-gradient(140deg,#3ec0ac,#f4c876)', patch: { exposure: 0.1, contrast: 1.12, saturation: 1.4 } },
-  { name: 'Soft Film', description: 'やわらかなフィルム調', color: 'linear-gradient(140deg,#a2a9ad,#d2b6a2)', patch: { exposure: 0.18, contrast: 0.85, saturation: 0.78 } },
-  { name: 'Noir', description: 'モノクローム', color: 'linear-gradient(140deg,#252930,#b2b6bb)', patch: { exposure: 0, contrast: 1.25, saturation: 0 } },
-  { name: 'Muted', description: '静かな、落ち着いた色', color: 'linear-gradient(140deg,#667a7a,#a7a591)', patch: { exposure: -0.05, contrast: 0.95, saturation: 0.55 } }
-];
 export default function MediaLibrary({ onImport, onRelink, onRemove, importLabel, onCollapse }: { onCollapse: () => void; onImport: () => void; onRelink: (a: Asset) => void; onRemove: (id: string) => void; importLabel: string }) {
-  const panel = useEditor(s => s.panel); const assets = useEditor(s => s.project.assets); const selected = useEditor(s => s.selected); const clips = useEditor(s => s.project.clips);
+  const panel = useEditor(s => s.panel); const assets = useEditor(s => s.project.assets);
   const [fileDrag, setFileDrag] = useState(false);
   const [creatingBlack,setCreatingBlack]=useState(false);
   const addBlack=async()=>{const state=useEditor.getState();if(creatingBlack||state.gestureActive||!window.luma)return;if(state.project.assets.length>=2000){state.notify('素材は最大2000個です。');return;}const initialProject=state.project;setCreatingBlack(true);try{const asset=await window.luma.blackVideo(state.project.width,state.project.height);const current=useEditor.getState();if(current.gestureActive){current.notify('素材のドラッグ中のため追加を中止しました。ドラッグ後にもう一度追加してください。');return;}if(current.project.assets.length>=2000){current.notify('素材は最大2000個です。');return;}if(current.project!==initialProject){current.notify('プロジェクトが変更されたため追加を中止しました。もう一度追加してください。');return;}current.importAssets([asset]);setSelectedAsset(asset.id);setSearch('');setFilter('all');current.notify('ブラックビデオを追加しました。タイムラインに配置して長さを調整できます。');}catch(error){useEditor.getState().notify((error as Error).message);}finally{setCreatingBlack(false);}};
@@ -32,7 +25,6 @@ export default function MediaLibrary({ onImport, onRelink, onRemove, importLabel
     e.preventDefault(); e.stopPropagation();
     if (selectedAsset && !useEditor.getState().gestureActive) onRemove(selectedAsset);
   };
-  const selectedClip = clips.find(c => selected.includes(c.id));
   const filtered = assets.filter(a => a.name.toLowerCase().includes(search.toLowerCase()) && (filter === 'all' || a.kind === filter));
   return <section className={`library-panel panel ${fileDrag ? 'file-drag-over' : ''}`} onKeyDown={mediaKey}
     onDragOver={event => { if (event.dataTransfer.types.includes('Files')) setFileDrag(true); }}
@@ -49,9 +41,9 @@ export default function MediaLibrary({ onImport, onRelink, onRemove, importLabel
         <button className="asset-add" title={a.offline ? '素材を再リンク' : 'タイムラインに追加'} aria-label={`${a.name} ${a.offline ? 'を再リンク' : 'を追加'}`} onClick={() => a.offline ? onRelink(a) : useEditor.getState().addAsset(a.id)}>{a.offline ? <Link2 size={14}/> : <Plus size={14}/>}</button>
       </article>)}{filtered.length === 0 ? <div className="empty-library"><FolderOpen size={26}/><p>{assets.length ? '条件に合う素材がありません' : 'まずは動画・写真・音声を読み込みましょう'}</p>{assets.length ? <button className="text-button" onClick={() => { setSearch(''); setFilter('all'); }}>検索条件をクリア</button> : <><button className="secondary-button" disabled={!!importLabel} onClick={onImport}><Plus size={14}/>ファイルを選択</button><small>ここへドラッグしても読み込めます</small></>}</div> : null}</div>
       {importLabel || creatingBlack ? <div className="library-progress" role="status"><LoaderCircle className="spin" size={14}/><span>{importLabel || 'ブラックビデオを作成中…'}</span></div> : null}<div className="library-foot"><span>{assets.length} アイテム</span><span>ファイルをここへドロップ</span></div></> : null}
-    {panel === 'effects' ? <div className="effects-content"><TransitionPanel/><span className="eyebrow">MAKE IT YOURS</span><h3>映像に、表情を。</h3><p>クリップを選択してルックを適用。細かな調整はカラーパネルで。</p><div className="look-grid">{looks.map(look => <button key={look.name} className="look-card" onClick={() => { const s = useEditor.getState(); if (!selectedClip || ['audio','title'].includes(selectedClip.kind)) { s.notify('映像または画像クリップを選択してください'); return; } s.updateClip(selectedClip.id, look.patch); s.setInspectorTab('color'); }}><div style={{ background: look.color }}><div className="look-mountain"/><span>{look.name === 'オリジナル' ? <Check size={20}/> : <SlidersHorizontal size={18}/>}</span></div><strong>{look.name}</strong><small>{look.description}</small></button>)}</div><div className="effect-note"><strong>フェードイン / フェードアウト</strong><p>1つのクリップの始まりや終わりは、プロパティから調整できます。</p></div></div> : null}
+    {panel === 'effects' ? <TransitionPanel/> : null}
     {panel === 'draw' ? <DrawingPanel/> : null}
     {panel === 'bgm' ? <BgmPanel/> : null}
-    {panel === 'titles' ? <div className="effects-content"><span className="eyebrow">WORDS IN MOTION</span><h3>言葉も、映像の一部。</h3><p>テンプレートをクリックすると、再生ヘッドの位置に追加します。</p>{[{ style: 'hero', name: 'シネマタイトル', sample: 'YOUR STORY', description: '大きく、印象的な見出し' }, { style: 'minimal', name: 'ミニマル', sample: 'Less, but better.', description: 'シンプルで洗練されたテキスト' }, { style: 'subtitle', name: '字幕・キャプション', sample: 'あなたの言葉を、届けよう。', description: '読みやすい背景付きの字幕' }].map(t => <button className={`title-template ${t.style}`} key={t.style} onClick={() => useEditor.getState().addTitle(t.style as Clip['textStyle'])}><div>{t.sample}</div><footer><span><strong>{t.name}</strong><small>{t.description}</small></span><ArrowUpRight size={16}/></footer></button>)}</div> : null}
+    {panel === 'titles' ? <div className="title-browser library-browser"><div className="library-section-scroll title-presets">{[{ style: 'hero', name: 'シネマタイトル', sample: '物語のはじまり' }, { style: 'minimal', name: 'ミニマル', sample: 'いつもの風景' }, { style: 'subtitle', name: '字幕・キャプション', sample: 'ここに字幕が入ります' }].map(t => <button className={`title-template ${t.style}`} key={t.style} aria-label={`${t.name}を追加`} title="再生ヘッドの位置に追加" onClick={() => useEditor.getState().addTitle(t.style as Clip['textStyle'])}><div><span>{t.sample}</span></div><footer><strong>{t.name}</strong><Plus size={14}/></footer></button>)}</div><div className="library-browser-hint">クリックで再生ヘッドの位置に追加</div></div> : null}
   </section>;
 }

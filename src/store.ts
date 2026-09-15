@@ -17,6 +17,7 @@ import { linkedIds, clipsLocked, cloneLinkedClips, syncLinkedEdits } from '../sh
 import { separateAudio, relinkAudio, patchAudio } from './linked-editing';
 import { applyBgmVolume } from './audio-volume';
 import { insertBgm } from './bgm';
+import { resizeTransition } from './transition-editing';
 import { deleteTimelineGap, rippleGapTime } from './gap-editing';
 export type Panel = 'media' | 'effects' | 'titles' | 'draw' | 'bgm';
 type EditorState = {
@@ -25,7 +26,8 @@ type EditorState = {
   setBgmVolumeDb(db:number,ids?:string[]):void;
   separateAudio(ids?:string[],link?:boolean):void; unlink(ids?:string[]):void; relink(ids?:string[]):void; setRate(speed:number,ids?:string[]):void; patchAudio(patch: { audioTreatment?:'speech'|'normalize'; audioMuted?:boolean },ids?:string[]):void;
   historyPlayheads:(number|null)[]; futurePlayheads:(number|null)[]; clipMenuOpen:boolean;
-  addTransition(options:TransitionOptions,fromId?:string,toId?:string):void; removeTransition(id:string):void;
+  addTransition(options:TransitionOptions,fromId?:string,toId?:string):void; removeTransition(id:string,kind?:'video'|'audio'):void;
+  activeTransitionId:string|null; effectCategory:'transitions'|'looks'|'audio'; resizeTransition(id:string,duration:number):boolean;
   drawTool: Graphic['shape'] | null; drawSettings: { color:string; duration:number; sound:'none'|SoundId; volume:number };
   addDrawing(input:Pick<Clip,'graphic'|'x'|'y'|'rotation'|'color'|'duration'>&{start?:number},sound?:Asset,volume?:number):boolean;
   projectGeneration: number; project: Project; selected: string[]; playhead: number; seekRevision: number; playing: boolean; shuttleRate: number; zoom: number; snapping: boolean; tool: 'select' | 'razor' | 'rate';
@@ -64,6 +66,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   addTransition:(options,fromId,toId)=>{
     const s=get(),p=s.project;
+    if(s.gestureActive)return;
     if(!fromId||!toId){
       const selected=p.clips.filter(c=>s.selected.includes(c.id)).sort((a,b)=>a.start-b.start);
       if(selected.length===2){fromId=selected[0].id;toId=selected[1].id;}
@@ -74,9 +77,19 @@ export const useEditor = create<EditorState>((set, get) => ({
       }
     }
     if(!fromId||!toId){s.notify('同じトラックで隣り合う2つのクリップ、または切り替え先のクリップを選択してください。');return;}
-    try{const next=applyTransition(p,fromId,toId,options,uid());s.stop();s.commit(next,'トランジションを追加');s.select([toId]);s.seek(next.clips.find(c=>c.id===toId)!.start);s.notify('トランジションを追加しました。重なる区間を再生して確認できます。');}catch(error){s.notify((error as Error).message);}
+    try{const id=uid(),next=applyTransition(p,fromId,toId,options,id);s.stop();if(!s.commit(next,'トランジションを追加'))return;s.select([toId]);set({activeTransitionId:next.transitions?.find(t=>(t.id===id||t.id===`${id}-audio`)&&(!options.audio||t.audio))?.id??null});s.seek(next.clips.find(c=>c.id===toId)!.start);s.notify('トランジションを追加しました。重なる区間を再生して確認できます。');}catch(error){s.notify((error as Error).message);}
   },
-  removeTransition:id=>{const s=get(),t=s.project.transitions?.find(t=>t.id===id);if(!t)return;if(clipsLocked(s.project,[t.fromId,t.toId])){s.notify('トラックのロックを解除してください。');return;}s.commit({...s.project,transitions:s.project.transitions!.filter(t=>t.id!==id)},'トランジションを削除');s.notify('つなぎ目の効果を削除しました。素材の配置や動画の長さは変わりません。');},
+  activeTransitionId:null,effectCategory:'transitions',
+  resizeTransition:(id,duration)=>{const s=get();if(s.gestureActive)return false;try{const next=resizeTransition(s.project,id,duration);if(next===s.project)return true;s.stop();return s.commit(next,'トランジションの長さを変更');}catch(error){s.notify((error as Error).message);return false;}},
+  removeTransition:(id,kind)=>{
+    const s=get(),t=s.project.transitions?.find(t=>t.id===id);if(!t||s.gestureActive||(kind&&!t[kind]))return;
+    if(clipsLocked(s.project,[t.fromId,t.toId])){s.notify('トラックのロックを解除してください。');return;}
+    const remaining={...t};if(kind)delete remaining[kind];
+    const transitions=s.project.transitions!.flatMap(current=>current.id!==id?[current]:kind&&(remaining.video||remaining.audio)?[remaining]:[]);
+    if(!s.commit({...s.project,transitions},'トランジションを削除'))return;
+    if(s.activeTransitionId===id)set({activeTransitionId:null});
+    s.notify(kind?`${kind==='video'?'映像':'音声'}の効果を解除しました。`:'つなぎ目の効果を削除しました。素材の配置や動画の長さは変わりません。');
+  },
   drawTool:null,drawSettings:{color:'#ff0000',duration:3,sound:'chime',volume:.9},
   addDrawing:(input,sound,volume=.9)=>{
     const s=get(),p=s.project,track=p.tracks.find(t=>!t.locked&&!t.hidden);
@@ -108,7 +121,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   history: [], future: [], historyLabels: [], futureLabels: [], currentAction: '開始', dirty: false, savedPath: null, clipboard: [], toast: '', sourceId: null, ready: false, autosavedAt: '', previewQuality: 0.5, safeGuides: false, gestureActive: false, gestureOwner:null, gestureCancel:null, trackMenuOpen: false,
   beginGesture:(owner,cancel)=>{if(get().gestureActive)return false;set({gestureActive:true,gestureOwner:owner,gestureCancel:cancel});return true;},
   endGesture:owner=>{if(get().gestureOwner===owner)set({gestureActive:false,gestureOwner:null,gestureCancel:null});},
-  load: (p, savedPath) => {get().gestureCancel?.();p=numberTracks(p);set(s => ({ projectGeneration: s.projectGeneration + 1, project: p, activeVolumePoint:null, historyPlayheads:[], futurePlayheads:[], clipMenuOpen:false, drawTool:null, savedPath: savedPath || null, selected: p.clips.filter(c => c.kind === 'video').slice(0,1).map(c => c.id), playhead: Math.min(2.4, endTime(p)), zoom: boundedZoom(s.zoom, endTime(p)), seekRevision: s.seekRevision + 1, playing: false, shuttleRate: 1, history: [], future: [], historyLabels: [], futureLabels: [], currentAction: '開始', dirty: false, ready: true, gestureActive: false, gestureOwner:null, gestureCancel:null, trackMenuOpen: false, sourceId: null, clipboard: [] }));resetAudioMeter();},
+  load: (p, savedPath) => {get().gestureCancel?.();p=numberTracks(p);set(s => ({ projectGeneration: s.projectGeneration + 1, project: p, activeVolumePoint:null, activeTransitionId:null, historyPlayheads:[], futurePlayheads:[], clipMenuOpen:false, drawTool:null, savedPath: savedPath || null, selected: p.clips.filter(c => c.kind === 'video').slice(0,1).map(c => c.id), playhead: Math.min(2.4, endTime(p)), zoom: boundedZoom(s.zoom, endTime(p)), seekRevision: s.seekRevision + 1, playing: false, shuttleRate: 1, history: [], future: [], historyLabels: [], futureLabels: [], currentAction: '開始', dirty: false, ready: true, gestureActive: false, gestureOwner:null, gestureCancel:null, trackMenuOpen: false, sourceId: null, clipboard: [] }));resetAudioMeter();},
   place: (p,label) => {
     const s=get();if(s.gestureActive){s.notify('ドラッグ中の編集を完了してください。');return false;}
     const existing=new Set(s.project.clips.map(c=>c.id));
@@ -121,7 +134,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   checkpoint: (label = 'プロパティを変更') => set(s => ({ history: [...s.history.slice(-79), s.project], historyPlayheads:[...s.historyPlayheads.slice(-79),null], historyLabels: [...s.historyLabels.slice(-79), s.currentAction], currentAction: label, future: [], futurePlayheads:[], futureLabels: [], dirty: true })),
   transient: (p,baseline) => {const s=get();try{p=reflowEditedCaptions(baseline||s.project,p);p=numberTracks(pruneTransitions(syncLinkedEdits(baseline||s.project,p,uid)));set({project:p,activeVolumePoint:volumeSelectionAfterEdit(s,p),zoom:boundedZoom(s.zoom,Math.max(endTime(p),s.playhead)),dirty:true});}catch(e){s.notify((e as Error).message);}},
-  select: selected => set(s=>({ selected, activeVolumePoint:selected.length===1&&selected[0]===s.activeVolumePoint?.clipId?s.activeVolumePoint:null })),
+  select: selected => set(s=>({ selected, activeTransitionId:null, activeVolumePoint:selected.length===1&&selected[0]===s.activeVolumePoint?.clipId?s.activeVolumePoint:null })),
   seek: t => { if (Number.isFinite(t)) set(s => ({ playhead: Math.max(0, Math.min(MAX_MEDIA_SECONDS, roundFrame(t, s.project.fps))), zoom: boundedZoom(s.zoom, Math.max(endTime(s.project), Math.min(MAX_MEDIA_SECONDS, t))), seekRevision: s.seekRevision + 1 })); },
   togglePlay: () => set(s => ({ playing: endTime(s.project) > 0 && !s.playing, shuttleRate: 1, zoom: boundedZoom(s.zoom, endTime(s.project)), playhead: s.playhead >= endTime(s.project) ? 0 : s.playhead })),
   stop: () => set({ playing: false, shuttleRate: 1 }),
