@@ -18,6 +18,7 @@ npm run dev --prefix website
 ```sh
 npx playwright install chromium
 node website/verify.cjs
+node website/verify-seo.mjs
 ```
 
 開発サーバーの既定ポートと合わせて`SITE_URL`を指定します。verifyの既定は`http://localhost:8791`なので、`npm run dev --prefix website -- --port 8791`で起動できます。`SITE_URL=https://lumastudio.altimix.jp`を設定すると公開後のページ・リンク・検索を検証できます。証跡は`test-results`に保存されます。
@@ -43,3 +44,9 @@ npm run deploy --prefix website
 本番HTTPSを指定した検証では、配布EXE・ZIP・起動手順・SHA256のリンクをリダイレクト対応HEADで確認します。Website CIはローカルの変更案と現在の公開サイトの両方を検証します。未公開版の配布リンクはリリース公開後、サイト更新後の本番検証で確認します。
 
 トップの`assets/workspace.png`は1.5.0の実アプリの編集画面です。青い背景と文字を使った操作例で、元画像の加工や架空UIの生成はしていません。従来の`assets/editor.png`とその映像クレジットも保持しています。
+
+## 開発者情報と検索
+
+`trust.mjs`に本人提供の経歴・開発者コメントとJSON-LDを管理します。写真`assets/noboru-ando.png`は本人提供画像をそのまま使用しています。`/developer/`をトップ・ナビゲーション・サイトマップから案内します。仕様は`docs/specs/037-website-developer-seo.md`を参照してください。
+
+公開後はGoogle Search Consoleの所有権確認済みプロパティで`https://lumastudio.altimix.jp/sitemap.xml`を送信し、トップと`/developer/`をURL検査します。robots.txtからもサイトマップを案内しています。サイトマップの公開や送信はGoogleのインデックス登録・掲載順位を保証するものではありません。
