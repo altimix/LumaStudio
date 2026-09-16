@@ -50,3 +50,5 @@ npm run deploy --prefix website
 `trust.mjs`に本人提供の経歴・開発者コメントとJSON-LDを管理します。写真`assets/noboru-ando.png`は本人提供画像をそのまま使用しています。`/developer/`をトップ・ナビゲーション・サイトマップから案内します。仕様は`docs/specs/037-website-developer-seo.md`を参照してください。
 
 公開後はGoogle Search Consoleの所有権確認済みプロパティで`https://lumastudio.altimix.jp/sitemap.xml`を送信し、トップと`/developer/`をURL検査します。robots.txtからもサイトマップを案内しています。サイトマップの公開や送信はGoogleのインデックス登録・掲載順位を保証するものではありません。
+
+トップの`google-site-verification`はSearch Consoleが発行した公開用の所有権確認タグです。所有権確認後も保持してください。ログイン用の秘密鍵やAPIキーではありません。

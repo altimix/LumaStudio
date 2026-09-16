@@ -14,6 +14,7 @@ async function save(name,html){
   if(name.endsWith('.html')) {
     const route=name==='index.html'?'/':name==='404.html'?'/404':`/${name.replace('/index.html','')}/`;
     if(route==='/') {
+      html=html.replace('</head>','<meta name="google-site-verification" content="X-NNCnMZuxQDwDYAVfcxi7J8ov3NySJGR69u7hwdpQ0"></head>');
       const title='Luma Studio｜安藤昇が開発した国産・無料動画編集ソフト';
       const description='広告なし・会員登録なし。情報教育の講師・安藤昇が、学校で動画編集の基本を学ぶために開発した国産ソフト。Windows・Mac対応。授業や生徒の作品づくりから、社会人の仕事・YouTube制作まで。';
       html=html.replace(/<title>.*?<\/title>/,`<title>${title}</title>`)
