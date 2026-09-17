@@ -31,8 +31,9 @@ export default function ScrubbableNumberInput(props: Props) {
   useEffect(() => () => cancelActive.current?.(), []);
 
   const pointerDown = (event: React.PointerEvent<HTMLInputElement>) => {
-    if (event.button !== 0 || disabled || cancelActive.current) return;
-    const input = event.currentTarget, pointerId = event.pointerId, originX = event.clientX, originY = event.clientY, start = value;
+    const input = event.currentTarget;
+    if (event.button !== 0 || disabled || cancelActive.current || document.activeElement === input) return;
+    const pointerId = event.pointerId, originX = event.clientX, originY = event.clientY, start = value;
     let started = false, closed = false, last = start;
     const detach = () => {
       window.removeEventListener('pointermove', move);

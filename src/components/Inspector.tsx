@@ -61,7 +61,7 @@ function NumericField({ clip, property, label, min, max, step = 1, factor = 1, o
     if (dragging.current) {
       if (!changed.current) { s.checkpoint(`${label}を変更`); changed.current = true; }
       const now=useEditor.getState(),clips=now.project.clips.map(c=>c.id===clip.id?normalizeClip({...c,...patch},now.project):c);
-      now.transient({...now.project,clips},start?.state.project);
+      now.transient({...now.project,clips});
     } else s.updateClip(clip.id, patch);
   };
   return <div className={`property-field ${slider ? '' : 'no-slider'}`}><div className="property-label"><label htmlFor={`prop-${property}`}>{label}</label><div className="number-wrap"><ScrubbableNumberInput id={`prop-${property}`} value={value} min={min} max={max} step={step} onCommit={apply} onScrubStart={beginDrag} onScrubChange={apply} onScrubEnd={()=>finishDrag()} onScrubCancel={()=>finishDrag(true)}/><span>{suffix}</span></div></div>{slider ? <input className="property-slider" type="range" aria-label={`${label}スライダー`} min={min} max={max} step={step} value={value} style={{ '--fill': `${(value - min) / (max - min) * 100}%` } as React.CSSProperties} onPointerDown={e=>{if(e.button===0)beginDrag();}} onPointerUp={()=>finishDrag()} onPointerCancel={()=>finishDrag(true)} onLostPointerCapture={()=>finishDrag(true)} onChange={e=>apply(Number(e.target.value))}/> : null}</div>;

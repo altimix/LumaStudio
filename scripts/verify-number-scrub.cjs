@@ -5,8 +5,9 @@ const root = path.join(__dirname, '..');
 
 (async () => {
   const results=path.join(root,'test-results');await fs.mkdir(results,{recursive:true});await fs.mkdir(path.join(root,'.local'),{recursive:true});const file=path.join(results,'数値ドラッグ検証.luma'),mediaFile=path.join(results,'数値ドラッグ素材.mp4');
-  await run(ffmpeg,['-v','error','-y','-f','lavfi','-i','color=c=0x285ca8:s=640x360:r=30:d=3','-c:v','libx264','-pix_fmt','yuv420p',mediaFile]);const asset=await inspectMedia(mediaFile,path.join(root,'.local','number-scrub-cache'));
-  const fixture={version:1,id:'number-scrub',name:'数値ドラッグ検証',width:640,height:360,fps:30,assets:[asset],markers:[],tracks:[{id:'v1',name:'Video1',kind:'video',muted:false,hidden:false,locked:false,solo:false}],clips:[{id:'clip',assetId:asset.id,trackId:'v1',name:asset.name,kind:'video',start:0,in:0,duration:3,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,contrast:1,saturation:1,volume:0,fadeIn:0,fadeOut:0,text:'',fontSize:94,color:'#ffffff',textStyle:'hero',audioMuted:true}]};await fs.writeFile(file,JSON.stringify(fixture));
+  await run(ffmpeg,['-v','error','-y','-f','lavfi','-i','color=c=0x285ca8:s=640x360:r=30:d=3','-f','lavfi','-i','anullsrc=r=48000:cl=stereo:d=3','-shortest','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',mediaFile]);const asset=await inspectMedia(mediaFile,path.join(root,'.local','number-scrub-cache'));
+  const video={id:'clip',assetId:asset.id,trackId:'v1',linkId:'linked-av',name:asset.name,kind:'video',start:0,in:0,duration:3,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,contrast:1,saturation:1,volume:0,fadeIn:0,fadeOut:0,text:'',fontSize:94,color:'#ffffff',textStyle:'hero',audioDetached:true};
+  const fixture={version:1,id:'number-scrub',name:'数値ドラッグ検証',width:640,height:360,fps:30,assets:[asset],markers:[],tracks:[{id:'v1',name:'Video1',kind:'video',muted:false,hidden:false,locked:false,solo:false},{id:'a1',name:'Audio1',kind:'audio',muted:false,hidden:false,locked:false,solo:false}],clips:[video,{...video,id:'audio',trackId:'a1',kind:'audio',name:`${asset.name}（音声）`,audioDetached:undefined}]};await fs.writeFile(file,JSON.stringify(fixture));
   const profile=await fs.mkdtemp(path.join(root,'.local','number-scrub-')),env={...process.env,LUMA_TEST_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;delete env.LUMA_DEMO_FIXTURE;delete env.LUMA_TEST_FIXTURES;
   const executablePath=process.env.LUMA_VERIFY_EXE,app=await electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000});
   const page=await app.firstWindow(),checks=[],errors=[];page.on('pageerror',error=>errors.push(error.message));
@@ -35,6 +36,9 @@ const root = path.join(__dirname, '..');
     await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),initial);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),7);
     checks.push('a click remains a normal number edit and sub-threshold movement creates no history');
 
+    await rotation.click();await scrub(rotation,20);project=await save();assert.equal(value(project,clip.id,'rotation'),7);assert.equal(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),false);
+    checks.push('dragging an already focused input remains native text selection instead of scrubbing');
+
     await scrub(rotation,20);project=await save();assert.equal(value(project,clip.id,'rotation'),17);await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),7);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),17);
     await scrub(rotation,-10);project=await save();assert.equal(value(project,clip.id,'rotation'),12);await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),17);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),12);
     checks.push('right raises and left lowers by step with one Undo and Redo per scrub');
@@ -47,6 +51,10 @@ const root = path.join(__dirname, '..');
     await scrub(opacity,20);assert.equal(value(await save(),clip.id,'opacity'),1);await page.keyboard.press('Control+z');assert.ok(Math.abs(value(await save(),clip.id,'opacity')-.99)<1e-9);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'opacity'),1);
     await scrub(opacity,20);assert.equal(value(await save(),clip.id,'opacity'),1);await page.keyboard.press('Control+z');assert.ok(Math.abs(value(await save(),clip.id,'opacity')-.99)<1e-9);await page.keyboard.press('Control+Shift+z');await save();
     checks.push('limits are clamped and a no-op drag at the limit creates no Undo entry');
+
+    const start=page.locator('#prop-start');await scrub(start,20);project=await save();const linkedVideo=project.clips.find(item=>item.id===clip.id),linkedAudio=project.clips.find(item=>item.id==='audio');assert.ok(linkedVideo.start>.25,`linked video start ${linkedVideo.start}`);assert.ok(Math.abs(linkedVideo.start-linkedAudio.start)<1e-9,`linked timing ${linkedVideo.start} / ${linkedAudio.start}`);
+    await page.keyboard.press('Control+z');project=await save();assert.equal(project.clips.find(item=>item.id===clip.id).start,0);assert.equal(project.clips.find(item=>item.id==='audio').start,0);await page.keyboard.press('Control+Shift+z');project=await save();assert.ok(Math.abs(project.clips.find(item=>item.id===clip.id).start-project.clips.find(item=>item.id==='audio').start)<1e-9);
+    checks.push('every intermediate timing scrub keeps linked video and audio synchronized');
 
     const cropBottom=page.locator('input[id^="effect-"][id$="-下"]');await scrub(cropBottom,20);project=await save();assert.ok(Math.abs(project.clips.find(item=>item.id===clip.id).crop.bottom-.01)<1e-9);
     await page.locator('#video-mask-type').selectOption('ellipse');const maskX=page.locator('input[id^="effect-"][id$="-位置-X"]');await scrub(maskX,20);project=await save();assert.ok(Math.abs(project.clips.find(item=>item.id===clip.id).videoMask.x-.51)<1e-9);
