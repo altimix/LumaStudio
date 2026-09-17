@@ -29,6 +29,20 @@ export function mediaCorner(clip: Clip, source: SourceSize, project: Pick<Projec
   return { x: bounds.x + dx * Math.cos(angle) - dy * Math.sin(angle), y: bounds.y + dx * Math.sin(angle) + dy * Math.cos(angle) };
 }
 
+/** Convert normalized source coordinates to project pixels after media transform. */
+export function mediaPoint(clip: Clip, source: SourceSize, project: Pick<Project, 'width' | 'height'>, point: Position): Position {
+  const bounds = mediaBounds(clip, source, project), angle = clip.rotation * Math.PI / 180;
+  const dx = (point.x - .5) * bounds.width, dy = (point.y - .5) * bounds.height;
+  return { x: bounds.x + dx * Math.cos(angle) - dy * Math.sin(angle), y: bounds.y + dx * Math.sin(angle) + dy * Math.cos(angle) };
+}
+
+/** Convert a project-pixel position back to normalized source coordinates. */
+export function mediaNormalizedPoint(clip: Clip, source: SourceSize, project: Pick<Project, 'width' | 'height'>, point: Position): Position {
+  const bounds = mediaBounds(clip, source, project), angle = -clip.rotation * Math.PI / 180;
+  const dx = point.x - bounds.x, dy = point.y - bounds.y;
+  return { x: (dx * Math.cos(angle) - dy * Math.sin(angle)) / bounds.width + .5, y: (dx * Math.sin(angle) + dy * Math.cos(angle)) / bounds.height + .5 };
+}
+
 export function moveMedia(clip: Clip, project: Pick<Project, 'width' | 'height'>, delta: Position, snap: Position = { x: 0, y: 0 }) {
   let x = clip.x + delta.x / project.width * 100, y = clip.y + delta.y / project.height * 100;
   if (Math.abs(x) * project.width / 100 < snap.x) x = 0;

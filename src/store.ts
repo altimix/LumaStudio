@@ -11,6 +11,7 @@ import { validateOpacityKeys, windowOpacity } from '../shared/opacity.mjs';
 import { retimeVolume, validateVolumeKeys } from '../shared/volume-automation.mjs';
 import { validateTextStyle } from '../shared/text-style.mjs';
 import { validateGraphic, SHAPE_NAMES } from '../shared/graphics.mjs';
+import { validateVideoMask } from '../shared/video-mask.mjs';
 import { boundedZoom, MAX_MEDIA_SECONDS, MAX_MARKERS } from '../shared/time.mjs';
 import { applyTransition, pruneTransitions } from '../shared/transitions.mjs';
 import { linkedIds, clipsLocked, cloneLinkedClips, syncLinkedEdits } from '../shared/clip-links.mjs';
@@ -30,12 +31,12 @@ type EditorState = {
   activeTransitionId:string|null; effectCategory:'transitions'|'looks'|'audio'; resizeTransition(id:string,duration:number):boolean;
   drawTool: Graphic['shape'] | null; drawSettings: { color:string; duration:number; sound:'none'|SoundId; volume:number };
   addDrawing(input:Pick<Clip,'graphic'|'x'|'y'|'rotation'|'color'|'duration'>&{start?:number},sound?:Asset,volume?:number):boolean;
-  projectGeneration: number; project: Project; selected: string[]; playhead: number; seekRevision: number; playing: boolean; shuttleRate: number; zoom: number; snapping: boolean; tool: 'select' | 'razor' | 'rate';
+  projectGeneration: number; project: Project; selected: string[]; playhead: number; seekRevision: number; playing: boolean; shuttleRate: number; zoom: number; snapping: boolean; tool: 'select' | 'razor' | 'rate'; mediaEditMode: 'transform' | 'crop' | 'mask';
   panel: Panel; inspectorTab: 'video' | 'color' | 'audio'; history: Project[]; future: Project[]; historyLabels: string[]; futureLabels: string[]; currentAction: string; dirty: boolean; savedPath: string | null; clipboard: Clip[];
   toast: string; sourceId: string | null; ready: boolean; autosavedAt: string; previewQuality: number; safeGuides: boolean; gestureActive: boolean; gestureOwner:object|null; gestureCancel:(()=>void)|null; beginGesture(owner:object,cancel:()=>void):boolean; endGesture(owner:object):void; trackMenuOpen: boolean;
   load(p: Project, savedPath?: string): void; commit(p: Project, label?: string, undoPlayhead?: number): boolean; place(p: Project, label: string): boolean; checkpoint(label?: string): void; transient(p: Project, baseline?: Project): void;
   select(ids: string[]): void; seek(t: number): void; togglePlay(): void; stop(): void; shuttle(direction: -1 | 1): void; setZoom(n: number): void;
-  setPanel(p: Panel): void; setInspectorTab(p: EditorState['inspectorTab']): void;
+  setPanel(p: Panel): void; setInspectorTab(p: EditorState['inspectorTab']): void; setMediaEditMode(mode: EditorState['mediaEditMode']): void;
   panelRequestId: number; inspectorRequestId: number;
   updateClip(id: string, patch: Partial<Clip>): void; updateTrack(id: string, patch: Partial<Track>): void;
   importAssets(assets: Asset[]): void; removeAsset(id: string, removeUsed?: boolean): void; addAsset(id: string, at?: number, trackId?: string): void; addTitle(style?: Clip['textStyle']): void;
@@ -117,11 +118,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     } catch(e){s.notify((e as Error).message);}
   },
   setRate:(speed,ids)=>{const s=get(),targets=linkedIds(s.project,ids||s.selected);if(!Number.isFinite(speed)||speed<.25||speed>4)return;if(clipsLocked(s.project,targets)){s.notify('リンク相手を含むトラックのロックを解除してください。');return;}s.commit({...s.project,clips:s.project.clips.map(c=>targets.includes(c.id)&&['video','audio'].includes(c.kind)?normalizeClip({...c,speed,duration:c.duration*c.speed/speed,fadeIn:c.fadeIn*c.speed/speed,fadeOut:c.fadeOut*c.speed/speed,...(c.volumeKeyframes?{volumeKeyframes:retimeVolume(c,{in:c.in,speed,duration:c.duration*c.speed/speed})}:{})},s.project):c)},'再生速度を変更');},
-  projectGeneration: 0, project: emptyProject(), selected: [], playhead: 2.4, seekRevision: 0, playing: false, shuttleRate: 1, zoom: 48, snapping: true, tool: 'select', panel: 'media', inspectorTab: 'video', panelRequestId: 0, inspectorRequestId: 0,
+  projectGeneration: 0, project: emptyProject(), selected: [], playhead: 2.4, seekRevision: 0, playing: false, shuttleRate: 1, zoom: 48, snapping: true, tool: 'select', mediaEditMode: 'transform', panel: 'media', inspectorTab: 'video', panelRequestId: 0, inspectorRequestId: 0,
   history: [], future: [], historyLabels: [], futureLabels: [], currentAction: '開始', dirty: false, savedPath: null, clipboard: [], toast: '', sourceId: null, ready: false, autosavedAt: '', previewQuality: 0.5, safeGuides: false, gestureActive: false, gestureOwner:null, gestureCancel:null, trackMenuOpen: false,
   beginGesture:(owner,cancel)=>{if(get().gestureActive)return false;set({gestureActive:true,gestureOwner:owner,gestureCancel:cancel});return true;},
   endGesture:owner=>{if(get().gestureOwner===owner)set({gestureActive:false,gestureOwner:null,gestureCancel:null});},
-  load: (p, savedPath) => {get().gestureCancel?.();p=numberTracks(p);set(s => ({ projectGeneration: s.projectGeneration + 1, project: p, activeVolumePoint:null, activeTransitionId:null, historyPlayheads:[], futurePlayheads:[], clipMenuOpen:false, drawTool:null, savedPath: savedPath || null, selected: p.clips.filter(c => c.kind === 'video').slice(0,1).map(c => c.id), playhead: Math.min(2.4, endTime(p)), zoom: boundedZoom(s.zoom, endTime(p)), seekRevision: s.seekRevision + 1, playing: false, shuttleRate: 1, history: [], future: [], historyLabels: [], futureLabels: [], currentAction: '開始', dirty: false, ready: true, gestureActive: false, gestureOwner:null, gestureCancel:null, trackMenuOpen: false, sourceId: null, clipboard: [] }));resetAudioMeter();},
+  load: (p, savedPath) => {get().gestureCancel?.();p=numberTracks(p);set(s => ({ projectGeneration: s.projectGeneration + 1, project: p, activeVolumePoint:null, activeTransitionId:null, historyPlayheads:[], futurePlayheads:[], clipMenuOpen:false, drawTool:null, savedPath: savedPath || null, selected: p.clips.filter(c => c.kind === 'video').slice(0,1).map(c => c.id), playhead: Math.min(2.4, endTime(p)), zoom: boundedZoom(s.zoom, endTime(p)), seekRevision: s.seekRevision + 1, playing: false, shuttleRate: 1, history: [], future: [], historyLabels: [], futureLabels: [], currentAction: '開始', dirty: false, ready: true, gestureActive: false, gestureOwner:null, gestureCancel:null, trackMenuOpen: false, sourceId: null, clipboard: [], mediaEditMode:'transform' }));resetAudioMeter();},
   place: (p,label) => {
     const s=get();if(s.gestureActive){s.notify('ドラッグ中の編集を完了してください。');return false;}
     const existing=new Set(s.project.clips.map(c=>c.id));
@@ -134,7 +135,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   checkpoint: (label = 'プロパティを変更') => set(s => ({ history: [...s.history.slice(-79), s.project], historyPlayheads:[...s.historyPlayheads.slice(-79),null], historyLabels: [...s.historyLabels.slice(-79), s.currentAction], currentAction: label, future: [], futurePlayheads:[], futureLabels: [], dirty: true })),
   transient: (p,baseline) => {const s=get();try{p=reflowEditedCaptions(baseline||s.project,p);p=numberTracks(pruneTransitions(syncLinkedEdits(baseline||s.project,p,uid)));set({project:p,activeVolumePoint:volumeSelectionAfterEdit(s,p),zoom:boundedZoom(s.zoom,Math.max(endTime(p),s.playhead)),dirty:true});}catch(e){s.notify((e as Error).message);}},
-  select: selected => set(s=>({ selected, activeTransitionId:null, activeVolumePoint:selected.length===1&&selected[0]===s.activeVolumePoint?.clipId?s.activeVolumePoint:null })),
+  select: selected => set(s=>({ selected, activeTransitionId:null, activeVolumePoint:selected.length===1&&selected[0]===s.activeVolumePoint?.clipId?s.activeVolumePoint:null, mediaEditMode:selected.length===1&&selected[0]===s.selected[0]?s.mediaEditMode:'transform' })),
   seek: t => { if (Number.isFinite(t)) set(s => ({ playhead: Math.max(0, Math.min(MAX_MEDIA_SECONDS, roundFrame(t, s.project.fps))), zoom: boundedZoom(s.zoom, Math.max(endTime(s.project), Math.min(MAX_MEDIA_SECONDS, t))), seekRevision: s.seekRevision + 1 })); },
   togglePlay: () => set(s => ({ playing: endTime(s.project) > 0 && !s.playing, shuttleRate: 1, zoom: boundedZoom(s.zoom, endTime(s.project)), playhead: s.playhead >= endTime(s.project) ? 0 : s.playhead })),
   stop: () => set({ playing: false, shuttleRate: 1 }),
@@ -147,6 +148,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   // Explicit panel commands must reveal their panel even for the same tab.
   setPanel: panel => set(state => ({ panel, panelRequestId: state.panelRequestId + 1 })),
   setInspectorTab: inspectorTab => set(state => ({ inspectorTab, inspectorRequestId: state.inspectorRequestId + 1 })),
+  setMediaEditMode: mediaEditMode => set({ mediaEditMode }),
   updateClip: (id, patch) => {
     const s = get(); const clip = s.project.clips.find(c => c.id === id);
     if (!clip || s.project.tracks.find(t => t.id === clip.trackId)?.locked) return;
@@ -158,7 +160,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const normalized = normalizeClip(next, s.project);
     if (patch.volumeKeyframes === undefined && clip.volumeKeyframes) normalized.volumeKeyframes = retimeVolume(clip, normalized);
     if (clip.kind === 'title' && patch.duration !== undefined && patch.opacityKeyframes === undefined && clip.opacityKeyframes) normalized.opacityKeyframes = windowOpacity(clip.opacityKeyframes, 0, normalized.duration);
-    try { validateOpacityKeys(normalized); validateVolumeKeys(normalized); validateGraphic(normalized); if (normalized.kind === 'title') validateTextStyle(normalized); } catch (e) { s.notify((e as Error).message); return; }
+    try { validateOpacityKeys(normalized); validateVolumeKeys(normalized); validateGraphic(normalized); validateVideoMask(normalized); if (normalized.kind === 'title') validateTextStyle(normalized); } catch (e) { s.notify((e as Error).message); return; }
     s.commit({ ...s.project, clips: s.project.clips.map(c => c.id === id ? normalized : c) }, patch.volumeKeyframes !== undefined ? '音量ポイントを変更' : patch.opacityKeyframes !== undefined ? '不透明度キーフレームを変更' : patch.speed !== undefined ? '再生速度を変更' : 'クリップのプロパティを変更');
   },
   updateTrack: (id, patch) => { const s = get(); const track = s.project.tracks.find(t => t.id === id); if (!track || (track.locked && patch.name !== undefined)) return; s.commit({ ...s.project, tracks: s.project.tracks.map(t => t.id === id ? { ...t, ...patch, ...(patch.name !== undefined ? { autoName: false } : {}) } : t) }, patch.locked !== undefined ? (patch.locked ? 'トラックをロック' : 'トラックのロックを解除') : 'トラックを変更'); },
@@ -261,7 +263,10 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!Number.isInteger(index) || index < 0 || index >= states.length || index === s.history.length) return;
     const labels = [...s.historyLabels, s.currentAction, ...s.futureLabels];
     const positions=[...s.historyPlayheads,s.playhead,...s.futurePlayheads];
-    set({ activeVolumePoint:null, project: states[index], zoom: boundedZoom(s.zoom, endTime(states[index])), history: states.slice(0, index), future: states.slice(index + 1), historyPlayheads:positions.slice(0,index),futurePlayheads:positions.slice(index+1), historyLabels: labels.slice(0, index), currentAction: labels[index], futureLabels: labels.slice(index + 1), dirty: true, selected: s.selected.filter(id => states[index].clips.some(c => c.id === id)), playing: false, shuttleRate: 1, playhead: Math.min(positions[index]??s.playhead, endTime(states[index])), seekRevision: s.seekRevision + 1 });
+    const project=states[index],selected=s.selected.filter(id => project.clips.some(c => c.id === id));
+    const selectedClip=selected.length===1?project.clips.find(c=>c.id===selected[0]):undefined;
+    const mediaEditMode=s.mediaEditMode==='mask'&&!selectedClip?.videoMask?'transform':s.mediaEditMode;
+    set({ activeVolumePoint:null, project, zoom: boundedZoom(s.zoom, endTime(project)), history: states.slice(0, index), future: states.slice(index + 1), historyPlayheads:positions.slice(0,index),futurePlayheads:positions.slice(index+1), historyLabels: labels.slice(0, index), currentAction: labels[index], futureLabels: labels.slice(index + 1), dirty: true, selected, mediaEditMode, playing: false, shuttleRate: 1, playhead: Math.min(positions[index]??s.playhead, endTime(project)), seekRevision: s.seekRevision + 1 });
   },
   undo: () => { const s = get(); if (s.history.length) s.restoreHistory(s.history.length - 1); },
   redo: () => { const s = get(); if (s.future.length) s.restoreHistory(s.history.length + 1); },

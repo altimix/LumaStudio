@@ -3,6 +3,8 @@ export type MediaKind = 'video' | 'audio' | 'image';
 export interface TextBox { width: number; height: number }
 export interface OpacityKeyframe { time: number; value: number }
 export interface VolumeKeyframe { time: number; value: number }
+export interface Crop { top: number; right: number; bottom: number; left: number }
+export interface VideoMask { type: 'rectangle' | 'ellipse'; x: number; y: number; width: number; height: number; feather: number; inverted: boolean }
 export interface Graphic { shape: 'arrow' | 'rectangle' | 'ellipse'; width:number; height:number; lineWidth:number; fill:boolean; fillColor:string; flipX?:boolean; flipY?:boolean }
 export interface Asset {
   id: string; name: string; path: string; url: string; thumbnail: string; kind: MediaKind;
@@ -24,6 +26,8 @@ export interface Clip {
   linkId?: string; audioDetached?: boolean; audioMuted?: boolean;
   opacityKeyframes?: OpacityKeyframe[];
   volumeKeyframes?: VolumeKeyframe[];
+  crop?: Crop;
+  videoMask?: VideoMask;
   subtitle?: boolean;
   graphic?: Graphic;
 }

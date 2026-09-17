@@ -15,6 +15,7 @@ const { validateTextStyle } = require('../shared/text-style.mjs');
 const { validateTextBox } = require('../shared/text-box.mjs');
 const { validateGraphic } = require('../shared/graphics.mjs');
 const { validateTreatment } = require('../shared/audio-treatment.mjs');
+const { ffmpegMaskExpression, hasVideoMask, validateVideoMask } = require('../shared/video-mask.mjs');
 const { encodingArgs, exportEncoders, validateEncoder, ENCODERS } = require('./encoders.cjs');
 
 const { validateTransitions, transitionPlan, audioEnvelopes, mediaWindow } = require('../shared/transitions.mjs');
@@ -63,6 +64,7 @@ function validateProject(p, { allowForeignPaths = false } = {}) {
     validateGraphic(c);
     validateTextBox(c);
     validateTreatment(c.audioTreatment);
+    validateVideoMask(c);
     if (c.audioTreatment && (!hasClipAudio(c, p.assets.find(a => a.id === c.assetId)))) throw new Error('音声のないクリップには自動調整を適用できません。');
     if (c.subtitle !== undefined && (typeof c.subtitle !== 'boolean' || c.kind !== 'title')) throw new Error('字幕クリップが不正です。');
     if (c.fadeIn + c.fadeOut > c.duration + 0.00001) throw new Error('フェードの合計がクリップの長さを超えています。');
@@ -116,7 +118,7 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}) {
   const args = ['-hide_banner', '-y', '-filter_complex_threads', '2', '-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:r=${fps}:d=${number(duration)}`, '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${number(duration)}`];
   const visible = p.clips.filter(c => c.kind !== 'audio' && !p.tracks.find(t => t.id === c.trackId)?.hidden);
   const only = visible.length === 1 ? visible[0] : null, onlyAsset = p.assets.find(a => a.id === only?.assetId);
-  const directVideo = onlyAsset?.codec === 'h264' && only?.kind === 'video' && only.start === 0 && only.duration === duration && only.scale === 1 && only.x === 0 && only.y === 0 && only.rotation === 0 && only.opacity === 1 && !only.opacityKeyframes?.length && !only.fadeIn && !only.fadeOut && only.exposure === 0 && only.contrast === 1 && only.saturation === 1 && !p.transitions?.length && onlyAsset?.width * height === onlyAsset?.height * width;
+  const directVideo = onlyAsset?.codec === 'h264' && only?.kind === 'video' && only.start === 0 && only.duration === duration && only.scale === 1 && only.x === 0 && only.y === 0 && only.rotation === 0 && only.opacity === 1 && !only.opacityKeyframes?.length && !only.fadeIn && !only.fadeOut && only.exposure === 0 && only.contrast === 1 && only.saturation === 1 && !hasVideoMask(only) && !p.transitions?.length && onlyAsset?.width * height === onlyAsset?.height * width;
   const filters = directVideo ? [] : ['[0:v]format=rgba[base]'];
   let base = 'base'; const audios = ['[1:a]']; let input = 2;
   const envelopes=audioEnvelopes(p), plans=transitionPlan(p), transitionClips=new Set(plans.filter(t=>t.video).flatMap(t=>[t.fromId,t.toId])), visuals=[];
@@ -143,6 +145,7 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}) {
       const f = [`[${index}:v]setpts=(PTS-STARTPTS)/${number(c.speed)}`, `fps=${fps}:eof_action=pass`, `scale=${fitW}:${fitH}:force_original_aspect_ratio=decrease:force_divisible_by=2`, 'setsar=1', ...(directVideo ? [`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`] : ['format=rgba'])];
       f.push(`tpad=start_mode=clone:start_duration=${number(videoWindow.padBefore)}:stop_mode=clone:stop_duration=${number(videoWindow.padAfter+1/fps)}`,`trim=duration=${number(videoWindow.duration)}`,'setpts=PTS-STARTPTS');
       if (c.kind !== 'title' && (c.exposure !== 0 || c.contrast !== 1 || c.saturation !== 1)) f.push(colorFilter(c));
+      if (hasVideoMask(c)) f.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${ffmpegMaskExpression(c)})'`);
       if (c.rotation&&!c.graphic) { const angle = number(c.rotation * Math.PI / 180); f.push(`rotate=${angle}:ow=rotw(${angle}):oh=roth(${angle}):c=none`); }
       if (c.opacityKeyframes?.length) f.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacityExpression(c.opacityKeyframes)})'`);
       else if (c.opacity !== 1) f.push(`colorchannelmixer=aa=${number(c.opacity)}`);

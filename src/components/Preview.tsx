@@ -20,6 +20,7 @@ import MediaDragLayer from './MediaDragLayer';
 import { mediaSourceKey, type MediaSize } from '../media-transform';
 import FrameSaveDialog from './FrameSaveDialog';
 import type { Clip, Asset, Project } from '../types';
+import { disposeMaskedFrame, evictInactiveMaskedFrames, maskedCompositeSize, maskedVideoFrame, type MaskedFrame } from '../video-mask';
 
 export default function Preview() {
   const canvas = useRef<HTMLCanvasElement>(null); const stage = useRef<HTMLDivElement>(null); const mediaBin = useRef<HTMLDivElement>(null);
@@ -52,6 +53,7 @@ export default function Preview() {
     const clearFrame=(item:VideoItem)=>{if(item.frame)item.frame.width=item.frame.height=0;item.frame=undefined;item.frameTime=undefined;item.frameRevision=undefined;};
     const media = new Map<string, VideoItem>();
     const pictures = new Map<string, HTMLImageElement>(); const titles = new Map<string, { key: string; canvas: HTMLCanvasElement }>();
+    const maskedFrames = new Map<string, MaskedFrame>();
     const gpuPool=new GpuTransitionPool();
     const knownSizes = new Map<string, MediaSize>(); let sizeProject = '';
     let plannedProject:typeof project|undefined;let plans:PlannedTransition[]=[];let projectRevision=0;
@@ -131,8 +133,8 @@ export default function Preview() {
       const w = Math.max(2, Math.round(p.width * (capture ? 1 : s.previewQuality))); const h = Math.max(2, Math.round(p.height * (capture ? 1 : s.previewQuality)));
       if (target.width !== w || target.height !== h) { target.width = w; target.height = h; }
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
-      const alive = new Set<string>(), activeTitles = new Set<string>();
-      if(plannedProject!==p){plans=transitionPlan(p);plannedProject=p;projectRevision++;const ids=new Set(p.clips.map(c=>c.id));for(const id of knownSizes.keys())if(!ids.has(id)){knownSizes.delete(id);sizesChanged=true;}}
+      const alive = new Set<string>(), activeTitles = new Set<string>(), activeMaskedFrames = new Set<string>();
+      if(plannedProject!==p){plans=transitionPlan(p);plannedProject=p;projectRevision++;const ids=new Set(p.clips.map(c=>c.id));for(const id of knownSizes.keys())if(!ids.has(id)){knownSizes.delete(id);sizesChanged=true;}for(const [id,item] of maskedFrames)if(!ids.has(id)){disposeMaskedFrame(item);maskedFrames.delete(id);}}
       const active=plans.filter(pair=>pair.video&&t>=pair.start&&t<pair.end&&!p.tracks.find(track=>track.id===pair.from.trackId)?.hidden),pairs=new Map(active.flatMap(pair=>[[pair.fromId,pair],[pair.toId,pair]] as const));
       // Ordinary cuts need the same decoder warm-up as transitions. Prepare
       // only the nearest incoming clip per visible track, so long edits do not
@@ -239,11 +241,17 @@ export default function Preview() {
             const previous = knownSizes.get(clip.id), key = mediaSourceKey(p, asset);
             if (previous?.width !== sw || previous?.height !== sh || previous?.source !== key) { knownSizes.set(clip.id, { width: sw, height: sh, source: key }); sizesChanged = true; }
           }
-          const fit = Math.min(w / sw, h / sh) * (clip.graphic?1:clip.scale);
+          const fit = Math.min(w / sw, h / sh) * (clip.graphic?1:clip.scale), fittedWidth = sw * fit, fittedHeight = sh * fit;
+          // Mask before applying the clip scale. Enlarging the final draw cannot
+          // reveal more source detail, while scaling this intermediate canvas to
+          // 300% would multiply its memory by nine (over 1 GB for an 8K clip).
+          const composite = maskedCompositeSize(sw, sh, w, h), maskWidth = composite.width, maskHeight = composite.height;
+          const masked = clip.kind === 'video' || clip.kind === 'image' ? maskedVideoFrame(source, clip, maskWidth, maskHeight, maskedFrames.get(clip.id)) : undefined;
+          if (masked) { maskedFrames.set(clip.id, masked); activeMaskedFrames.add(clip.id); } else if (maskedFrames.has(clip.id)) { disposeMaskedFrame(maskedFrames.get(clip.id)!); maskedFrames.delete(clip.id); }
           drawContext.save(); drawContext.translate(w / 2 + w * (clip.graphic?0:clip.x) / 100, h / 2 + h * (clip.graphic?0:clip.y) / 100); drawContext.rotate((clip.graphic?0:clip.rotation) * Math.PI / 180);
           drawContext.globalAlpha = opacityAt(clip.opacityKeyframes, t - clip.start, clip.opacity) * fade;
           if (clip.kind !== 'title' && (clip.exposure !== 0 || clip.contrast !== 1 || clip.saturation !== 1)) drawContext.filter = `brightness(${2 ** clip.exposure}) contrast(${clip.contrast}) saturate(${clip.saturation})`;
-          drawContext.drawImage(source, -sw * fit / 2, -sh * fit / 2, sw * fit, sh * fit); drawContext.restore();
+          drawContext.drawImage(masked?.canvas || source, -fittedWidth / 2, -fittedHeight / 2, fittedWidth, fittedHeight); drawContext.restore();
           if(buffers){if(clip.id===pair!.fromId){buffers.aAvailable=true;buffers.aReady=sourceReady;buffers.aUsable=sourceUsable;}else{buffers.bAvailable=true;buffers.bReady=sourceReady;buffers.bUsable=sourceUsable;}}
         }
         if(pair&&buffers&&clip.id===pair.toId){
@@ -266,6 +274,7 @@ export default function Preview() {
           if(buffers.renderer.key!==key||!fullSize)transitionsReady=false;
         }
       }
+      evictInactiveMaskedFrames(maskedFrames, activeMaskedFrames);
       for (const [id, item] of titles) if (!activeTitles.has(id)) { item.canvas.width = item.canvas.height = 0; titles.delete(id); }
       for (const [id, item] of media) if (!alive.has(id)) {
         item.element.pause();clearFrame(item);
@@ -282,7 +291,7 @@ export default function Preview() {
       target.dataset.transitionsPresented=String(transitionsPresented);target.dataset.transitionBackend=active.map(pair=>transitionBuffers.get(pair.id)?.renderer.backend||'').join(',');target.dataset.previewTime=String(t);target.dataset.transitionKind=active.map(pair=>pair.video).join(',');target.dataset.transitionsReady=String(transitionsReady);frame = requestAnimationFrame(draw);
     };
     frame = requestAnimationFrame(draw);
-    return () => { captureRequest.current?.reject(new Error('写真の保存を中止しました。')); captureRequest.current = null; cancelAnimationFrame(frame); unsubscribe(); unbindMeterReset(); audio.dispose();for(const buffers of transitionBuffers.values())buffers.renderer.dispose();gpuPool.dispose(); for (const item of media.values()) { clearFrame(item);item.element.pause(); item.element.removeAttribute('src'); item.element.load(); item.element.remove(); } };
+    return () => { captureRequest.current?.reject(new Error('写真の保存を中止しました。')); captureRequest.current = null; cancelAnimationFrame(frame); unsubscribe(); unbindMeterReset(); audio.dispose();for(const buffers of transitionBuffers.values())buffers.renderer.dispose();for(const item of maskedFrames.values())disposeMaskedFrame(item);gpuPool.dispose(); for (const item of media.values()) { clearFrame(item);item.element.pause(); item.element.removeAttribute('src'); item.element.load(); item.element.remove(); } };
   }, []);
   const seek = useEditor(s => s.seek);
   return <section className="preview-panel panel">

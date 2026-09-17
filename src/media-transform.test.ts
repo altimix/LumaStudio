@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyProject, makeClip } from './model';
-import { mediaBounds, mediaCorner, moveMedia, resizeMedia, visualOrder, type Corner } from './media-transform';
+import { mediaBounds, mediaCorner, mediaNormalizedPoint, mediaPoint, moveMedia, resizeMedia, visualOrder, type Corner } from './media-transform';
 
 const landscape = { width: 1920, height: 1080 }, portrait = { width: 1080, height: 1920 }, square = { width: 800, height: 800 };
 const clip = { ...makeClip('video', 0), kind: 'video' as const };
@@ -35,6 +35,13 @@ describe('program monitor media transforms', () => {
     const large = resizeMedia(clip, landscape, landscape, { x: 1, y: 1 }, { x: 100000, y: 100000 });
     expect(small.scale).toBe(.1); expect(large.scale).toBe(3);
     expect(Math.abs(large.x)).toBeLessThanOrEqual(200); expect(Math.abs(large.y)).toBeLessThanOrEqual(200);
+  });
+  it('round-trips normalized source points through position, scale and rotation', () => {
+    for (const rotation of [-180,-37,0,54,180]) for (const point of [{x:0,y:0},{x:.25,y:.8},{x:1,y:1}]) {
+      const transformed={...clip,x:23,y:-14,scale:1.7,rotation};
+      const actual=mediaNormalizedPoint(transformed,portrait,landscape,mediaPoint(transformed,portrait,landscape,point));
+      expect(actual.x).toBeCloseTo(point.x,10);expect(actual.y).toBeCloseTo(point.y,10);
+    }
   });
   it('orders media and text together by track, start time and stable insertion order', () => {
     const project = emptyProject(), upper = project.tracks[0].id, lower = project.tracks[1].id;

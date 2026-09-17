@@ -73,6 +73,7 @@ test('long source durations survive project validation without minute, hour or w
  for(const value of [NaN,Infinity,-1]) { assert.throws(()=>validateProject({...p,assets:[{...p.assets[0],duration:value}]})); }
 });
 async function pixel(file,time){return [...await run(ffmpeg,['-v','error','-ss',String(time),'-i',file,'-frames:v','1','-vf','scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1'])];}
+async function pixelAt(file,time,x,y){return [...await run(ffmpeg,['-v','error','-ss',String(time),'-i',file,'-frames:v','1','-vf',`crop=2:2:${x}:${y},scale=1:1`,'-pix_fmt','rgb24','-f','rawvideo','pipe:1'])];}
 async function rms(file,time){const b=await run(ffmpeg,['-v','error','-ss',String(time),'-i',file,'-t','0.1','-vn','-f','f32le','-ac','1','pipe:1']);let sum=0;for(let i=0;i<b.length;i+=4)sum+=b.readFloatLE(i)**2;return Math.sqrt(sum/(b.length/4));}
 test('imports real metadata, thumbnail and waveform with Japanese file paths',()=>{assert.equal(asset.kind,'video');assert.equal(asset.width,320);assert.ok(asset.hasAudio);assert.equal(asset.waveform.length,2048);assert.ok(asset.duration>=2);});
 test('renders layer order, titles, a black/silent gap, speed changes, H.264 and AAC',async()=>{
@@ -89,6 +90,23 @@ test('respects track visibility, mute, opacity and frame transforms',async()=>{
  const p=project();p.tracks[0].hidden=true;p.tracks[1].muted=true;p.clips[0].scale=0.6;p.clips[0].rotation=30;p.clips[0].opacity=0.5;
  const out=path.join(dir,'transform.mp4');await exportProject(p,settings,out,{titleImages:{title:titlePNG}});
  const rgb=await pixel(out,0.4);assert.ok(rgb[2]>10&&rgb[2]<140&&rgb[0]<25,`transformed average ${rgb}`);assert.ok(await rms(out,0.2)<0.005);
+});
+test('renders crop, rectangle, ellipse, feather and inverted masks into the exported composite',async()=>{
+ const cases=[
+  ['crop',{crop:{top:.2,right:.2,bottom:.2,left:.2}},[[160,90,true],[10,10,false]]],
+  ['rectangle',{videoMask:{type:'rectangle',x:.5,y:.5,width:.5,height:.5,feather:0,inverted:false}},[[160,90,true],[20,20,false]]],
+  ['ellipse',{videoMask:{type:'ellipse',x:.5,y:.5,width:.5,height:.6,feather:0,inverted:false}},[[160,90,true],[90,40,false]]],
+  ['inverted',{videoMask:{type:'ellipse',x:.5,y:.5,width:.5,height:.6,feather:.2,inverted:true}},[[160,90,false],[20,20,true]]]
+ ];
+ for(const [name,patch,samples] of cases){
+  const p=project();p.clips=[{...p.clips[0],...patch,audioMuted:true}];const out=path.join(dir,`mask-${name}.mp4`);await exportProject(p,settings,out);
+  for(const [x,y,visible] of samples){const rgb=await pixelAt(out,.3,x,y);assert.ok(visible?rgb[2]>170:rgb.every(v=>v<18),`${name} ${x},${y}: ${rgb}`);}
+ }
+});
+test('rejects malformed crop and mask metadata at the native boundary',()=>{
+ for(const patch of [{crop:{top:0,right:.6,bottom:0,left:.5}},{videoMask:{type:'rectangle',x:.5,y:.5,width:0,height:.5,feather:0,inverted:false}},{videoMask:{type:'path',x:.5,y:.5,width:.5,height:.5,feather:0,inverted:false}}]){
+  const p=project();Object.assign(p.clips[0],patch);assert.throws(()=>validateProject(p),/クロップ|マスク/);
+ }
 });
 test('cancels without overwriting an existing file or leaving partial output',async()=>{
  const output=path.join(dir,'keep.mp4');await fs.writeFile(output,'existing-user-content');const controller=new AbortController();controller.abort();

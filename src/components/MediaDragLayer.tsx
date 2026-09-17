@@ -1,20 +1,21 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useEditor } from '../store';
-import type { Asset, Clip } from '../types';
+import type { Asset, Clip, Crop } from '../types';
 import { fadeAt } from '../render';
 import { opacityAt } from '../../shared/opacity.mjs';
-import { mediaBounds, mediaCorner, mediaSourceKey, moveMedia, resizeMedia, visualOrder, type Corner, type MediaSize, type SourceSize } from '../media-transform';
+import { mediaBounds, mediaCorner, mediaNormalizedPoint, mediaPoint, mediaSourceKey, moveMedia, resizeMedia, visualOrder, type Corner, type MediaSize, type SourceSize } from '../media-transform';
 import { NO_SNAP, sameSnapGuides, snapMonitorPosition } from '../monitor-snap';
 import MonitorSnapGuides from './MonitorSnapGuides';
 import './media-transform.css';
+import { EMPTY_CROP, resizeMaskAxis } from '../../shared/video-mask.mjs';
 
 const corners: (Corner & { name: string; cursor: string })[] = [
   { x: -1, y: -1, name: '左上', cursor: 'nwse-resize' }, { x: 1, y: -1, name: '右上', cursor: 'nesw-resize' },
   { x: 1, y: 1, name: '右下', cursor: 'nwse-resize' }, { x: -1, y: 1, name: '左下', cursor: 'nesw-resize' },
 ];
 export default function MediaDragLayer({ sizes, actions }: { sizes: Record<string, MediaSize>; actions: HTMLElement | null }) {
-  const project = useEditor(s => s.project), time = useEditor(s => s.playhead), playing = useEditor(s => s.playing), selected = useEditor(s => s.selected);
+  const project = useEditor(s => s.project), time = useEditor(s => s.playhead), playing = useEditor(s => s.playing), selected = useEditor(s => s.selected), editMode = useEditor(s => s.mediaEditMode);
   const root = useRef<HTMLDivElement>(null), cleanup = useRef<(() => void) | null>(null);
   const dragSize = useRef<(MediaSize & { clipId: string }) | null>(null);
   const [guides, setGuides] = useState(NO_SNAP);
@@ -118,8 +119,64 @@ export default function MediaDragLayer({ sizes, actions }: { sizes: Record<strin
     window.addEventListener('keydown', key); window.addEventListener('keyup', key); window.addEventListener('blur', cancel); window.addEventListener('resize', cancel); document.addEventListener('visibilitychange', visibility);
     target.addEventListener('lostpointercapture', cancelPointer); target.setPointerCapture(pointer);
   };
+  type EffectOperation = { kind:'crop'; edge:keyof Crop } | { kind:'mask'; corner?:Corner };
+  const startEffect = (event:ReactPointerEvent<HTMLButtonElement>,renderedClip:Clip,source:SourceSize,operation:EffectOperation) => {
+    if(event.button!==0||cleanup.current||useEditor.getState().gestureActive)return;
+    event.preventDefault();event.stopPropagation();event.currentTarget.focus({preventScroll:true});
+    const initial=useEditor.getState(),clip=initial.project.clips.find(c=>c.id===renderedClip.id),viewport=root.current;
+    if(!clip||!viewport||initial.playing||initial.project.tracks.find(t=>t.id===clip.trackId)?.locked)return;
+    if(operation.kind==='mask'&&!clip.videoMask)return;
+    const owner={},target=event.currentTarget,pointer=event.pointerId,rect=viewport.getBoundingClientRect();
+    if(!rect.width||!rect.height||!initial.beginGesture(owner,()=>cancel()))return;
+    let before=useEditor.getState(),expected=before.project,changed=false,closed=false,writing=false,unsubscribe=()=>{};
+    const origin={x:event.clientX,y:event.clientY},startPoint=mediaNormalizedPoint(clip,source,project,{x:(event.clientX-rect.left)/rect.width*project.width,y:(event.clientY-rect.top)/rect.height*project.height});
+    const originalCrop={...(clip.crop||EMPTY_CROP)},originalMask=clip.videoMask?{...clip.videoMask}:undefined;
+    const action=operation.kind==='crop'?'クロップ範囲を変更':'マスクを変更';
+    const detach=()=>{closed=true;cleanup.current=null;unsubscribe();window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',cancelPointer);window.removeEventListener('keydown',key);window.removeEventListener('blur',cancel);target.removeEventListener('lostpointercapture',cancelPointer);if(target.hasPointerCapture(pointer))target.releasePointerCapture(pointer);};
+    const finish=()=>{if(closed)return;detach();useEditor.getState().endGesture(owner);};
+    const cancel=()=>{if(closed)return;const current=useEditor.getState();detach();if(changed&&current.gestureOwner===owner&&current.project===expected)useEditor.setState({project:before.project,history:before.history,future:before.future,historyPlayheads:before.historyPlayheads,futurePlayheads:before.futurePlayheads,historyLabels:before.historyLabels,futureLabels:before.futureLabels,currentAction:before.currentAction,dirty:before.dirty});useEditor.getState().endGesture(owner);};
+    const move=(e:PointerEvent)=>{
+      if(e.pointerId!==pointer||closed)return;const current=useEditor.getState();if(current.gestureOwner!==owner){finish();return;}if(!changed&&Math.hypot(e.clientX-origin.x,e.clientY-origin.y)<3)return;
+      const point=mediaNormalizedPoint(clip,source,project,{x:(e.clientX-rect.left)/rect.width*project.width,y:(e.clientY-rect.top)/rect.height*project.height}),dx=point.x-startPoint.x,dy=point.y-startPoint.y;
+      let patch:Partial<Clip>;
+      if(operation.kind==='crop'){
+        const crop={...originalCrop};
+        if(operation.edge==='left')crop.left=Math.max(0,Math.min(.99-crop.right,originalCrop.left+dx));
+        if(operation.edge==='right')crop.right=Math.max(0,Math.min(.99-crop.left,originalCrop.right-dx));
+        if(operation.edge==='top')crop.top=Math.max(0,Math.min(.99-crop.bottom,originalCrop.top+dy));
+        if(operation.edge==='bottom')crop.bottom=Math.max(0,Math.min(.99-crop.top,originalCrop.bottom-dy));
+        patch={crop};
+      }else{
+        const mask={...originalMask!};
+        if(!operation.corner){mask.x=Math.max(0,Math.min(1,originalMask!.x+dx));mask.y=Math.max(0,Math.min(1,originalMask!.y+dy));}
+        else{
+          const opposite={x:originalMask!.x-operation.corner.x*originalMask!.width/2,y:originalMask!.y-operation.corner.y*originalMask!.height/2};
+          const horizontal=resizeMaskAxis(opposite.x,point.x,operation.corner.x),vertical=resizeMaskAxis(opposite.y,point.y,operation.corner.y);
+          mask.x=horizontal.center;mask.y=vertical.center;mask.width=horizontal.size;mask.height=vertical.size;
+        }
+        patch={videoMask:mask};
+      }
+      writing=true;try{if(!changed){before=current;current.checkpoint(action);changed=true;}const now=useEditor.getState();now.transient({...now.project,clips:now.project.clips.map(c=>c.id===clip.id?{...c,...patch}:c)});expected=useEditor.getState().project;}finally{writing=false;}
+    };
+    const up=(e:PointerEvent)=>{if(e.pointerId===pointer)finish();},cancelPointer=(e:PointerEvent)=>{if(e.pointerId===pointer)cancel();},key=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();cancel();}};
+    cleanup.current=cancel;window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',cancelPointer);window.addEventListener('keydown',key);window.addEventListener('blur',cancel);target.addEventListener('lostpointercapture',cancelPointer);target.setPointerCapture(pointer);
+    unsubscribe=useEditor.subscribe((current)=>{if(writing||closed)return;if(current.gestureOwner!==owner){finish();return;}if(current.project!==expected||current.playing||current.mediaEditMode!==editMode||!current.selected.includes(clip.id))cancel();});
+  };
   const current = active.find(item => selected.includes(item.clip.id));
-  return <><div className="media-drag-layer" ref={root}>{!playing && active.map(({ clip, asset, locked }) => {
+  const effectOverlay=()=>{
+    if(!current||current.locked)return null;const {clip,asset}=current;if(sizes[clip.id]?.source!==mediaSourceKey(project,asset))return null;
+    const source=sourceSize(clip,asset),bounds=mediaBounds(clip,source,project),z=900000+(order.get(clip.id)||1);
+    const style=(center:{x:number;y:number},width:number,height:number,ellipse=false)=>({left:center.x/project.width*100+'%',top:center.y/project.height*100+'%',width:width/project.width*100+'%',height:height/project.height*100+'%',transform:`translate(-50%,-50%) rotate(${clip.rotation}deg)`,borderRadius:ellipse?'50%':'0',zIndex:z});
+    if(editMode==='crop'){
+      const crop=clip.crop||EMPTY_CROP,center=mediaPoint(clip,source,project,{x:(crop.left+1-crop.right)/2,y:(crop.top+1-crop.bottom)/2});
+      const edgePoints:{edge:keyof Crop;point:{x:number;y:number};cursor:string}[]=[{edge:'top',point:mediaPoint(clip,source,project,{x:(crop.left+1-crop.right)/2,y:crop.top}),cursor:'ns-resize'},{edge:'right',point:mediaPoint(clip,source,project,{x:1-crop.right,y:(crop.top+1-crop.bottom)/2}),cursor:'ew-resize'},{edge:'bottom',point:mediaPoint(clip,source,project,{x:(crop.left+1-crop.right)/2,y:1-crop.bottom}),cursor:'ns-resize'},{edge:'left',point:mediaPoint(clip,source,project,{x:crop.left,y:(crop.top+1-crop.bottom)/2}),cursor:'ew-resize'}];
+      const edgeNames:Record<keyof Crop,string>={top:'上',right:'右',bottom:'下',left:'左'};
+      return <><div className="media-effect-box crop" style={style(center,bounds.width*(1-crop.left-crop.right),bounds.height*(1-crop.top-crop.bottom))}/>{edgePoints.map(({edge,point,cursor})=><button key={edge} className="media-effect-handle edge" data-crop-edge={edge} aria-label={`${edgeNames[edge]}のクロップ量を変更`} style={{left:point.x/project.width*100+'%',top:point.y/project.height*100+'%',cursor,zIndex:z+1}} onPointerDown={e=>startEffect(e,clip,source,{kind:'crop',edge})}/>)}</>;
+    }
+    if(editMode==='mask'&&clip.videoMask){const mask=clip.videoMask,center=mediaPoint(clip,source,project,{x:mask.x,y:mask.y});return <><button className="media-effect-box mask" aria-label="マスクを移動" style={style(center,bounds.width*mask.width,bounds.height*mask.height,mask.type==='ellipse')} onPointerDown={e=>startEffect(e,clip,source,{kind:'mask'})}/>{corners.map(corner=>{const point=mediaPoint(clip,source,project,{x:mask.x+corner.x*mask.width/2,y:mask.y+corner.y*mask.height/2});return <button key={corner.name} className="media-effect-handle" aria-label={`マスクの${corner.name}を変更`} style={{left:point.x/project.width*100+'%',top:point.y/project.height*100+'%',cursor:corner.cursor,zIndex:z+1}} onPointerDown={e=>startEffect(e,clip,source,{kind:'mask',corner})}/>;})}</>}
+    return null;
+  };
+  return <><div className="media-drag-layer" ref={root}>{editMode==='transform'&&!playing && active.map(({ clip, asset, locked }) => {
     if (sizes[clip.id]?.source !== mediaSourceKey(project, asset)) return null;
     const size = sourceSize(clip, asset), bounds = mediaBounds(clip, size, project), chosen = selected.includes(clip.id), z = order.get(clip.id) || 1;
     return <Fragment key={clip.id}>
@@ -131,6 +188,6 @@ export default function MediaDragLayer({ sizes, actions }: { sizes: Record<strin
         aria-label={'素材「' + clip.name + '」の' + corner.name + 'でサイズを変更'} title="縦横比を保って拡大縮小"
         style={{ left: `clamp(6px,${point.x / project.width * 100}%,calc(100% - 6px))`, top: `clamp(6px,${point.y / project.height * 100}%,calc(100% - 6px))`, cursor: corner.cursor, zIndex: 900000 + z }} onPointerDown={e => start(e, clip, size, corner)}/>; })}
     </Fragment>;
-  })}<MonitorSnapGuides guides={guides}/></div>
-    {!playing && current && !current.locked && actions ? createPortal(<button className="media-transform-reset" disabled={current.clip.x === 0 && current.clip.y === 0 && current.clip.scale === 1} onClick={() => { cleanup.current?.(); useEditor.getState().updateClip(current.clip.id, { x: 0, y: 0, scale: 1 }); }}>位置・大きさを戻す</button>, actions) : null}</>;
+  })}{!playing&&editMode!=='transform'?effectOverlay():null}<MonitorSnapGuides guides={guides}/></div>
+    {!playing && editMode==='transform' && current && !current.locked && actions ? createPortal(<button className="media-transform-reset" disabled={current.clip.x === 0 && current.clip.y === 0 && current.clip.scale === 1} onClick={() => { cleanup.current?.(); useEditor.getState().updateClip(current.clip.id, { x: 0, y: 0, scale: 1 }); }}>位置・大きさを戻す</button>, actions) : null}</>;
 }
