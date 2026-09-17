@@ -5,5 +5,6 @@ export function effectiveCrop(clip: Partial<Clip> | undefined): Readonly<Crop>;
 export function hasCrop(clip: Partial<Clip> | undefined): boolean;
 export function hasVideoMask(clip: Partial<Clip> | undefined): boolean;
 export function validateVideoMask(clip: Partial<Clip> | undefined): void;
+export function resizeMaskAxis(opposite: number, desired: number, direction: -1 | 1): { center: number; size: number };
 export function maskAlphaAt(clip: Partial<Clip> | undefined, u: number, v: number): number;
 export function ffmpegMaskExpression(clip: Partial<Clip> | undefined): string;

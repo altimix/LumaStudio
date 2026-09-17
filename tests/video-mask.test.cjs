@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { DEFAULT_VIDEO_MASK, ffmpegMaskExpression, hasVideoMask, maskAlphaAt, validateVideoMask } = require('../shared/video-mask.mjs');
+const { DEFAULT_VIDEO_MASK, ffmpegMaskExpression, hasVideoMask, maskAlphaAt, resizeMaskAxis, validateVideoMask } = require('../shared/video-mask.mjs');
 
 const clip = patch => ({ kind: 'video', ...patch });
 test('validates backward-compatible crop and shape mask metadata', () => {
@@ -22,6 +22,17 @@ test('calculates rectangle, ellipse, feather, inversion and crop alpha', () => {
   const feather = clip({ videoMask: { ...DEFAULT_VIDEO_MASK, width: .4, height: .4, feather: .5 } });
   assert.ok(Math.abs(maskAlphaAt(feather, .65, .5) - .5) < 1e-8);
   assert.ok(Math.abs(maskAlphaAt(clip({ videoMask: { ...feather.videoMask, inverted: true } }), .65, .5) - .5) < 1e-8);
+});
+
+test('keeps corner resize results valid when the opposite edge is outside the source', () => {
+  assert.deepEqual(resizeMaskAxis(-.5, 2, 1), { center: 0, size: 1 });
+  assert.deepEqual(resizeMaskAxis(1.5, -1, -1), { center: 1, size: 1 });
+  assert.deepEqual(resizeMaskAxis(.2, 2, 1), { center: .7, size: 1 });
+  assert.ok(Math.abs(resizeMaskAxis(.8, -1, -1).center - .3) < 1e-12);
+  for (const [opposite,direction] of [[-.5,1],[.2,1],[.8,-1],[1.5,-1]]) for (const desired of [-2, 0, .5, 1, 3]) {
+    const result = resizeMaskAxis(opposite, desired, direction);
+    assert.ok(result.center >= 0 && result.center <= 1); assert.ok(result.size >= .01 && result.size <= 1);
+  }
 });
 
 test('builds bounded FFmpeg expressions only when an effect is active', () => {

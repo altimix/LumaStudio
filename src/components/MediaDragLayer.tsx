@@ -8,7 +8,7 @@ import { mediaBounds, mediaCorner, mediaNormalizedPoint, mediaPoint, mediaSource
 import { NO_SNAP, sameSnapGuides, snapMonitorPosition } from '../monitor-snap';
 import MonitorSnapGuides from './MonitorSnapGuides';
 import './media-transform.css';
-import { EMPTY_CROP } from '../../shared/video-mask.mjs';
+import { EMPTY_CROP, resizeMaskAxis } from '../../shared/video-mask.mjs';
 
 const corners: (Corner & { name: string; cursor: string })[] = [
   { x: -1, y: -1, name: '左上', cursor: 'nwse-resize' }, { x: 1, y: -1, name: '右上', cursor: 'nesw-resize' },
@@ -151,8 +151,8 @@ export default function MediaDragLayer({ sizes, actions }: { sizes: Record<strin
         if(!operation.corner){mask.x=Math.max(0,Math.min(1,originalMask!.x+dx));mask.y=Math.max(0,Math.min(1,originalMask!.y+dy));}
         else{
           const opposite={x:originalMask!.x-operation.corner.x*originalMask!.width/2,y:originalMask!.y-operation.corner.y*originalMask!.height/2};
-          const moving={x:operation.corner.x<0?Math.max(0,Math.min(opposite.x-.01,point.x)):Math.min(1,Math.max(opposite.x+.01,point.x)),y:operation.corner.y<0?Math.max(0,Math.min(opposite.y-.01,point.y)):Math.min(1,Math.max(opposite.y+.01,point.y))};
-          mask.x=(moving.x+opposite.x)/2;mask.y=(moving.y+opposite.y)/2;mask.width=Math.abs(moving.x-opposite.x);mask.height=Math.abs(moving.y-opposite.y);
+          const horizontal=resizeMaskAxis(opposite.x,point.x,operation.corner.x),vertical=resizeMaskAxis(opposite.y,point.y,operation.corner.y);
+          mask.x=horizontal.center;mask.y=vertical.center;mask.width=horizontal.size;mask.height=vertical.size;
         }
         patch={videoMask:mask};
       }

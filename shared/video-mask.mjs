@@ -31,6 +31,13 @@ export function validateVideoMask(clip) {
 }
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
+export function resizeMaskAxis(opposite, desired, direction) {
+  const positive = direction > 0;
+  const maximum = Math.min(1, positive ? 2 * (1 - opposite) : 2 * opposite);
+  const minimum = Math.min(maximum, Math.max(.01, positive ? -2 * opposite : 2 * (opposite - 1)));
+  const distance = Math.max(minimum, Math.min(maximum, (positive ? 1 : -1) * (desired - opposite)));
+  return { center: clamp01(opposite + (positive ? 1 : -1) * distance / 2), size: Math.max(.01, Math.min(1, distance)) };
+}
 export function maskAlphaAt(clip, u, v) {
   const crop = effectiveCrop(clip);
   if (u < crop.left || u > 1 - crop.right || v < crop.top || v > 1 - crop.bottom) return 0;
