@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { DEFAULT_VIDEO_MASK, ffmpegMaskExpression, hasVideoMask, maskAlphaAt, resizeMaskAxis, validateVideoMask } = require('../shared/video-mask.mjs');
+const { clampCropEdge, DEFAULT_VIDEO_MASK, ffmpegMaskExpression, hasVideoMask, maskAlphaAt, resizeMaskAxis, validateVideoMask } = require('../shared/video-mask.mjs');
 
 const clip = patch => ({ kind: 'video', ...patch });
 test('validates backward-compatible crop and shape mask metadata', () => {
@@ -33,6 +33,14 @@ test('keeps corner resize results valid when the opposite edge is outside the so
     const result = resizeMaskAxis(opposite, desired, direction);
     assert.ok(result.center >= 0 && result.center <= 1); assert.ok(result.size >= .01 && result.size <= 1);
   }
+});
+
+test('keeps percentage slider endpoints within the persisted crop limit', () => {
+  const crop = { top: 0, right: 0, bottom: .001, left: 0 };
+  crop.top = clampCropEdge(crop, 'top', 98.9 / 100);
+  assert.equal(crop.top, .99 - crop.bottom);
+  assert.ok(crop.top + crop.bottom <= .99);
+  assert.doesNotThrow(() => validateVideoMask(clip({ crop })));
 });
 
 test('builds bounded FFmpeg expressions only when an effect is active', () => {

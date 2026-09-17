@@ -13,6 +13,12 @@ export function hasCrop(clip) {
 }
 export function hasVideoMask(clip) { return hasCrop(clip) || !!clip?.videoMask; }
 
+const OPPOSITE_CROP_EDGE = Object.freeze({ top: 'bottom', right: 'left', bottom: 'top', left: 'right' });
+export function clampCropEdge(crop, edge, requested) {
+  const opposite = crop[OPPOSITE_CROP_EDGE[edge]];
+  return Math.max(0, Math.min(.99 - opposite, requested));
+}
+
 export function validateVideoMask(clip) {
   const visual = clip?.kind === 'video' || clip?.kind === 'image';
   if (clip?.crop !== undefined) {

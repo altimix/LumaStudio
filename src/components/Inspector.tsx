@@ -13,7 +13,7 @@ import TextEffects from './TextEffects';
 import GraphicEffects from './GraphicEffects';
 import { linkedIds, clipsLocked } from '../../shared/clip-links.mjs';
 import { MAX_MEDIA_SECONDS } from '../../shared/time.mjs';
-import { DEFAULT_VIDEO_MASK, EMPTY_CROP } from '../../shared/video-mask.mjs';
+import { clampCropEdge, DEFAULT_VIDEO_MASK, EMPTY_CROP } from '../../shared/video-mask.mjs';
 import './mask-effects.css';
 
 function NumericField({ clip, property, label, min, max, step = 1, factor = 1, offset = 0, suffix = '', slider = true }: { clip: Clip; property: keyof Clip; label: string; min: number; max: number; step?: number; factor?: number; offset?: number; suffix?: string; slider?: boolean }) {
@@ -82,7 +82,7 @@ function EffectField({ clip, label, value, min, max, step = 1, suffix = '', patc
 }
 function CropMaskEffects({clip}:{clip:Clip}){
   const mode=useEditor(s=>s.mediaEditMode),crop=clip.crop||EMPTY_CROP,mask=clip.videoMask;
-  const cropPatch=(key:keyof typeof EMPTY_CROP)=>(current:Clip,value:number)=>({crop:{...(current.crop||EMPTY_CROP),[key]:value/100}});
+  const cropPatch=(key:keyof typeof EMPTY_CROP)=>(current:Clip,value:number)=>({crop:{...(current.crop||EMPTY_CROP),[key]:clampCropEdge(current.crop||EMPTY_CROP,key,value/100)}});
   const maskPatch=(key:'x'|'y'|'width'|'height'|'feather')=>(current:Clip,value:number)=>({videoMask:{...(current.videoMask||DEFAULT_VIDEO_MASK),[key]:value/100}});
   return <>
     <Section title="クロップ" icon={Scan} onReset={()=>useEditor.getState().updateClip(clip.id,{crop:undefined})}>
