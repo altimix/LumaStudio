@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { emptyProject, makeClip, splitClip } from './model';
 import { useEditor } from './store';
-import type { Asset, VideoMask } from './types';
+import type { Asset, BezierVideoMask, VideoMask } from './types';
 import { evictInactiveMaskedFrames, maskedCompositeSize, MAX_VIDEO_MASK_RASTER_EDGE, type MaskedFrame, videoMaskRasterSize } from './video-mask';
 
 const asset:Asset={id:'mask-asset',name:'mask.mp4',path:'C:\\mask.mp4',url:'luma://mask',thumbnail:'',kind:'video',duration:10,width:1920,height:1080,fps:30,hasAudio:false,waveform:[],size:100,codec:'h264'};
 function fixture(){const p=emptyProject();p.assets=[asset];p.clips=[{...makeClip(p.tracks[1].id,0,asset),id:'mask-clip',duration:8}];return p;}
 const mask:VideoMask={type:'ellipse',x:.5,y:.45,width:.6,height:.7,feather:.1,inverted:false};
+const bezier:BezierVideoMask={type:'bezier',closed:true,feather:.08,inverted:false,points:[
+  {x:.2,y:.2,inX:.2,inY:.2,outX:.35,outY:.1,kind:'curve'},
+  {x:.8,y:.2,inX:.65,inY:.1,outX:.8,outY:.2,kind:'curve'},
+  {x:.5,y:.8,inX:.5,inY:.8,outX:.5,outY:.8,kind:'line'},
+]};
 
 describe('crop and basic shape mask editing',()=>{
   it('commits, undoes and redoes a valid non-destructive edit',()=>{
@@ -21,6 +26,12 @@ describe('crop and basic shape mask editing',()=>{
   it('preserves crop and mask when splitting a clip',()=>{
     const p=fixture(),clip={...p.clips[0],crop:{top:.1,right:0,bottom:0,left:.1},videoMask:mask};const parts=splitClip(clip,4,30)!;
     expect(parts[0].crop).toEqual(clip.crop);expect(parts[1].crop).toEqual(clip.crop);expect(parts[0].videoMask).toEqual(mask);expect(parts[1].videoMask).toEqual(mask);
+  });
+  it('commits, persists and reverses a closed Bezier path as one property edit',()=>{
+    const p=fixture(),s=useEditor.getState();s.load(p);s.updateClip('mask-clip',{videoMask:bezier});
+    const edited=useEditor.getState().project;expect(edited.clips[0].videoMask).toEqual(bezier);expect(useEditor.getState().history).toEqual([p]);
+    s.undo();expect(useEditor.getState().project).toBe(p);s.redo();expect(useEditor.getState().project).toBe(edited);
+    const parts=splitClip(edited.clips[0],4,30)!;expect(parts[0].videoMask).toEqual(bezier);expect(parts[1].videoMask).toEqual(bezier);
   });
   it('keeps monitor edit mode only while the same clip stays selected',()=>{
     const p=fixture(),s=useEditor.getState();s.load(p);s.setMediaEditMode('crop');s.select(['mask-clip']);expect(useEditor.getState().mediaEditMode).toBe('crop');s.select([]);expect(useEditor.getState().mediaEditMode).toBe('transform');s.setMediaEditMode('mask');s.load(p);expect(useEditor.getState().mediaEditMode).toBe('transform');

@@ -5,12 +5,15 @@ const os = require('node:os');
 const path = require('node:path');
 const { ffmpeg, run, probe, inspectMedia } = require('../electron/media.cjs');
 const { exportProject, validateProject, buildExport } = require('../electron/export.cjs');
-let dir, asset, titlePNG;
+let dir, asset, alphaAsset, titlePNG;
 before(async()=>{
  dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-tests-'));
  const input=path.join(dir,'映像 [test] & space.mp4');
  await run(ffmpeg,['-y','-f','lavfi','-i','color=c=blue:s=320x180:r=10:d=2','-f','lavfi','-i','sine=frequency=440:duration=2:sample_rate=48000','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac','-shortest',input]);
  asset=await inspectMedia(input,path.join(dir,'cache'));
+ const alphaInput=path.join(dir,'半透明素材.png');
+ await run(ffmpeg,['-v','error','-y','-f','lavfi','-i','color=c=blue:s=320x180','-f','lavfi','-i',"nullsrc=s=320x180,geq=lum='if(lt(X,W/2),255,0)',format=gray",'-filter_complex','[0:v]format=rgba[color];[color][1:v]alphamerge','-frames:v','1',alphaInput]);
+ alphaAsset=await inspectMedia(alphaInput,path.join(dir,'alpha-cache'));
  titlePNG='data:image/png;base64,'+(await run(ffmpeg,['-f','lavfi','-i','color=c=red:s=320x180','-frames:v','1','-c:v','png','-f','image2pipe','pipe:1'])).toString('base64');
 });
 after(async()=>{if(dir)await fs.rm(dir,{recursive:true,force:true});});
@@ -103,8 +106,31 @@ test('renders crop, rectangle, ellipse, feather and inverted masks into the expo
   for(const [x,y,visible] of samples){const rgb=await pixelAt(out,.3,x,y);assert.ok(visible?rgb[2]>170:rgb.every(v=>v<18),`${name} ${x},${y}: ${rgb}`);}
  }
 });
+test('renders closed Bezier masks with curves, feather, inversion and crop',async()=>{
+ const points=[
+  {x:.2,y:.2,inX:.2,inY:.2,outX:.4,outY:.05,kind:'curve'},
+  {x:.8,y:.2,inX:.6,inY:.05,outX:.8,outY:.2,kind:'curve'},
+  {x:.8,y:.8,inX:.8,inY:.8,outX:.8,outY:.8,kind:'line'},
+  {x:.2,y:.8,inX:.2,inY:.8,outX:.2,outY:.8,kind:'line'},
+ ];
+ for(const [name,videoMask,samples] of [
+  ['bezier',{type:'bezier',points,closed:true,feather:.08,inverted:false},[[160,90,true],[10,90,false],[160,10,false]]],
+  ['bezier-inverted',{type:'bezier',points,closed:true,feather:0,inverted:true},[[160,90,false],[10,90,true]]],
+ ]){
+  const p=project();p.clips=[{...p.clips[0],crop:{top:0,right:.05,bottom:0,left:0},videoMask,audioMuted:true}];
+  const out=path.join(dir,`${name}.mp4`);await exportProject(p,settings,out);
+  for(const [x,y,visible] of samples){const rgb=await pixelAt(out,.3,x,y);assert.ok(visible?rgb[2]>170:rgb.every(v=>v<18),`${name} ${x},${y}: ${rgb}`);}
+ }
+});
+test('multiplies a Bezier matte with the source alpha channel',async()=>{
+ const point=(x,y)=>({x,y,inX:x,inY:y,outX:x,outY:y,kind:'line'});
+ const p=project(),{audioMuted:unused,...base}=p.clips[0];void unused;p.assets=[alphaAsset];p.clips=[{...base,assetId:alphaAsset.id,kind:'image',duration:1,videoMask:{type:'bezier',points:[point(0,0),point(1,0),point(1,1),point(0,1)],closed:true,feather:0,inverted:false}}];
+ const out=path.join(dir,'bezier-source-alpha.mp4');await exportProject(p,settings,out);
+ const opaque=await pixelAt(out,.3,80,90),transparent=await pixelAt(out,.3,240,90);
+ assert.ok(opaque[2]>170,`opaque source alpha ${opaque}`);assert.ok(transparent.every(value=>value<18),`transparent source alpha ${transparent}`);
+});
 test('rejects malformed crop and mask metadata at the native boundary',()=>{
- for(const patch of [{crop:{top:0,right:.6,bottom:0,left:.5}},{videoMask:{type:'rectangle',x:.5,y:.5,width:0,height:.5,feather:0,inverted:false}},{videoMask:{type:'path',x:.5,y:.5,width:.5,height:.5,feather:0,inverted:false}}]){
+ for(const patch of [{crop:{top:0,right:.6,bottom:0,left:.5}},{videoMask:{type:'rectangle',x:.5,y:.5,width:0,height:.5,feather:0,inverted:false}},{videoMask:{type:'path',x:.5,y:.5,width:.5,height:.5,feather:0,inverted:false}},{videoMask:{type:'bezier',points:[],closed:true,feather:0,inverted:false}}]){
   const p=project();Object.assign(p.clips[0],patch);assert.throws(()=>validateProject(p),/クロップ|マスク/);
  }
 });

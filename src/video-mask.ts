@@ -1,5 +1,5 @@
 import type { Clip } from './types';
-import { hasVideoMask, maskAlphaAt } from '../shared/video-mask.mjs';
+import { hasVideoMask, maskAlphaAt, rasterizeBezierMask } from '../shared/video-mask.mjs';
 
 export type MaskedFrame = { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D; mask: HTMLCanvasElement; key: string };
 
@@ -32,11 +32,12 @@ export function paintVideoMask(canvas: HTMLCanvasElement, clip: Clip, width: num
   if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
   const context = canvas.getContext('2d', { alpha: true, willReadFrequently: false })!;
   const image = context.createImageData(width, height), pixels = image.data;
+  const bezier = clip.videoMask?.type === 'bezier' ? rasterizeBezierMask(clip, width, height) : undefined;
   let offset = 0;
   for (let y = 0; y < height; y++) {
     const v = (y + .5) / height;
     for (let x = 0; x < width; x++) {
-      const alpha = Math.round(maskAlphaAt(clip, (x + .5) / width, v) * 255);
+      const alpha = bezier?.[y * width + x] ?? Math.round(maskAlphaAt(clip, (x + .5) / width, v) * 255);
       pixels[offset++] = 255; pixels[offset++] = 255; pixels[offset++] = 255; pixels[offset++] = alpha;
     }
   }

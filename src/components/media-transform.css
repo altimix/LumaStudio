@@ -11,6 +11,14 @@
 .media-effect-handle{position:absolute;width:12px;height:12px;border:1px solid #463c16;border-radius:50%;background:#ffe38a;padding:0;transform:translate(-50%,-50%);pointer-events:auto;touch-action:none}
 .media-effect-handle.edge{border-radius:2px}
 .media-effect-box:focus-visible,.media-effect-handle:focus-visible{outline:2px solid white;outline-offset:2px}
+.bezier-add-target{position:absolute;border:1px dashed #f1dc8690;background:#efd25b08;padding:0;pointer-events:auto;touch-action:none;cursor:crosshair}
+.bezier-mask-path{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.bezier-mask-path path{fill:#efd25b12;stroke:#ffe38a;stroke-width:2;vector-effect:non-scaling-stroke}
+.bezier-mask-path line{stroke:#b8c9a6;stroke-width:1;stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
+.bezier-mask-anchor,.bezier-mask-handle{position:absolute;padding:0;transform:translate(-50%,-50%);pointer-events:auto;touch-action:none}
+.bezier-mask-anchor{width:13px;height:13px;border:1px solid #463c16;border-radius:2px;background:#ffe38a;cursor:move}
+.bezier-mask-handle{width:10px;height:10px;border:1px solid #23301e;border-radius:50%;background:#d3f6af;cursor:move}
+.bezier-add-target:focus-visible,.bezier-mask-anchor:focus-visible,.bezier-mask-handle:focus-visible{outline:2px solid white;outline-offset:2px}
 .media-transform-tip{position:absolute;left:50%;top:9px;transform:translateX(-50%);max-width:calc(100% - 16px);display:flex;align-items:center;gap:8px;border-radius:5px;padding:5px 9px;background:#182016e8;color:#e1edc9;font-size:11px;white-space:nowrap;z-index:800000;pointer-events:none}
 .preview-transform-actions{display:flex;flex:1;justify-content:flex-end;min-width:0;margin:0 8px}
 .preview-transform-actions:empty{display:none}

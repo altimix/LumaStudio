@@ -1,14 +1,14 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useEditor } from '../store';
-import type { Asset, Clip, Crop } from '../types';
+import type { Asset, BezierMaskPoint, BezierVideoMask, Clip, Crop } from '../types';
 import { fadeAt } from '../render';
 import { opacityAt } from '../../shared/opacity.mjs';
 import { mediaBounds, mediaCorner, mediaNormalizedPoint, mediaPoint, mediaSourceKey, moveMedia, resizeMedia, visualOrder, type Corner, type MediaSize, type SourceSize } from '../media-transform';
 import { NO_SNAP, sameSnapGuides, snapMonitorPosition } from '../monitor-snap';
 import MonitorSnapGuides from './MonitorSnapGuides';
 import './media-transform.css';
-import { EMPTY_CROP, resizeMaskAxis } from '../../shared/video-mask.mjs';
+import { EMPTY_CROP, MAX_BEZIER_MASK_POINTS, moveBezierAnchor, moveBezierHandle, resizeMaskAxis } from '../../shared/video-mask.mjs';
 
 const corners: (Corner & { name: string; cursor: string })[] = [
   { x: -1, y: -1, name: '左上', cursor: 'nwse-resize' }, { x: 1, y: -1, name: '右上', cursor: 'nesw-resize' },
@@ -125,12 +125,12 @@ export default function MediaDragLayer({ sizes, actions }: { sizes: Record<strin
     event.preventDefault();event.stopPropagation();event.currentTarget.focus({preventScroll:true});
     const initial=useEditor.getState(),clip=initial.project.clips.find(c=>c.id===renderedClip.id),viewport=root.current;
     if(!clip||!viewport||initial.playing||initial.project.tracks.find(t=>t.id===clip.trackId)?.locked)return;
-    if(operation.kind==='mask'&&!clip.videoMask)return;
+    if(operation.kind==='mask'&&(!clip.videoMask||clip.videoMask.type==='bezier'))return;
     const owner={},target=event.currentTarget,pointer=event.pointerId,rect=viewport.getBoundingClientRect();
     if(!rect.width||!rect.height||!initial.beginGesture(owner,()=>cancel()))return;
     let before=useEditor.getState(),expected=before.project,changed=false,closed=false,writing=false,unsubscribe=()=>{};
     const origin={x:event.clientX,y:event.clientY},startPoint=mediaNormalizedPoint(clip,source,project,{x:(event.clientX-rect.left)/rect.width*project.width,y:(event.clientY-rect.top)/rect.height*project.height});
-    const originalCrop={...(clip.crop||EMPTY_CROP)},originalMask=clip.videoMask?{...clip.videoMask}:undefined;
+    const originalCrop={...(clip.crop||EMPTY_CROP)},originalMask=clip.videoMask&&clip.videoMask.type!=='bezier'?{...clip.videoMask}:undefined;
     const action=operation.kind==='crop'?'クロップ範囲を変更':'マスクを変更';
     const detach=()=>{closed=true;cleanup.current=null;unsubscribe();window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',cancelPointer);window.removeEventListener('keydown',key);window.removeEventListener('blur',cancel);target.removeEventListener('lostpointercapture',cancelPointer);if(target.hasPointerCapture(pointer))target.releasePointerCapture(pointer);};
     const finish=()=>{if(closed)return;detach();useEditor.getState().endGesture(owner);};
@@ -162,6 +162,40 @@ export default function MediaDragLayer({ sizes, actions }: { sizes: Record<strin
     cleanup.current=cancel;window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',cancelPointer);window.addEventListener('keydown',key);window.addEventListener('blur',cancel);target.addEventListener('lostpointercapture',cancelPointer);target.setPointerCapture(pointer);
     unsubscribe=useEditor.subscribe((current)=>{if(writing||closed)return;if(current.gestureOwner!==owner){finish();return;}if(current.project!==expected||current.playing||current.mediaEditMode!==editMode||!current.selected.includes(clip.id))cancel();});
   };
+  const startBezierDrag=(event:ReactPointerEvent<HTMLButtonElement>,renderedClip:Clip,source:SourceSize,index:number,part:'anchor'|'in'|'out')=>{
+    if(event.button!==0||cleanup.current||useEditor.getState().gestureActive)return;
+    event.preventDefault();event.stopPropagation();event.currentTarget.focus({preventScroll:true});
+    const initial=useEditor.getState(),clip=initial.project.clips.find(c=>c.id===renderedClip.id),viewport=root.current;
+    if(!clip||!viewport||clip.videoMask?.type!=='bezier'||!clip.videoMask.points[index]||initial.playing||initial.project.tracks.find(t=>t.id===clip.trackId)?.locked)return;
+    const owner={},target=event.currentTarget,pointer=event.pointerId,rect=viewport.getBoundingClientRect(),originalMask:BezierVideoMask={...clip.videoMask,points:clip.videoMask.points.map(point=>({...point}))};
+    if(!rect.width||!rect.height||!initial.beginGesture(owner,()=>cancel()))return;
+    let before=useEditor.getState(),expected=before.project,changed=false,closed=false,writing=false,unsubscribe=()=>{};
+    const origin={x:event.clientX,y:event.clientY},startPoint=mediaNormalizedPoint(clip,source,project,{x:(event.clientX-rect.left)/rect.width*project.width,y:(event.clientY-rect.top)/rect.height*project.height});
+    const detach=()=>{closed=true;cleanup.current=null;unsubscribe();window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',cancelPointer);window.removeEventListener('keydown',key);window.removeEventListener('blur',cancel);window.removeEventListener('resize',cancel);document.removeEventListener('visibilitychange',visibility);target.removeEventListener('lostpointercapture',cancelPointer);if(target.hasPointerCapture(pointer))target.releasePointerCapture(pointer);};
+    const finish=()=>{if(closed)return;detach();useEditor.getState().endGesture(owner);};
+    const cancel=()=>{if(closed)return;const current=useEditor.getState();detach();if(changed&&current.gestureOwner===owner&&current.project===expected)useEditor.setState({project:before.project,history:before.history,future:before.future,historyPlayheads:before.historyPlayheads,futurePlayheads:before.futurePlayheads,historyLabels:before.historyLabels,futureLabels:before.futureLabels,currentAction:before.currentAction,dirty:before.dirty});useEditor.getState().endGesture(owner);};
+    const move=(e:PointerEvent)=>{
+      if(e.pointerId!==pointer||closed)return;const current=useEditor.getState();if(current.gestureOwner!==owner){finish();return;}if(!changed&&Math.hypot(e.clientX-origin.x,e.clientY-origin.y)<3)return;
+      const point=mediaNormalizedPoint(clip,source,project,{x:(e.clientX-rect.left)/rect.width*project.width,y:(e.clientY-rect.top)/rect.height*project.height}),dx=point.x-startPoint.x,dy=point.y-startPoint.y;
+      const points=originalMask.points.map(item=>({...item})),original=originalMask.points[index];
+      points[index]=part==='anchor'?moveBezierAnchor(original,dx,dy):moveBezierHandle(original,part,dx,dy);
+      if(JSON.stringify(points[index])===JSON.stringify(original))return;
+      writing=true;try{if(!changed){before=current;current.checkpoint('ベジェマスクの点を変更');changed=true;}const now=useEditor.getState();now.transient({...now.project,clips:now.project.clips.map(c=>c.id===clip.id?{...c,videoMask:{...originalMask,points}}:c)});expected=useEditor.getState().project;}finally{writing=false;}
+    };
+    const up=(e:PointerEvent)=>{if(e.pointerId===pointer)finish();},cancelPointer=(e:PointerEvent)=>{if(e.pointerId===pointer)cancel();},key=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();cancel();}},visibility=()=>{if(document.hidden)cancel();};
+    cleanup.current=cancel;window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',cancelPointer);window.addEventListener('keydown',key);window.addEventListener('blur',cancel);window.addEventListener('resize',cancel);document.addEventListener('visibilitychange',visibility);target.addEventListener('lostpointercapture',cancelPointer);target.setPointerCapture(pointer);
+    unsubscribe=useEditor.subscribe(current=>{if(writing||closed)return;if(current.gestureOwner!==owner){finish();return;}if(current.project!==expected||current.playing||current.mediaEditMode!=='mask'||!current.selected.includes(clip.id))cancel();});
+  };
+  const addBezierPoint=(event:ReactPointerEvent<HTMLButtonElement>,renderedClip:Clip,source:SourceSize)=>{
+    if(event.button!==0||cleanup.current||useEditor.getState().gestureActive)return;
+    event.preventDefault();event.stopPropagation();event.currentTarget.focus({preventScroll:true});
+    const state=useEditor.getState(),clip=state.project.clips.find(c=>c.id===renderedClip.id),viewport=root.current;
+    if(!clip||!viewport||clip.videoMask?.type!=='bezier'||clip.videoMask.closed||clip.videoMask.points.length>=MAX_BEZIER_MASK_POINTS||state.project.tracks.find(t=>t.id===clip.trackId)?.locked)return;
+    const rect=viewport.getBoundingClientRect();if(!rect.width||!rect.height)return;
+    const raw=mediaNormalizedPoint(clip,source,state.project,{x:(event.clientX-rect.left)/rect.width*state.project.width,y:(event.clientY-rect.top)/rect.height*state.project.height});
+    const x=Math.max(0,Math.min(1,raw.x)),y=Math.max(0,Math.min(1,raw.y)),point:BezierMaskPoint={x,y,inX:x,inY:y,outX:x,outY:y,kind:'line'};
+    state.updateClip(clip.id,{videoMask:{...clip.videoMask,points:[...clip.videoMask.points,point]}});
+  };
   const current = active.find(item => selected.includes(item.clip.id));
   const effectOverlay=()=>{
     if(!current||current.locked)return null;const {clip,asset}=current;if(sizes[clip.id]?.source!==mediaSourceKey(project,asset))return null;
@@ -173,7 +207,16 @@ export default function MediaDragLayer({ sizes, actions }: { sizes: Record<strin
       const edgeNames:Record<keyof Crop,string>={top:'上',right:'右',bottom:'下',left:'左'};
       return <><div className="media-effect-box crop" style={style(center,bounds.width*(1-crop.left-crop.right),bounds.height*(1-crop.top-crop.bottom))}/>{edgePoints.map(({edge,point,cursor})=><button key={edge} className="media-effect-handle edge" data-crop-edge={edge} aria-label={`${edgeNames[edge]}のクロップ量を変更`} style={{left:point.x/project.width*100+'%',top:point.y/project.height*100+'%',cursor,zIndex:z+1}} onPointerDown={e=>startEffect(e,clip,source,{kind:'crop',edge})}/>)}</>;
     }
-    if(editMode==='mask'&&clip.videoMask){const mask=clip.videoMask,center=mediaPoint(clip,source,project,{x:mask.x,y:mask.y});return <><button className="media-effect-box mask" aria-label="マスクを移動" style={style(center,bounds.width*mask.width,bounds.height*mask.height,mask.type==='ellipse')} onPointerDown={e=>startEffect(e,clip,source,{kind:'mask'})}/>{corners.map(corner=>{const point=mediaPoint(clip,source,project,{x:mask.x+corner.x*mask.width/2,y:mask.y+corner.y*mask.height/2});return <button key={corner.name} className="media-effect-handle" aria-label={`マスクの${corner.name}を変更`} style={{left:point.x/project.width*100+'%',top:point.y/project.height*100+'%',cursor:corner.cursor,zIndex:z+1}} onPointerDown={e=>startEffect(e,clip,source,{kind:'mask',corner})}/>;})}</>}
+    if(editMode==='mask'&&clip.videoMask?.type!=='bezier'&&clip.videoMask){const mask=clip.videoMask,center=mediaPoint(clip,source,project,{x:mask.x,y:mask.y});return <><button className="media-effect-box mask" aria-label="マスクを移動" style={style(center,bounds.width*mask.width,bounds.height*mask.height,mask.type==='ellipse')} onPointerDown={e=>startEffect(e,clip,source,{kind:'mask'})}/>{corners.map(corner=>{const point=mediaPoint(clip,source,project,{x:mask.x+corner.x*mask.width/2,y:mask.y+corner.y*mask.height/2});return <button key={corner.name} className="media-effect-handle" aria-label={`マスクの${corner.name}を変更`} style={{left:point.x/project.width*100+'%',top:point.y/project.height*100+'%',cursor:corner.cursor,zIndex:z+1}} onPointerDown={e=>startEffect(e,clip,source,{kind:'mask',corner})}/>;})}</>}
+    if(editMode==='mask'&&clip.videoMask?.type==='bezier'){
+      const mask=clip.videoMask,screenPoints=mask.points.map(point=>({anchor:mediaPoint(clip,source,project,point),incoming:mediaPoint(clip,source,project,{x:point.inX,y:point.inY}),outgoing:mediaPoint(clip,source,project,{x:point.outX,y:point.outY}),kind:point.kind}));
+      let path='';if(screenPoints.length){path=`M ${screenPoints[0].anchor.x} ${screenPoints[0].anchor.y}`;for(let index=1;index<screenPoints.length;index++){const previous=screenPoints[index-1],point=screenPoints[index];path+=(previous.kind==='curve'||point.kind==='curve')?` C ${previous.kind==='curve'?previous.outgoing.x:previous.anchor.x} ${previous.kind==='curve'?previous.outgoing.y:previous.anchor.y} ${point.kind==='curve'?point.incoming.x:point.anchor.x} ${point.kind==='curve'?point.incoming.y:point.anchor.y} ${point.anchor.x} ${point.anchor.y}`:` L ${point.anchor.x} ${point.anchor.y}`;}if(mask.closed){const previous=screenPoints.at(-1)!,point=screenPoints[0];path+=(previous.kind==='curve'||point.kind==='curve')?` C ${previous.kind==='curve'?previous.outgoing.x:previous.anchor.x} ${previous.kind==='curve'?previous.outgoing.y:previous.anchor.y} ${point.kind==='curve'?point.incoming.x:point.anchor.x} ${point.kind==='curve'?point.incoming.y:point.anchor.y} ${point.anchor.x} ${point.anchor.y}`:` L ${point.anchor.x} ${point.anchor.y}`;path+=' Z';}}
+      return <>
+        {!mask.closed&&mask.points.length<MAX_BEZIER_MASK_POINTS?<button className="bezier-add-target" aria-label="ベジェマスクの点を追加" title="クリックして点を追加" style={{left:bounds.x/project.width*100+'%',top:bounds.y/project.height*100+'%',width:bounds.width/project.width*100+'%',height:bounds.height/project.height*100+'%',transform:`translate(-50%,-50%) rotate(${clip.rotation}deg)`,zIndex:z}} onPointerDown={e=>addBezierPoint(e,clip,source)}/>:null}
+        <svg className="bezier-mask-path" viewBox={`0 0 ${project.width} ${project.height}`} preserveAspectRatio="none" style={{zIndex:z+1}} aria-hidden="true"><path d={path}/>{screenPoints.flatMap((point,index)=>point.kind==='curve'?[<line key={`in-line-${index}`} x1={point.anchor.x} y1={point.anchor.y} x2={point.incoming.x} y2={point.incoming.y}/>,<line key={`out-line-${index}`} x1={point.anchor.x} y1={point.anchor.y} x2={point.outgoing.x} y2={point.outgoing.y}/>] : [])}</svg>
+        {screenPoints.map((point,index)=><Fragment key={index}><button className="bezier-mask-anchor" aria-label={`ベジェマスクの点 ${index+1}を移動`} style={{left:point.anchor.x/project.width*100+'%',top:point.anchor.y/project.height*100+'%',zIndex:z+3}} onPointerDown={e=>startBezierDrag(e,clip,source,index,'anchor')}/>{point.kind==='curve'?<><button className="bezier-mask-handle" aria-label={`点 ${index+1}の入力ハンドルを移動`} style={{left:point.incoming.x/project.width*100+'%',top:point.incoming.y/project.height*100+'%',zIndex:z+2}} onPointerDown={e=>startBezierDrag(e,clip,source,index,'in')}/><button className="bezier-mask-handle" aria-label={`点 ${index+1}の出力ハンドルを移動`} style={{left:point.outgoing.x/project.width*100+'%',top:point.outgoing.y/project.height*100+'%',zIndex:z+2}} onPointerDown={e=>startBezierDrag(e,clip,source,index,'out')}/></>:null}</Fragment>)}
+      </>;
+    }
     return null;
   };
   return <><div className="media-drag-layer" ref={root}>{editMode==='transform'&&!playing && active.map(({ clip, asset, locked }) => {
