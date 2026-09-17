@@ -20,7 +20,7 @@ import MediaDragLayer from './MediaDragLayer';
 import { mediaSourceKey, type MediaSize } from '../media-transform';
 import FrameSaveDialog from './FrameSaveDialog';
 import type { Clip, Asset, Project } from '../types';
-import { disposeMaskedFrame, evictInactiveMaskedFrames, maskedVideoFrame, type MaskedFrame } from '../video-mask';
+import { disposeMaskedFrame, evictInactiveMaskedFrames, maskedCompositeSize, maskedVideoFrame, type MaskedFrame } from '../video-mask';
 
 export default function Preview() {
   const canvas = useRef<HTMLCanvasElement>(null); const stage = useRef<HTMLDivElement>(null); const mediaBin = useRef<HTMLDivElement>(null);
@@ -242,13 +242,16 @@ export default function Preview() {
             if (previous?.width !== sw || previous?.height !== sh || previous?.source !== key) { knownSizes.set(clip.id, { width: sw, height: sh, source: key }); sizesChanged = true; }
           }
           const fit = Math.min(w / sw, h / sh) * (clip.graphic?1:clip.scale), fittedWidth = sw * fit, fittedHeight = sh * fit;
-          const maskWidth = Math.max(1, Math.round(fittedWidth)), maskHeight = Math.max(1, Math.round(fittedHeight));
+          // Mask before applying the clip scale. Enlarging the final draw cannot
+          // reveal more source detail, while scaling this intermediate canvas to
+          // 300% would multiply its memory by nine (over 1 GB for an 8K clip).
+          const composite = maskedCompositeSize(sw, sh, w, h), maskWidth = composite.width, maskHeight = composite.height;
           const masked = clip.kind === 'video' || clip.kind === 'image' ? maskedVideoFrame(source, clip, maskWidth, maskHeight, maskedFrames.get(clip.id)) : undefined;
           if (masked) { maskedFrames.set(clip.id, masked); activeMaskedFrames.add(clip.id); } else if (maskedFrames.has(clip.id)) { disposeMaskedFrame(maskedFrames.get(clip.id)!); maskedFrames.delete(clip.id); }
           drawContext.save(); drawContext.translate(w / 2 + w * (clip.graphic?0:clip.x) / 100, h / 2 + h * (clip.graphic?0:clip.y) / 100); drawContext.rotate((clip.graphic?0:clip.rotation) * Math.PI / 180);
           drawContext.globalAlpha = opacityAt(clip.opacityKeyframes, t - clip.start, clip.opacity) * fade;
           if (clip.kind !== 'title' && (clip.exposure !== 0 || clip.contrast !== 1 || clip.saturation !== 1)) drawContext.filter = `brightness(${2 ** clip.exposure}) contrast(${clip.contrast}) saturate(${clip.saturation})`;
-          drawContext.drawImage(masked?.canvas || source, -(masked ? maskWidth : fittedWidth) / 2, -(masked ? maskHeight : fittedHeight) / 2, masked ? maskWidth : fittedWidth, masked ? maskHeight : fittedHeight); drawContext.restore();
+          drawContext.drawImage(masked?.canvas || source, -fittedWidth / 2, -fittedHeight / 2, fittedWidth, fittedHeight); drawContext.restore();
           if(buffers){if(clip.id===pair!.fromId){buffers.aAvailable=true;buffers.aReady=sourceReady;buffers.aUsable=sourceUsable;}else{buffers.bAvailable=true;buffers.bReady=sourceReady;buffers.bUsable=sourceUsable;}}
         }
         if(pair&&buffers&&clip.id===pair.toId){

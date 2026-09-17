@@ -16,6 +16,12 @@ export function videoMaskRasterSize(width: number, height: number) {
   return { width: Math.max(1, Math.round(safeWidth * scale)), height: Math.max(1, Math.round(safeHeight * scale)) };
 }
 
+export function maskedCompositeSize(sourceWidth: number, sourceHeight: number, outputWidth: number, outputHeight: number) {
+  const safeSourceWidth = Math.max(1, Math.round(sourceWidth)), safeSourceHeight = Math.max(1, Math.round(sourceHeight));
+  const scale = Math.min(1, outputWidth / safeSourceWidth, outputHeight / safeSourceHeight);
+  return { width: Math.max(1, Math.round(safeSourceWidth * scale)), height: Math.max(1, Math.round(safeSourceHeight * scale)) };
+}
+
 export function videoMaskKey(clip: Clip, width: number, height: number) {
   return JSON.stringify([width, height, clip.crop || null, clip.videoMask || null]);
 }

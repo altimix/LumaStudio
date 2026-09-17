@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { emptyProject, makeClip, splitClip } from './model';
 import { useEditor } from './store';
 import type { Asset, VideoMask } from './types';
-import { evictInactiveMaskedFrames, MAX_VIDEO_MASK_RASTER_EDGE, type MaskedFrame, videoMaskRasterSize } from './video-mask';
+import { evictInactiveMaskedFrames, maskedCompositeSize, MAX_VIDEO_MASK_RASTER_EDGE, type MaskedFrame, videoMaskRasterSize } from './video-mask';
 
 const asset:Asset={id:'mask-asset',name:'mask.mp4',path:'C:\\mask.mp4',url:'luma://mask',thumbnail:'',kind:'video',duration:10,width:1920,height:1080,fps:30,hasAudio:false,waveform:[],size:100,codec:'h264'};
 function fixture(){const p=emptyProject();p.assets=[asset];p.clips=[{...makeClip(p.tracks[1].id,0,asset),id:'mask-clip',duration:8}];return p;}
@@ -35,6 +35,11 @@ describe('crop and basic shape mask editing',()=>{
     expect(videoMaskRasterSize(640,360)).toEqual({width:MAX_VIDEO_MASK_RASTER_EDGE,height:288});
     expect(videoMaskRasterSize(7680,4320)).toEqual({width:MAX_VIDEO_MASK_RASTER_EDGE,height:288});
     expect(videoMaskRasterSize(4320,7680)).toEqual({width:288,height:MAX_VIDEO_MASK_RASTER_EDGE});
+  });
+  it('never enlarges the masked composite for clip scale or a larger sequence',()=>{
+    expect(maskedCompositeSize(320,180,7680,4320)).toEqual({width:320,height:180});
+    expect(maskedCompositeSize(7680,4320,7680,4320)).toEqual({width:7680,height:4320});
+    expect(maskedCompositeSize(7680,4320,3840,2160)).toEqual({width:3840,height:2160});
   });
   it('releases composite and matte canvases as soon as a masked clip is inactive',()=>{
     const frame=(width:number,height:number)=>({canvas:{width,height},mask:{width:512,height:288},context:{},key:'mask'} as unknown as MaskedFrame);
