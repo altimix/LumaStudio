@@ -23,7 +23,8 @@ async function verify(){
   try{
     await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});await open();await chooseKeyed();
     await page.getByRole('button',{name:'クロマキーを有効にする',exact:true}).click();const color=page.locator('#workspace-inspector input[type="color"]');await color.fill('#0000ff');
-    await page.getByRole('button',{name:'モニターから背景色を採る',exact:true}).click();const target=page.getByRole('button',{name:'クロマキーの背景色を採る',exact:true});const box=await target.boundingBox();assert.ok(box);await page.mouse.click(box.x+box.width*.02,box.y+box.height*.02);await page.getByText('素材の内側をクリックしてください。',{exact:true}).waitFor();
+    await page.getByRole('tab',{name:'図形',exact:true}).click();await page.getByRole('button',{name:'矢印を描く',exact:true}).click();await page.locator('.draw-layer').waitFor();await page.getByRole('button',{name:'モニターから背景色を採る',exact:true}).click();await page.locator('.draw-layer').waitFor({state:'detached'});checks.push('eyedropper mode cancels the competing drawing overlay');
+    const target=page.getByRole('button',{name:'クロマキーの背景色を採る',exact:true});const box=await target.boundingBox();assert.ok(box);await page.mouse.click(box.x+box.width*.02,box.y+box.height*.02);await page.getByText('素材の内側をクリックしてください。',{exact:true}).waitFor();
     const bounds=await page.locator('.chroma-sample-bounds').boundingBox();assert.ok(bounds);await page.mouse.click(bounds.x+bounds.width*.15,bounds.y+bounds.height*.5);
     await page.waitForFunction(()=>document.querySelector('#workspace-inspector input[type="color"]')?.value.toLowerCase()!=='#0000ff',undefined,{timeout:10000});const sampledColor=(await color.inputValue()).toLowerCase(),sampledRgb=Number.parseInt(sampledColor.slice(1),16);assert.ok((sampledRgb>>16)<5&&((sampledRgb>>8)&255)>250&&(sampledRgb&255)<5,`sampled color ${sampledColor}`);
     checks.push('the monitor-wide eyedropper reports outside clicks and samples the raw 5x5 source');

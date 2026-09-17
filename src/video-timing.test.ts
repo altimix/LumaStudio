@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { playbackFrameAhead, waitForNativeFrame, usablePlaybackFrame, videoSeekLead, videoSeekRecoveryMs, videoSeekTolerance } from './video-timing';
+import { playbackFrameAhead, stoppedFrameMatches, waitForNativeFrame, usablePlaybackFrame, videoSeekLead, videoSeekRecoveryMs, videoSeekTolerance } from './video-timing';
 
 it('keeps the held tail/head frame while the playhead is outside the moving source interval', () => {
   expect(videoSeekLead(1400, 3.966666, 4.75)).toBe(0);
@@ -38,6 +38,13 @@ it('keeps manual seeks exact and accounts for shuttle rate in the six-frame budg
   expect(videoSeekTolerance(4, 4, 24, false)).toBe(.008);
   expect(videoSeekTolerance(.25, 4, 30, true)).toBe(.2);
   expect(videoSeekTolerance(2, 4, 24, true)).toBe(2);
+});
+
+it('accepts only the exact displayed frame for stopped effects and eyedropper sampling', () => {
+  expect(stoppedFrameMatches(2.0079, 2)).toBe(true);
+  expect(stoppedFrameMatches(2.009, 2)).toBe(false);
+  expect(stoppedFrameMatches(2 + 4 / 24, 2)).toBe(false);
+  expect(stoppedFrameMatches(undefined, 2)).toBe(false);
 });
 
 it('uses recent continuous frames in both directions without presenting future images', () => {

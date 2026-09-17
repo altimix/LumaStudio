@@ -149,7 +149,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   // Explicit panel commands must reveal their panel even for the same tab.
   setPanel: panel => set(state => ({ panel, panelRequestId: state.panelRequestId + 1 })),
   setInspectorTab: inspectorTab => set(state => ({ inspectorTab, inspectorRequestId: state.inspectorRequestId + 1 })),
-  setMediaEditMode: mediaEditMode => set({ mediaEditMode }),
+  // The eyedropper owns the whole monitor. Removing an armed drawing tool also
+  // lets DrawLayer synchronously cancel any gesture before chroma input begins.
+  setMediaEditMode: mediaEditMode => set(state => mediaEditMode === 'chroma' ? { mediaEditMode, drawTool: null } : { mediaEditMode, drawTool: state.drawTool }),
   updateClip: (id, patch) => {
     const s = get(); const clip = s.project.clips.find(c => c.id === id);
     if (!clip || s.project.tracks.find(t => t.id === clip.trackId)?.locked) return;

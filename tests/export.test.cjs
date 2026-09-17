@@ -143,6 +143,11 @@ test('renders chroma transparency, despill, fades, crop and masks while preservi
  alpha.assets=[alphaAsset];alpha.clips=[base,overlay];const alphaOut=path.join(dir,'chroma-source-alpha.mp4');await exportProject(alpha,settings,alphaOut,{titleImages:{'red-base':titlePNG}});
  const opaque=await pixelAt(alphaOut,.3,80,90),transparent=await pixelAt(alphaOut,.3,240,90);assert.ok(opaque[2]>160&&opaque[0]<80,`opaque source ${opaque}`);assert.ok(transparent[0]>160&&transparent[2]<80,`transparent source ${transparent}`);
 });
+test('applies chroma keying to source pixels before clip scaling',()=>{
+ const p=project();p.clips=[{...p.clips[0],scale:.6,audioMuted:true,chromaKey:{color:'#00ff00',tolerance:.12,softness:.08,greenSpill:1,blueSpill:1,matte:false}}];
+ const {args}=buildExport(p,settings,{[asset.id]:asset.path},path.join(dir,'chroma-order.mp4')),graph=args[args.indexOf('-filter_complex')+1],chain=graph.split(';').find(part=>part.startsWith('[2:v]'));
+ assert.ok(chain,'clip filter chain is present');const keyAt=chain.indexOf('geq='),scaleAt=chain.indexOf('scale=');assert.ok(keyAt>=0&&scaleAt>keyAt,chain);
+});
 test('rejects malformed crop and mask metadata at the native boundary',()=>{
  for(const patch of [{crop:{top:0,right:.6,bottom:0,left:.5}},{videoMask:{type:'rectangle',x:.5,y:.5,width:0,height:.5,feather:0,inverted:false}},{videoMask:{type:'path',x:.5,y:.5,width:.5,height:.5,feather:0,inverted:false}},{videoMask:{type:'bezier',points:[],closed:true,feather:0,inverted:false}}]){
   const p=project();Object.assign(p.clips[0],patch);assert.throws(()=>validateProject(p),/クロップ|マスク/);

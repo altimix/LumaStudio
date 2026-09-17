@@ -13,7 +13,7 @@ import TitleDragLayer from './TitleDragLayer';
 import { transitionPlan, visualSourceTime, type PlannedTransition } from '../../shared/transitions.mjs';
 import { TransitionPreview } from '../transition-preview';
 import { GpuTransitionPool } from '../gpu-transition';
-import { playbackFrameAhead, waitForNativeFrame, usablePlaybackFrame, videoSeekLead, videoSeekRecoveryMs, videoSeekTolerance } from '../video-timing';
+import { playbackFrameAhead, stoppedFrameMatches, waitForNativeFrame, usablePlaybackFrame, videoSeekLead, videoSeekRecoveryMs, videoSeekTolerance } from '../video-timing';
 import { ordinaryCutPrefetch } from '../video-prefetch';
 import DrawLayer from './DrawLayer';
 import MediaDragLayer from './MediaDragLayer';
@@ -63,10 +63,10 @@ export default function Preview() {
         const image=pictures.get(asset.id);if(!image?.complete||!image.naturalWidth)throw Error('画像を準備しています。少し待ってからもう一度お試しください。');
         return sampleSourceColor(image,image.naturalWidth,image.naturalHeight,point.x,point.y,sampleCanvas);
       }
-      const item=media.get(clip.id),desired=visualSourceTime(clip,asset,state.playhead),element=item?.element;
-      const ready=element&&element.readyState>=2&&!element.seeking&&element.videoWidth>0&&Math.abs(element.currentTime-desired)<=Math.max(.008,Math.abs(clip.speed)/state.project.fps);
+      const item=media.get(clip.id),desired=visualSourceTime(clip,asset,state.playhead),displayed=item?.frame;
+      const ready=displayed&&displayed.width>0&&displayed.height>0&&item?.frameRevision===seekRevision&&stoppedFrameMatches(item.frameTime,desired);
       if(!ready)throw Error('素材フレームを準備しています。少し待ってからもう一度お試しください。');
-      return sampleSourceColor(element,element.videoWidth,element.videoHeight,point.x,point.y,sampleCanvas);
+      return sampleSourceColor(displayed,displayed.width,displayed.height,point.x,point.y,sampleCanvas);
     };
     const maskedFrames = new Map<string, MaskedFrame>();
     const gpuPool=new GpuTransitionPool();
@@ -211,7 +211,7 @@ export default function Preview() {
             // readyState, otherwise continuous reverse seeks clear the canvas every frame.
             const ahead = s.playing && playbackFrameAhead(el.currentTime,desired,clip.speed,s.shuttleRate,p.fps);
             if(ahead&&!nativePlayback&&el.readyState>=2&&!el.seeking&&item.lastSeekLatency!==undefined)item.seekLatency=item.lastSeekLatency;
-            const captureReady = s.playing ? !ahead : Math.abs(el.currentTime-desired)<=.008;
+            const captureReady = s.playing ? !ahead : stoppedFrameMatches(el.currentTime,desired);
             if (el.readyState >= 2 && el.videoWidth && !el.seeking && captureReady) {
               const cached=item.frame ||= document.createElement('canvas');
               const ratio = Math.min(1, w / el.videoWidth, h / el.videoHeight);
@@ -226,8 +226,8 @@ export default function Preview() {
             }
             // A transport frame may advance by one sequence frame while decoding.
             // Stopped seeks require the cached image to match the exact seek target.
-            const frameTolerance=s.playing?Math.max(.008,Math.abs(clip.speed)/p.fps):.008;
-            sourceReady=item.frameTime!==undefined&&Math.abs(item.frameTime-desired)<=frameTolerance+1e-6;
+            const frameTolerance=Math.max(.008,Math.abs(clip.speed)/p.fps);
+            sourceReady=s.playing?item.frameTime!==undefined&&Math.abs(item.frameTime-desired)<=frameTolerance+1e-6:stoppedFrameMatches(item.frameTime,desired);
             if(sourceReady){item.frameRevision=seekRevision;item.decodedRevision=seekRevision;}
             sourceUsable=sourceReady||(s.playing&&usablePlaybackFrame(item.frameTime,desired,clip.speed,s.shuttleRate,p.fps,item.frameRevision===seekRevision));
             const baseRate=clip.speed*s.shuttleRate;

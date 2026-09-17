@@ -161,7 +161,7 @@ function ChromaKeyEffects({clip}:{clip:Clip}){
   return <Section title="クロマキー" icon={Pipette} onReset={key?reset:undefined}>
     {!key?<><p className="field-help">背景色を透明にして、下の映像や画像と合成します。</p><button type="button" className="secondary-button chroma-enable" onClick={()=>useEditor.getState().updateClip(clip.id,{chromaKey:{...DEFAULT_CHROMA_KEY}})}>クロマキーを有効にする</button></>:<>
       <div className="property-label"><label htmlFor={`chroma-color-${clip.id}`}>背景色</label><div className="color-field chroma-color"><span>{key.color.toUpperCase()}</span><input id={`chroma-color-${clip.id}`} type="color" value={key.color} onChange={event=>update({color:event.target.value})}/></div></div>
-      <button type="button" aria-pressed={mode==='chroma'} className={'secondary-button chroma-eyedropper '+(mode==='chroma'?'active':'')} onClick={()=>{const state=useEditor.getState();state.stop();state.setMediaEditMode(mode==='chroma'?'transform':'chroma');}}><Pipette size={13}/>{mode==='chroma'?'スポイトを終了':'モニターから背景色を採る'}</button>
+      <button type="button" aria-pressed={mode==='chroma'} className={'secondary-button chroma-eyedropper '+(mode==='chroma'?'active':'')} onClick={()=>{const state=useEditor.getState();state.stop();state.setMediaEditMode(state.mediaEditMode==='chroma'?'transform':'chroma');}}><Pipette size={13}/>{mode==='chroma'?'スポイトを終了':'モニターから背景色を採る'}</button>
       <p className="field-help">{mode==='chroma'?'プログラムモニターの背景をクリックしてください。':'キー処理前の素材を5×5画素で平均して採色します。'}</p>
       <EffectField clip={clip} label="色の許容範囲" value={key.tolerance*100} min={0} max={50} step={.1} suffix="%" patch={change('tolerance')}/>
       <EffectField clip={clip} label="境界のなめらかさ" value={key.softness*100} min={0} max={50} step={.1} suffix="%" patch={change('softness')}/>

@@ -151,9 +151,12 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
         maskIndex = input++;
       }
       const fitW = Math.max(2, Math.round(width * (c.graphic?1:c.scale) / 2) * 2); const fitH = Math.max(2, Math.round(height * (c.graphic?1:c.scale) / 2) * 2);
-      const f = [`[${index}:v]setpts=(PTS-STARTPTS)/${number(c.speed)}`, `fps=${fps}:eof_action=pass`, `scale=${fitW}:${fitH}:force_original_aspect_ratio=decrease:force_divisible_by=2`, 'setsar=1', ...(directVideo ? [`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`] : ['format=rgba'])];
+      const f = [`[${index}:v]setpts=(PTS-STARTPTS)/${number(c.speed)}`, `fps=${fps}:eof_action=pass`];
+      // Match the preview: calculate the key from decoded source pixels before
+      // clip scaling can blend background color into fine foreground edges.
+      if (hasChromaKey(c)) f.push('format=rgba', ffmpegChromaFilter(c));
+      f.push(`scale=${fitW}:${fitH}:force_original_aspect_ratio=decrease:force_divisible_by=2`, 'setsar=1', ...(directVideo ? [`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`] : ['format=rgba']));
       f.push(`tpad=start_mode=clone:start_duration=${number(videoWindow.padBefore)}:stop_mode=clone:stop_duration=${number(videoWindow.padAfter+1/fps)}`,`trim=duration=${number(videoWindow.duration)}`,'setpts=PTS-STARTPTS');
-      if (hasChromaKey(c)) f.push(ffmpegChromaFilter(c));
       if (c.kind !== 'title' && (c.exposure !== 0 || c.contrast !== 1 || c.saturation !== 1)) f.push(colorFilter(c));
       if (hasBezierMask(c)) {
         filters.push(f.join(',') + `[premask${index}]`);

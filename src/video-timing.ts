@@ -3,6 +3,14 @@ export function videoSeekTolerance(speed: number, shuttleRate: number, fps: numb
   return steady ? Math.abs(speed) * Math.max(.5, Math.abs(shuttleRate) * 6 / fps) : .008;
 }
 
+export const STOPPED_FRAME_TOLERANCE = .008;
+
+/** Stopped editing and sampling must use the exact frame shown in the monitor,
+ * never the wider continuous-playback tolerance. */
+export function stoppedFrameMatches(frame: number | undefined, desired: number) {
+  return frame !== undefined && Math.abs(frame - desired) <= STOPPED_FRAME_TOLERANCE + 1e-6;
+}
+
 /** Held first/last frames must not seek into moving footage before its boundary. */
 export function videoSeekLead(latencyMs: number | undefined, desired: number, unclamped: number) {
   return Math.abs(desired - unclamped) > 1e-6 ? 0 : Math.min(.8, (latencyMs ?? 12) / 1000 + .008);

@@ -23,4 +23,8 @@ describe('chroma key editing',()=>{
     const project=fixture(),state=useEditor.getState();state.load(project);state.updateClip('chroma-clip',{chromaKey:key});state.setMediaEditMode('chroma');state.undo();
     expect(useEditor.getState().project).toBe(project);expect(useEditor.getState().mediaEditMode).toBe('transform');
   });
+  it('gives eyedropper mode exclusive monitor input by disarming drawing',()=>{
+    const project=fixture(),state=useEditor.getState();state.load(project);useEditor.setState({panel:'draw',drawTool:'arrow'});state.setMediaEditMode('chroma');
+    expect(useEditor.getState()).toMatchObject({mediaEditMode:'chroma',drawTool:null});
+  });
 });
