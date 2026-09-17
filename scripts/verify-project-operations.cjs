@@ -3,11 +3,32 @@ const fs = require('node:fs/promises'), path = require('node:path'), assert = re
 const root = path.join(__dirname, '..');
 (async () => {
   const profile = await fs.mkdtemp(path.join(root, '.local', 'operations-'));
+  const results = path.join(root, 'test-results'); await fs.mkdir(results, { recursive: true });
   const env = { ...process.env, LUMA_TEST_DATA: profile }; delete env.ELECTRON_RUN_AS_NODE;
   const executablePath = process.env.LUMA_VERIFY_EXE;
   const app = await electron.launch({ executablePath, args: executablePath ? [] : [root], env, timeout: 60000 });
   try {
     const page = await app.firstWindow(); await page.locator('.loading-screen').waitFor({ state: 'hidden', timeout: 60000 });
+    await app.evaluate(({ BrowserWindow }) => { const window = BrowserWindow.getAllWindows()[0]; window.setSize(1600, 1000); window.center(); });
+    const verifyOperationLayout = async (dialog, name) => {
+      for (const factor of [1, 1.25, 1.5]) {
+        await app.evaluate(({ BrowserWindow }, size) => { const window=BrowserWindow.getAllWindows()[0];window.setSize(size.width,size.height);window.center(); }, { width:Math.round(1600/factor), height:Math.round(1000/factor) });
+        await page.waitForTimeout(220);
+        const layout = await dialog.evaluate(element => {
+          const box = node => { const rect = node.getBoundingClientRect(); return { x:rect.x, y:rect.y, width:rect.width, height:rect.height, right:rect.right, bottom:rect.bottom, center:rect.x+rect.width/2 }; };
+          const heading = element.querySelector('.modal-heading'), title = heading.querySelector('h2'), status = element.querySelector('.project-operation-status'), spinner = element.querySelector('.project-operation-spinner'), message = status.querySelector('span:last-child'), style = getComputedStyle(status);
+          return { viewport:{width:innerWidth,height:innerHeight}, dialog:box(element), heading:box(heading), title:box(title), status:box(status), spinner:box(spinner), message:box(message), alignItems:style.alignItems, justifyContent:style.justifyContent, flexDirection:style.flexDirection, textAlign:style.textAlign };
+        });
+        assert.equal(layout.alignItems, 'center'); assert.equal(layout.justifyContent, 'center'); assert.equal(layout.flexDirection, 'column'); assert.equal(layout.textAlign, 'center');
+        assert.ok(Math.abs(layout.dialog.center-layout.viewport.width/2)<2&&Math.abs(layout.dialog.y+layout.dialog.height/2-layout.viewport.height/2)<2, `${name} ${factor}: viewport center ${JSON.stringify({viewport:layout.viewport,dialog:layout.dialog})}`);
+        assert.ok(layout.dialog.x>=0&&layout.dialog.right<=layout.viewport.width&&layout.dialog.y>=0&&layout.dialog.bottom<=layout.viewport.height, `${name} ${factor}: viewport containment`);
+        for (const item of [layout.title, layout.spinner, layout.message]) assert.ok(Math.abs(item.center-layout.dialog.center)<2, `${name} ${factor}: horizontal center`);
+        assert.ok(layout.status.height>=125&&layout.message.x-layout.dialog.x>=25&&layout.dialog.right-layout.message.right>=25, `${name} ${factor}: content padding`);
+        assert.ok(layout.status.y>=layout.heading.bottom-1&&layout.status.bottom<=layout.dialog.bottom+1, `${name} ${factor}: vertical containment`);
+        if (factor===1||factor===1.5) await page.screenshot({ path:path.join(results,`${name}-${Math.round(factor*100)}.png`) });
+      }
+      await app.evaluate(({ BrowserWindow }) => { const window=BrowserWindow.getAllWindows()[0];window.setSize(1600,1000);window.center(); });
+    };
     const file = path.join(profile, 'operations.luma');
     await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }); }, file);
     const save = async () => {
@@ -31,7 +52,7 @@ const root = path.join(__dirname, '..');
       ipcMain.removeHandler('open-project'); ipcMain.handle('open-project', () => new Promise(resolve => { globalThis.releaseOpen = () => resolve(result); }));
     }, { project: next, path: file });
     await page.keyboard.press('Control+o');
-    await page.getByRole('dialog', { name: 'プロジェクトを開いています', exact: true }).waitFor();
+    const openDialog=page.getByRole('dialog', { name: 'プロジェクトを開いています', exact: true });await openDialog.waitFor();await verifyOperationLayout(openDialog,'project-operation-open');
     await page.keyboard.press('Control+n'); await page.keyboard.press('Delete'); await page.keyboard.press('Escape');
     assert.equal(await page.getByRole('dialog', { name: 'プロジェクトを開いています', exact: true }).count(), 1);
     await app.evaluate(() => globalThis.releaseOpen());
@@ -89,6 +110,6 @@ const root = path.join(__dirname, '..');
     assert.equal(await page.evaluate(project => window.luma.saveProject(project, false), next), newFile);
     assert.equal(JSON.parse(await fs.readFile(oldFile, 'utf8')).id, before.id);
     assert.equal(JSON.parse(await fs.readFile(newFile, 'utf8')).id, next.id);
-    console.log('Slow project operations, locked track names and single-step rename Undo verified.');
+    console.log('Slow project operations, centered progress layout at 100/125/150%-equivalent viewports, locked track names and single-step rename Undo verified.');
   } finally { await app.evaluate(({ app }) => app.exit(0)).catch(() => {}); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
