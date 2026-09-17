@@ -9,6 +9,7 @@ import { audioSlices } from './audio-plan';
 import { applyTransition, transitionPlan, audioEnvelopes } from '../shared/transitions.mjs';
 import { timelineKey } from '../shared/youtube.mjs';
 import { runAudioEnhancement, useAudioJob, cancelAudioJob } from './audio-enhancement-job';
+import { validateVideoMask } from '../shared/video-mask.mjs';
 
 const asset: Asset = {id:'source',name:'会話.mp4',path:'C:/会話.mp4',url:'media://source',thumbnail:'',kind:'video',hasAudio:true,duration:30,width:320,height:180,fps:30,waveform:[.2,.6],codec:'h264',size:100};
 function fixture(): Project {const p=emptyProject();p.assets=[asset];p.clips=[{...makeClip(p.tracks[1].id,2,asset),id:'v',in:1,duration:8,fadeIn:.5,fadeOut:1}];return p;}
@@ -119,7 +120,13 @@ it('extending a linked trim does not invent a fade, and all speed controls scale
   const linked=loadPair();state().updateClip(linked.clips[1].id,{fadeIn:1,fadeOut:2});state().updateClip('v',{speed:2});expect(state().project.clips.map(c=>[c.fadeIn,c.fadeOut])).toEqual([[.25,.5],[.5,1]]);state().setRate(1,['v']);expect(state().project.clips.map(c=>[c.fadeIn,c.fadeOut])).toEqual([[.5,1],[1,2]]);
 });
 
-it('a valid explicitly attached video can separate without copying video-only metadata to audio',()=>{const p=fixture();p.clips[0].audioDetached=false;state().load(p);state().separateAudio(['v']);expect(state().project.clips).toHaveLength(2);expect(Object.hasOwn(state().project.clips[1],'audioDetached')).toBe(false);validateClipLinks(state().project);});
+it('a valid explicitly attached and masked video separates without copying video-only metadata to audio',()=>{
+  const p=fixture();p.clips[0].audioDetached=false;p.clips[0].crop={top:.1,right:.2,bottom:0,left:0};p.clips[0].videoMask={type:'ellipse',x:.5,y:.5,width:.8,height:.6,feather:.1,inverted:false};
+  state().load(p);state().separateAudio(['v']);const next=state().project,video=next.clips.find(c=>c.kind==='video')!,audio=next.clips.find(c=>c.kind==='audio')!;
+  expect(next.clips).toHaveLength(2);expect(video).toMatchObject({crop:p.clips[0].crop,videoMask:p.clips[0].videoMask});
+  for(const key of ['audioDetached','crop','videoMask'] as const)expect(Object.hasOwn(audio,key)).toBe(false);
+  expect(()=>validateVideoMask(audio)).not.toThrow();validateClipLinks(next);
+});
 
 it('reuses the numbered detached-audio lane for adjacent clips, both in one call and after save/reload',()=>{
  const p=fixture();p.clips.push({...p.clips[0],id:'v2',start:10});
