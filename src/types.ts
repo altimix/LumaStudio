@@ -8,6 +8,7 @@ export interface BasicVideoMask { type: 'rectangle' | 'ellipse'; x: number; y: n
 export interface BezierMaskPoint { x: number; y: number; inX: number; inY: number; outX: number; outY: number; kind: 'line' | 'curve' }
 export interface BezierVideoMask { type: 'bezier'; points: BezierMaskPoint[]; closed: boolean; feather: number; inverted: boolean }
 export type VideoMask = BasicVideoMask | BezierVideoMask;
+export interface ChromaKey { color: string; tolerance: number; softness: number; greenSpill: number; blueSpill: number; matte: boolean }
 export interface Graphic { shape: 'arrow' | 'rectangle' | 'ellipse'; width:number; height:number; lineWidth:number; fill:boolean; fillColor:string; flipX?:boolean; flipY?:boolean }
 export interface Asset {
   id: string; name: string; path: string; url: string; thumbnail: string; kind: MediaKind;
@@ -31,6 +32,7 @@ export interface Clip {
   volumeKeyframes?: VolumeKeyframe[];
   crop?: Crop;
   videoMask?: VideoMask;
+  chromaKey?: ChromaKey;
   subtitle?: boolean;
   graphic?: Graphic;
 }

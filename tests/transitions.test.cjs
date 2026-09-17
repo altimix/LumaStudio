@@ -43,6 +43,12 @@ test('transition layers retain transparent margins above a lower video track',as
   for(const kind of ['dissolve','pageTurn','pagePeel']){let p=fixture();p.assets=[...p.assets,asset];p.tracks.push({...p.tracks[0],id:'background'});p.clips=p.clips.map(c=>({...c,scale:.5}));p.clips.push({...p.clips[0],id:'bg',trackId:'background',kind:'image',assetId:asset.id,start:0,duration:3,scale:1,volume:0});p=applyTransition(p,'a','b',{duration:1,video:kind},'t');const file=path.join(dir,kind+'-transparent.mp4');await exportProject(p,{width,height,fps,quality:'high',encoder:'cpu'},file);const rgb=await run(ffmpeg,['-v','error','-ss','2','-i',file,'-frames:v','1','-vf','crop=8:8:0:0,scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);assert.ok(rgb[1]>230&&rgb[0]<15&&rgb[2]<15,kind+': '+[...rgb]);}
 });
 
+test('dissolve retains chroma transparency over a lower track',async()=>{
+  const background=path.join(dir,'chroma-transition-green.png');await run(ffmpeg,['-v','error','-f','lavfi','-i','color=lime:s=320x180','-frames:v','1',background]);const asset=await inspectMedia(background,path.join(dir,'cache'));
+  let p=fixture();p.assets=[...p.assets,asset];p.tracks.push({...p.tracks[0],id:'background'});p.clips[0]={...p.clips[0],chromaKey:{color:'#ff0000',tolerance:.12,softness:.08,greenSpill:0,blueSpill:0,matte:false}};p.clips.push({...p.clips[0],id:'bg',trackId:'background',kind:'image',assetId:asset.id,start:0,duration:3,chromaKey:undefined,volume:0});p=applyTransition(p,'a','b',{duration:1,video:'dissolve'},'chroma-transition');
+  const file=path.join(dir,'dissolve-chroma-transparency.mp4');await exportProject(p,{width,height,fps,quality:'high',encoder:'cpu'},file);const rgb=await run(ffmpeg,['-v','error','-ss','2','-i',file,'-frames:v','1','-vf','crop=8:8:160:86,scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);assert.ok(rgb[0]<20&&rgb[1]>105&&rgb[2]>105,'chroma dissolve over lower track: '+[...rgb]);
+});
+
 
 test('dissolve preserves the contribution of nonoverlapping opaque and translucent layers',async()=>{
   const background=path.join(dir,'dissolve-green.png');await run(ffmpeg,['-v','error','-f','lavfi','-i','color=lime:s=320x180','-frames:v','1',background]);const asset=await inspectMedia(background,path.join(dir,'cache'));

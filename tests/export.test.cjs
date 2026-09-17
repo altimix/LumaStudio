@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { ffmpeg, run, probe, inspectMedia } = require('../electron/media.cjs');
 const { exportProject, validateProject, buildExport } = require('../electron/export.cjs');
-let dir, asset, alphaAsset, titlePNG;
+let dir, asset, alphaAsset, greenAsset, titlePNG;
 before(async()=>{
  dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-tests-'));
  const input=path.join(dir,'映像 [test] & space.mp4');
@@ -14,6 +14,9 @@ before(async()=>{
  const alphaInput=path.join(dir,'半透明素材.png');
  await run(ffmpeg,['-v','error','-y','-f','lavfi','-i','color=c=blue:s=320x180','-f','lavfi','-i',"nullsrc=s=320x180,geq=lum='if(lt(X,W/2),255,0)',format=gray",'-filter_complex','[0:v]format=rgba[color];[color][1:v]alphamerge','-frames:v','1',alphaInput]);
  alphaAsset=await inspectMedia(alphaInput,path.join(dir,'alpha-cache'));
+ const greenInput=path.join(dir,'緑背景素材.mp4');
+ await run(ffmpeg,['-v','error','-y','-f','lavfi','-i','color=c=0x00ff00:s=320x180:r=10:d=2,drawbox=x=120:y=60:w=80:h=60:color=red:t=fill','-c:v','libx264','-pix_fmt','yuv420p',greenInput]);
+ greenAsset=await inspectMedia(greenInput,path.join(dir,'green-cache'));
  titlePNG='data:image/png;base64,'+(await run(ffmpeg,['-f','lavfi','-i','color=c=red:s=320x180','-frames:v','1','-c:v','png','-f','image2pipe','pipe:1'])).toString('base64');
 });
 after(async()=>{if(dir)await fs.rm(dir,{recursive:true,force:true});});
@@ -129,10 +132,32 @@ test('multiplies a Bezier matte with the source alpha channel',async()=>{
  const opaque=await pixelAt(out,.3,80,90),transparent=await pixelAt(out,.3,240,90);
  assert.ok(opaque[2]>170,`opaque source alpha ${opaque}`);assert.ok(transparent.every(value=>value<18),`transparent source alpha ${transparent}`);
 });
+test('renders chroma transparency, despill, fades, crop and masks while preserving source alpha',async()=>{
+ const p=project(),bottom={...p.clips[0],id:'bottom',trackId:'v1',audioMuted:true},top={...p.clips[0],id:'keyed',assetId:greenAsset.id,trackId:'v2',audioMuted:true,fadeIn:.2,fadeOut:.2,chromaKey:{color:'#00ff00',tolerance:.12,softness:.08,greenSpill:1,blueSpill:1,matte:false},crop:{top:.02,right:.02,bottom:.02,left:.02},videoMask:{type:'ellipse',x:.5,y:.5,width:.9,height:.9,feather:.02,inverted:false}};
+ p.assets=[asset,greenAsset];p.clips=[bottom,top];const out=path.join(dir,'chroma-composite.mp4');await exportProject(p,settings,out);
+ const background=await pixelAt(out,.3,40,90),subject=await pixelAt(out,.3,160,90),outsideMask=await pixelAt(out,.3,5,5);
+ assert.ok(background[2]>170&&background[1]<70,`keyed background ${background}`);assert.ok(subject[0]>170&&subject[1]<80,`red subject ${subject}`);assert.ok(outsideMask[2]>170,`mask composition ${outsideMask}`);
+ const fadeIn=await pixelAt(out,.05,160,90),fadeOut=await pixelAt(out,.9,160,90);for(const [label,rgb] of [['fade in',fadeIn],['fade out',fadeOut]])assert.ok(rgb[0]>35&&rgb[0]<160&&rgb[2]>70,`${label} ${rgb}`);
+
+ const alpha=project(),base={...alpha.clips[0],id:'red-base',kind:'title',assetId:undefined,trackId:'v1',audioMuted:undefined},overlay={...alpha.clips[0],id:'alpha-keyed',kind:'image',assetId:alphaAsset.id,trackId:'v2',audioMuted:undefined,chromaKey:{color:'#ff0000',tolerance:0,softness:0,greenSpill:0,blueSpill:0,matte:false}};
+ alpha.assets=[alphaAsset];alpha.clips=[base,overlay];const alphaOut=path.join(dir,'chroma-source-alpha.mp4');await exportProject(alpha,settings,alphaOut,{titleImages:{'red-base':titlePNG}});
+ const opaque=await pixelAt(alphaOut,.3,80,90),transparent=await pixelAt(alphaOut,.3,240,90);assert.ok(opaque[2]>160&&opaque[0]<80,`opaque source ${opaque}`);assert.ok(transparent[0]>160&&transparent[2]<80,`transparent source ${transparent}`);
+});
+test('applies chroma keying to source pixels before clip scaling',()=>{
+ const p=project();p.clips=[{...p.clips[0],scale:.6,audioMuted:true,chromaKey:{color:'#00ff00',tolerance:.12,softness:.08,greenSpill:1,blueSpill:1,matte:false}}];
+ const {args}=buildExport(p,settings,{[asset.id]:asset.path},path.join(dir,'chroma-order.mp4')),graph=args[args.indexOf('-filter_complex')+1],chain=graph.split(';').find(part=>part.startsWith('[2:v]'));
+ assert.ok(chain,'clip filter chain is present');const keyAt=chain.indexOf('geq='),scaleAt=chain.indexOf('scale=');assert.ok(keyAt>=0&&scaleAt>keyAt,chain);
+});
 test('rejects malformed crop and mask metadata at the native boundary',()=>{
  for(const patch of [{crop:{top:0,right:.6,bottom:0,left:.5}},{videoMask:{type:'rectangle',x:.5,y:.5,width:0,height:.5,feather:0,inverted:false}},{videoMask:{type:'path',x:.5,y:.5,width:.5,height:.5,feather:0,inverted:false}},{videoMask:{type:'bezier',points:[],closed:true,feather:0,inverted:false}}]){
   const p=project();Object.assign(p.clips[0],patch);assert.throws(()=>validateProject(p),/クロップ|マスク/);
  }
+});
+test('rejects malformed chroma metadata at the native boundary',()=>{
+ for(const chromaKey of [null,{color:'#00ff00',tolerance:.6,softness:0,greenSpill:0,blueSpill:0,matte:false},{color:'green',tolerance:.1,softness:.1,greenSpill:0,blueSpill:0,matte:false}]){
+  const p=project();p.clips[0].chromaKey=chromaKey;assert.throws(()=>validateProject(p),/クロマキー/);
+ }
+ const p=project();p.clips[0]={...p.clips[0],kind:'audio',chromaKey:{color:'#00ff00',tolerance:.1,softness:.1,greenSpill:0,blueSpill:0,matte:false}};assert.throws(()=>validateProject(p),/映像または画像/);
 });
 test('cancels without overwriting an existing file or leaving partial output',async()=>{
  const output=path.join(dir,'keep.mp4');await fs.writeFile(output,'existing-user-content');const controller=new AbortController();controller.abort();
