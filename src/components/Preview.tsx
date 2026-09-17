@@ -20,7 +20,7 @@ import MediaDragLayer from './MediaDragLayer';
 import { mediaSourceKey, type MediaSize } from '../media-transform';
 import FrameSaveDialog from './FrameSaveDialog';
 import type { Clip, Asset, Project } from '../types';
-import { disposeMaskedFrame, maskedVideoFrame, type MaskedFrame } from '../video-mask';
+import { disposeMaskedFrame, evictInactiveMaskedFrames, maskedVideoFrame, type MaskedFrame } from '../video-mask';
 
 export default function Preview() {
   const canvas = useRef<HTMLCanvasElement>(null); const stage = useRef<HTMLDivElement>(null); const mediaBin = useRef<HTMLDivElement>(null);
@@ -133,7 +133,7 @@ export default function Preview() {
       const w = Math.max(2, Math.round(p.width * (capture ? 1 : s.previewQuality))); const h = Math.max(2, Math.round(p.height * (capture ? 1 : s.previewQuality)));
       if (target.width !== w || target.height !== h) { target.width = w; target.height = h; }
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
-      const alive = new Set<string>(), activeTitles = new Set<string>();
+      const alive = new Set<string>(), activeTitles = new Set<string>(), activeMaskedFrames = new Set<string>();
       if(plannedProject!==p){plans=transitionPlan(p);plannedProject=p;projectRevision++;const ids=new Set(p.clips.map(c=>c.id));for(const id of knownSizes.keys())if(!ids.has(id)){knownSizes.delete(id);sizesChanged=true;}for(const [id,item] of maskedFrames)if(!ids.has(id)){disposeMaskedFrame(item);maskedFrames.delete(id);}}
       const active=plans.filter(pair=>pair.video&&t>=pair.start&&t<pair.end&&!p.tracks.find(track=>track.id===pair.from.trackId)?.hidden),pairs=new Map(active.flatMap(pair=>[[pair.fromId,pair],[pair.toId,pair]] as const));
       // Ordinary cuts need the same decoder warm-up as transitions. Prepare
@@ -244,7 +244,7 @@ export default function Preview() {
           const fit = Math.min(w / sw, h / sh) * (clip.graphic?1:clip.scale), fittedWidth = sw * fit, fittedHeight = sh * fit;
           const maskWidth = Math.max(1, Math.round(fittedWidth)), maskHeight = Math.max(1, Math.round(fittedHeight));
           const masked = clip.kind === 'video' || clip.kind === 'image' ? maskedVideoFrame(source, clip, maskWidth, maskHeight, maskedFrames.get(clip.id)) : undefined;
-          if (masked) maskedFrames.set(clip.id, masked); else if (maskedFrames.has(clip.id)) { disposeMaskedFrame(maskedFrames.get(clip.id)!); maskedFrames.delete(clip.id); }
+          if (masked) { maskedFrames.set(clip.id, masked); activeMaskedFrames.add(clip.id); } else if (maskedFrames.has(clip.id)) { disposeMaskedFrame(maskedFrames.get(clip.id)!); maskedFrames.delete(clip.id); }
           drawContext.save(); drawContext.translate(w / 2 + w * (clip.graphic?0:clip.x) / 100, h / 2 + h * (clip.graphic?0:clip.y) / 100); drawContext.rotate((clip.graphic?0:clip.rotation) * Math.PI / 180);
           drawContext.globalAlpha = opacityAt(clip.opacityKeyframes, t - clip.start, clip.opacity) * fade;
           if (clip.kind !== 'title' && (clip.exposure !== 0 || clip.contrast !== 1 || clip.saturation !== 1)) drawContext.filter = `brightness(${2 ** clip.exposure}) contrast(${clip.contrast}) saturate(${clip.saturation})`;
@@ -271,6 +271,7 @@ export default function Preview() {
           if(buffers.renderer.key!==key||!fullSize)transitionsReady=false;
         }
       }
+      evictInactiveMaskedFrames(maskedFrames, activeMaskedFrames);
       for (const [id, item] of titles) if (!activeTitles.has(id)) { item.canvas.width = item.canvas.height = 0; titles.delete(id); }
       for (const [id, item] of media) if (!alive.has(id)) {
         item.element.pause();clearFrame(item);

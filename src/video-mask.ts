@@ -54,3 +54,11 @@ export function maskedVideoFrame(source: CanvasImageSource, clip: Clip, width: n
 export function disposeMaskedFrame(frame: MaskedFrame) {
   frame.canvas.width = frame.canvas.height = frame.mask.width = frame.mask.height = 0;
 }
+
+export function evictInactiveMaskedFrames(frames: Map<string, MaskedFrame>, active: ReadonlySet<string>) {
+  for (const [id, frame] of frames) {
+    if (active.has(id)) continue;
+    disposeMaskedFrame(frame);
+    frames.delete(id);
+  }
+}
