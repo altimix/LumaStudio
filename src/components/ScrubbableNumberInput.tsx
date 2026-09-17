@@ -15,7 +15,7 @@ type Props = {
   onCommit(value: number): void;
   onScrubStart(): boolean;
   onScrubChange(value: number): void;
-  onScrubEnd(): void;
+  onScrubEnd(): number | void;
   onScrubCancel(): void;
 };
 
@@ -39,7 +39,7 @@ export default function ScrubbableNumberInput(props: Props) {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancelPointer);
-      window.removeEventListener('keydown', key);
+      window.removeEventListener('keydown', key, true);
       window.removeEventListener('blur', cancel);
       document.removeEventListener('visibilitychange', visibility);
       input.removeEventListener('lostpointercapture', lost);
@@ -51,7 +51,10 @@ export default function ScrubbableNumberInput(props: Props) {
     const close = (result: 'finish' | 'cancel' | 'abandon') => {
       if (closed) return; closed = true; detach();
       if (started && result === 'cancel') { setDraft(displayNumberInput(start)); callbacks.current.onScrubCancel(); }
-      if (started && result === 'finish') callbacks.current.onScrubEnd();
+      if (started && result === 'finish') {
+        const accepted = callbacks.current.onScrubEnd();
+        setDraft(displayNumberInput(typeof accepted === 'number' && Number.isFinite(accepted) ? accepted : callbacks.current.value));
+      }
     };
     function move(e: PointerEvent) {
       if (closed || e.pointerId !== pointerId) return;

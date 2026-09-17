@@ -27,7 +27,8 @@ function NumericField({ clip, property, label, min, max, step = 1, factor = 1, o
   const active=useEditor(s=>property==='volume'?s.activeVolumePoint:null);
   const local=active?.clipId===clip.id?active.time:Math.max(0,Math.min(clip.duration,playhead-clip.start));
   if(property==='volume'&&(clip.volumeKeyframes?.length||active?.clipId===clip.id))max=400;
-  const value = Number(clip[property]) * (property==='volume'?volumeAt(clip.volumeKeyframes||[],local):1) * factor + offset;
+  const displayValue=(current:Clip)=>Number(current[property])*(property==='volume'?volumeAt(current.volumeKeyframes||[],local):1)*factor+offset;
+  const value = displayValue(clip);
   const dragging=useRef(false),changed=useRef(false),dragStart=useRef<{state:EditorState;clip:Clip;time:number;selected:boolean;owner:object}|null>(null);
   const finishDrag=(cancel=false)=>{
     const start=dragStart.current;if(!start)return;dragStart.current=null;dragging.current=false;
@@ -64,7 +65,7 @@ function NumericField({ clip, property, label, min, max, step = 1, factor = 1, o
       now.transient({...now.project,clips});
     } else s.updateClip(clip.id, patch);
   };
-  return <div className={`property-field ${slider ? '' : 'no-slider'}`}><div className="property-label"><label htmlFor={`prop-${property}`}>{label}</label><div className="number-wrap"><ScrubbableNumberInput id={`prop-${property}`} value={value} min={min} max={max} step={step} onCommit={apply} onScrubStart={beginDrag} onScrubChange={apply} onScrubEnd={()=>finishDrag()} onScrubCancel={()=>finishDrag(true)}/><span>{suffix}</span></div></div>{slider ? <input className="property-slider" type="range" aria-label={`${label}スライダー`} min={min} max={max} step={step} value={value} style={{ '--fill': `${(value - min) / (max - min) * 100}%` } as React.CSSProperties} onPointerDown={e=>{if(e.button===0)beginDrag();}} onPointerUp={()=>finishDrag()} onPointerCancel={()=>finishDrag(true)} onLostPointerCapture={()=>finishDrag(true)} onChange={e=>apply(Number(e.target.value))}/> : null}</div>;
+  return <div className={`property-field ${slider ? '' : 'no-slider'}`}><div className="property-label"><label htmlFor={`prop-${property}`}>{label}</label><div className="number-wrap"><ScrubbableNumberInput id={`prop-${property}`} value={value} min={min} max={max} step={step} onCommit={apply} onScrubStart={beginDrag} onScrubChange={apply} onScrubEnd={()=>{finishDrag();const current=useEditor.getState().project.clips.find(c=>c.id===clip.id);return current?displayValue(current):value;}} onScrubCancel={()=>finishDrag(true)}/><span>{suffix}</span></div></div>{slider ? <input className="property-slider" type="range" aria-label={`${label}スライダー`} min={min} max={max} step={step} value={value} style={{ '--fill': `${(value - min) / (max - min) * 100}%` } as React.CSSProperties} onPointerDown={e=>{if(e.button===0)beginDrag();}} onPointerUp={()=>finishDrag()} onPointerCancel={()=>finishDrag(true)} onLostPointerCapture={()=>finishDrag(true)} onChange={e=>apply(Number(e.target.value))}/> : null}</div>;
 }
 function EffectField({ clip, label, value, min, max, step = 1, suffix = '', patch }: { clip: Clip; label: string; value: number; min: number; max: number; step?: number; suffix?: string; patch: (clip: Clip, value: number) => Partial<Clip> }) {
   const dragging=useRef(false),changed=useRef(false);
@@ -87,7 +88,7 @@ function EffectField({ clip, label, value, min, max, step = 1, suffix = '', patc
     if(dragging.current){if(!changed.current){state.checkpoint(`${label}を変更`);changed.current=true;}const now=useEditor.getState();now.transient({...now.project,clips:now.project.clips.map(c=>c.id===current.id?normalizeClip({...c,...values},now.project):c)},start?.state.project);}
     else state.updateClip(current.id,values);
   };
-  return <div className="property-field"><div className="property-label"><label htmlFor={inputId}>{label}</label><div className="number-wrap"><ScrubbableNumberInput id={inputId} value={value} min={min} max={max} step={step} onCommit={apply} onScrubStart={begin} onScrubChange={apply} onScrubEnd={()=>finish()} onScrubCancel={()=>finish(true)}/><span>{suffix}</span></div></div><input className="property-slider" type="range" aria-label={`${label}スライダー`} min={min} max={max} step={step} value={value} style={{'--fill':`${max>min?(value-min)/(max-min)*100:100}%`} as React.CSSProperties} onPointerDown={e=>{if(e.button===0)begin();}} onPointerUp={()=>finish()} onPointerCancel={()=>finish(true)} onLostPointerCapture={()=>finish(true)} onChange={e=>apply(Number(e.target.value))}/></div>;
+  return <div className="property-field"><div className="property-label"><label htmlFor={inputId}>{label}</label><div className="number-wrap"><ScrubbableNumberInput id={inputId} value={value} min={min} max={max} step={step} onCommit={apply} onScrubStart={begin} onScrubChange={apply} onScrubEnd={()=>{finish();return value;}} onScrubCancel={()=>finish(true)}/><span>{suffix}</span></div></div><input className="property-slider" type="range" aria-label={`${label}スライダー`} min={min} max={max} step={step} value={value} style={{'--fill':`${max>min?(value-min)/(max-min)*100:100}%`} as React.CSSProperties} onPointerDown={e=>{if(e.button===0)begin();}} onPointerUp={()=>finish()} onPointerCancel={()=>finish(true)} onLostPointerCapture={()=>finish(true)} onChange={e=>apply(Number(e.target.value))}/></div>;
 }
 function CropMaskEffects({clip}:{clip:Clip}){
   const mode=useEditor(s=>s.mediaEditMode),crop=clip.crop||EMPTY_CROP,mask=clip.videoMask;

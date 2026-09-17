@@ -43,6 +43,9 @@ const root = path.join(__dirname, '..');
     await scrub(rotation,-10);project=await save();assert.equal(value(project,clip.id,'rotation'),12);await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),17);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),12);
     checks.push('right raises and left lowers by step with one Undo and Redo per scrub');
 
+    await page.evaluate(()=>{window.__numberScrubEscapePrevented=null;window.addEventListener('keydown',event=>{if(event.key==='Escape')window.__numberScrubEscapePrevented=event.defaultPrevented;},{capture:true,once:true});});await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>window.__numberScrubEscapePrevented),false);
+    checks.push('completed scrubs remove their capture-phase Escape listener');
+
     for(const cancellation of ['escape','blur','pointer']){await scrub(rotation,24,cancellation);assert.equal(value(await save(),clip.id,'rotation'),12);}
     await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),17);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),12);
     checks.push('Escape, focus loss and pointer cancellation restore both value and history');
@@ -55,6 +58,9 @@ const root = path.join(__dirname, '..');
     const start=page.locator('#prop-start');await scrub(start,20);project=await save();const linkedVideo=project.clips.find(item=>item.id===clip.id),linkedAudio=project.clips.find(item=>item.id==='audio');assert.ok(linkedVideo.start>.25,`linked video start ${linkedVideo.start}`);assert.ok(Math.abs(linkedVideo.start-linkedAudio.start)<1e-9,`linked timing ${linkedVideo.start} / ${linkedAudio.start}`);
     await page.keyboard.press('Control+z');project=await save();assert.equal(project.clips.find(item=>item.id===clip.id).start,0);assert.equal(project.clips.find(item=>item.id==='audio').start,0);await page.keyboard.press('Control+Shift+z');project=await save();assert.ok(Math.abs(project.clips.find(item=>item.id===clip.id).start-project.clips.find(item=>item.id==='audio').start)<1e-9);
     checks.push('every intermediate timing scrub keeps linked video and audio synchronized');
+
+    const duration=page.locator('#prop-duration');await scrub(duration,20);assert.equal(Number(await duration.inputValue()),3);project=await save();assert.equal(value(project,clip.id,'duration'),3);assert.equal(value(project,'audio','duration'),3);
+    checks.push('the input reconciles to the normalized accepted duration when the source limit rejects a requested value');
 
     const cropBottom=page.locator('input[id^="effect-"][id$="-下"]');await scrub(cropBottom,20);project=await save();assert.ok(Math.abs(project.clips.find(item=>item.id===clip.id).crop.bottom-.01)<1e-9);
     await page.locator('#video-mask-type').selectOption('ellipse');const maskX=page.locator('input[id^="effect-"][id$="-位置-X"]');await scrub(maskX,20);project=await save();assert.ok(Math.abs(project.clips.find(item=>item.id===clip.id).videoMask.x-.51)<1e-9);
