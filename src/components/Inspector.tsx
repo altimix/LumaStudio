@@ -2,11 +2,11 @@ import { volumeAt } from '../../shared/volume-automation.mjs';
 import { sameVolumeCurve, setEffectiveVolume } from '../volume-editing';
 import AudioVolumeAutomation from './AudioVolumeAutomation';
 import { useEffect, useRef } from 'react';
-import { PanelRightClose, SlidersHorizontal, RotateCcw, ChevronDown, Move, Scan, Palette, Volume2, Film, Type, Info, Lock } from 'lucide-react';
+import { PanelRightClose, SlidersHorizontal, RotateCcw, ChevronDown, Move, Scan, Palette, Pipette, Volume2, Film, Type, Info, Lock } from 'lucide-react';
 import { useEditor } from '../store';
 import { normalizeClip, timecode } from '../model';
 import { IconButton } from './UI';
-import type { BezierVideoMask, Clip, VideoMask } from '../types';
+import type { BezierVideoMask, ChromaKey, Clip, VideoMask } from '../types';
 import TitleOpacity from './TitleOpacity';
 import AudioEnhancement from './AudioEnhancement';
 import TextEffects from './TextEffects';
@@ -14,8 +14,10 @@ import GraphicEffects from './GraphicEffects';
 import { linkedIds, clipsLocked } from '../../shared/clip-links.mjs';
 import { MAX_MEDIA_SECONDS } from '../../shared/time.mjs';
 import { clampCropEdge, DEFAULT_BEZIER_MASK, DEFAULT_VIDEO_MASK, EMPTY_CROP, MAX_BEZIER_MASK_POINTS } from '../../shared/video-mask.mjs';
+import { DEFAULT_CHROMA_KEY } from '../../shared/chroma-key.mjs';
 import ScrubbableNumberInput from './ScrubbableNumberInput';
 import './mask-effects.css';
+import './chroma-key.css';
 
 type EditorState = ReturnType<typeof useEditor.getState>;
 function restoreGesture(before: EditorState) {
@@ -151,6 +153,24 @@ function CropMaskEffects({clip}:{clip:Clip}){
     </Section>
   </>;
 }
+function ChromaKeyEffects({clip}:{clip:Clip}){
+  const mode=useEditor(s=>s.mediaEditMode),key=clip.chromaKey;
+  const change=(property:'tolerance'|'softness'|'greenSpill'|'blueSpill')=>(current:Clip,value:number)=>({chromaKey:{...(current.chromaKey||DEFAULT_CHROMA_KEY),[property]:value/100} as ChromaKey});
+  const update=(patch:Partial<ChromaKey>)=>{const current=useEditor.getState().project.clips.find(item=>item.id===clip.id);if(current?.chromaKey)useEditor.getState().updateClip(clip.id,{chromaKey:{...current.chromaKey,...patch}});};
+  const reset=()=>{const state=useEditor.getState();state.updateClip(clip.id,{chromaKey:undefined});if(state.mediaEditMode==='chroma')state.setMediaEditMode('transform');};
+  return <Section title="クロマキー" icon={Pipette} onReset={key?reset:undefined}>
+    {!key?<><p className="field-help">背景色を透明にして、下の映像や画像と合成します。</p><button type="button" className="secondary-button chroma-enable" onClick={()=>useEditor.getState().updateClip(clip.id,{chromaKey:{...DEFAULT_CHROMA_KEY}})}>クロマキーを有効にする</button></>:<>
+      <div className="property-label"><label htmlFor={`chroma-color-${clip.id}`}>背景色</label><div className="color-field chroma-color"><span>{key.color.toUpperCase()}</span><input id={`chroma-color-${clip.id}`} type="color" value={key.color} onChange={event=>update({color:event.target.value})}/></div></div>
+      <button type="button" aria-pressed={mode==='chroma'} className={'secondary-button chroma-eyedropper '+(mode==='chroma'?'active':'')} onClick={()=>{const state=useEditor.getState();state.stop();state.setMediaEditMode(mode==='chroma'?'transform':'chroma');}}><Pipette size={13}/>{mode==='chroma'?'スポイトを終了':'モニターから背景色を採る'}</button>
+      <p className="field-help">{mode==='chroma'?'プログラムモニターの背景をクリックしてください。':'キー処理前の素材を5×5画素で平均して採色します。'}</p>
+      <EffectField clip={clip} label="色の許容範囲" value={key.tolerance*100} min={0} max={50} step={.1} suffix="%" patch={change('tolerance')}/>
+      <EffectField clip={clip} label="境界のなめらかさ" value={key.softness*100} min={0} max={50} step={.1} suffix="%" patch={change('softness')}/>
+      <EffectField clip={clip} label="緑の色かぶり除去" value={key.greenSpill*100} min={0} max={100} step={1} suffix="%" patch={change('greenSpill')}/>
+      <EffectField clip={clip} label="青の色かぶり除去" value={key.blueSpill*100} min={0} max={100} step={1} suffix="%" patch={change('blueSpill')}/>
+      <label className="mask-checkbox"><input type="checkbox" checked={key.matte} onChange={event=>update({matte:event.target.checked})}/>キーマットを表示（プレビューのみ）</label>
+    </>}
+  </Section>;
+}
 function Section({ title, icon: Icon, children, onReset, open = true }: { title: string; icon: typeof Move; children: React.ReactNode; onReset?: () => void; open?: boolean }) {
   return <details className="inspector-section" open={open}><summary><ChevronDown size={12}/><Icon size={14}/><span>{title}</span>{onReset ? <button className="reset-section" type="button" aria-label={`${title}をリセット`} title="リセット" onClick={e => { e.preventDefault(); onReset(); }}><RotateCcw size={12}/></button> : null}</summary><div className="section-properties">{children}</div></details>;
 }
@@ -179,7 +199,7 @@ export default function Inspector({ onCollapse, onShowEffects }: { onCollapse: (
         <Section title="タイミング" icon={Film}><NumericField clip={clip} property="start" label="開始時間" min={0} max={MAX_MEDIA_SECONDS} step={1 / p.fps} suffix="秒" slider={false}/><NumericField clip={clip} property="duration" label="長さ" min={1 / p.fps} max={MAX_MEDIA_SECONDS} step={1 / p.fps} suffix="秒" slider={false}/>{clip.kind === 'video' || clip.kind === 'audio' ? <><NumericField clip={clip} property="in" label="素材の開始位置" min={0} max={asset?.duration || MAX_MEDIA_SECONDS} step={1 / p.fps} suffix="秒" slider={false}/><div className="property-label"><label htmlFor="playback-speed">再生速度</label><select id="playback-speed" value={clip.speed} onChange={e => patch({ speed: Number(e.target.value) })}>{[...new Set([0.25,0.5,0.75,1,1.25,1.5,2,3,4,clip.speed])].sort((a,b)=>a-b).map(v => <option value={v} key={v}>{v === 1 ? '1× 標準' : `${Number(v.toFixed(3))}×`}</option>)}</select></div></> : null}</Section>
         <Section title="フェード" icon={Scan}><NumericField clip={clip} property="fadeIn" label="フェードイン" min={0} max={Math.min(10, clip.duration)} step={0.1} suffix="秒"/><NumericField clip={clip} property="fadeOut" label="フェードアウト" min={0} max={Math.min(10, clip.duration)} step={0.1} suffix="秒"/><p className="field-help">{clip.audioDetached ? '映像に反映されます。音声のフェードは音声クリップで調整します。' : '映像と音声に反映されます。'}</p></Section>
       </> : null}
-      {tab === 'color' ? clip.kind === 'audio' || clip.kind === 'title' ? <div className="inspector-empty-small"><Palette size={24}/><p>色調整する映像・画像クリップを選択してください。</p></div> : <><Section title="基本補正" icon={Palette} onReset={() => patch({ exposure: 0, contrast: 1, saturation: 1 })}><NumericField clip={clip} property="exposure" label="露出" min={-2} max={2} step={0.01} suffix="EV"/><NumericField clip={clip} property="contrast" label="コントラスト" min={0} max={200} factor={100} suffix="%"/><NumericField clip={clip} property="saturation" label="彩度" min={0} max={200} factor={100} suffix="%"/></Section><div className="color-advice"><span className="eyebrow">COLOR YOUR STORY</span><p>色は、物語の温度。</p><small>左のエフェクトパネルから6種類のルックを適用できます。</small><button className="secondary-button" onClick={onShowEffects}>ルックを選ぶ</button></div></> : null}
+      {tab === 'color' ? clip.kind === 'audio' || clip.kind === 'title' ? <div className="inspector-empty-small"><Palette size={24}/><p>色調整する映像・画像クリップを選択してください。</p></div> : <><Section title="基本補正" icon={Palette} onReset={() => patch({ exposure: 0, contrast: 1, saturation: 1 })}><NumericField clip={clip} property="exposure" label="露出" min={-2} max={2} step={0.01} suffix="EV"/><NumericField clip={clip} property="contrast" label="コントラスト" min={0} max={200} factor={100} suffix="%"/><NumericField clip={clip} property="saturation" label="彩度" min={0} max={200} factor={100} suffix="%"/></Section><ChromaKeyEffects clip={clip}/><div className="color-advice"><span className="eyebrow">COLOR YOUR STORY</span><p>色は、物語の温度。</p><small>左のエフェクトパネルから6種類のルックを適用できます。</small><button className="secondary-button" onClick={onShowEffects}>ルックを選ぶ</button></div></> : null}
       {tab === 'audio' ? clip.audioDetached ? <div className="inspector-empty-small"><Volume2 size={24}/><p>音声は別トラックにあります。音声クリップを選択して調整してください。</p>{clip.linkId ? <button className="secondary-button" onClick={()=>useEditor.getState().select(p.clips.filter(c=>c.linkId===clip.linkId&&c.kind==='audio').map(c=>c.id))}>リンクした音声を選択</button> : null}</div> : !asset?.hasAudio ? <div className="inspector-empty-small"><Volume2 size={24}/><p>このクリップに音声はありません。</p></div> : <><AudioEnhancement key={clip.id} clip={clip}/><AudioVolumeAutomation clip={clip}/>{clip.audioMuted ? <p className="field-help">このクリップはミュート中です。<button className="text-button" onClick={()=>useEditor.getState().patchAudio({audioMuted:false},[clip.id])}>ミュートを解除</button></p> : null}<Section title="ボリューム" icon={Volume2} onReset={() => patch({ volume: 1, volumeKeyframes:[] })}><NumericField clip={clip} property="volume" label="音量" min={0} max={200} factor={100} suffix="%"/><p className="field-help">音量ラインと同じ音量です。丸を選択中はその点、それ以外は再生ヘッドの位置を調整します。</p></Section><Section title="オーディオフェード" icon={Scan}><NumericField clip={clip} property="fadeIn" label="フェードイン" min={0} max={Math.min(10,clip.duration)} step={0.1} suffix="秒"/><NumericField clip={clip} property="fadeOut" label="フェードアウト" min={0} max={Math.min(10,clip.duration)} step={0.1} suffix="秒"/></Section><p className="audio-info">トラックの M（ミュート）と S（ソロ）は、プレビューと書き出しの両方に反映されます。</p></> : null}
       {asset ? <Section title="素材の情報" icon={Info} open={false}><dl className="asset-details"><dt>ファイル</dt><dd>{asset.name}</dd><dt>サイズ</dt><dd>{(asset.size / 1024 / 1024).toFixed(1)} MB</dd><dt>解像度</dt><dd>{asset.width} × {asset.height}</dd><dt>素材の長さ</dt><dd>{timecode(asset.duration,p.fps)}</dd>{asset.proxy ? <><dt>プレビュー</dt><dd>プロキシ使用中</dd></> : null}</dl></Section> : null}
     </fieldset></div></> : <div className="inspector-empty"><SlidersHorizontal size={32}/><h3>細部まで、思いどおりに。</h3><p>タイムラインのクリップを選択すると、<br/>映像や音声を調整できます。</p><span>SELECT A CLIP TO GET STARTED</span></div>}

@@ -121,10 +121,10 @@ it('extending a linked trim does not invent a fade, and all speed controls scale
 });
 
 it('a valid explicitly attached and masked video separates without copying video-only metadata to audio',()=>{
-  const p=fixture();p.clips[0].audioDetached=false;p.clips[0].crop={top:.1,right:.2,bottom:0,left:0};p.clips[0].videoMask={type:'ellipse',x:.5,y:.5,width:.8,height:.6,feather:.1,inverted:false};
+  const p=fixture();p.clips[0].audioDetached=false;p.clips[0].crop={top:.1,right:.2,bottom:0,left:0};p.clips[0].videoMask={type:'ellipse',x:.5,y:.5,width:.8,height:.6,feather:.1,inverted:false};p.clips[0].chromaKey={color:'#00ff00',tolerance:.12,softness:.08,greenSpill:.7,blueSpill:.7,matte:false};
   state().load(p);state().separateAudio(['v']);const next=state().project,video=next.clips.find(c=>c.kind==='video')!,audio=next.clips.find(c=>c.kind==='audio')!;
-  expect(next.clips).toHaveLength(2);expect(video).toMatchObject({crop:p.clips[0].crop,videoMask:p.clips[0].videoMask});
-  for(const key of ['audioDetached','crop','videoMask'] as const)expect(Object.hasOwn(audio,key)).toBe(false);
+  expect(next.clips).toHaveLength(2);expect(video).toMatchObject({crop:p.clips[0].crop,videoMask:p.clips[0].videoMask,chromaKey:p.clips[0].chromaKey});
+  for(const key of ['audioDetached','crop','videoMask','chromaKey'] as const)expect(Object.hasOwn(audio,key)).toBe(false);
   expect(()=>validateVideoMask(audio)).not.toThrow();validateClipLinks(next);
 });
 

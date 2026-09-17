@@ -14,7 +14,7 @@ const corners: (Corner & { name: string; cursor: string })[] = [
   { x: -1, y: -1, name: '左上', cursor: 'nwse-resize' }, { x: 1, y: -1, name: '右上', cursor: 'nesw-resize' },
   { x: 1, y: 1, name: '右下', cursor: 'nwse-resize' }, { x: -1, y: 1, name: '左下', cursor: 'nesw-resize' },
 ];
-export default function MediaDragLayer({ sizes, actions }: { sizes: Record<string, MediaSize>; actions: HTMLElement | null }) {
+export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { sizes: Record<string, MediaSize>; actions: HTMLElement | null; onSampleChroma:(clipId:string,point:{x:number;y:number})=>string|Promise<string> }) {
   const project = useEditor(s => s.project), time = useEditor(s => s.playhead), playing = useEditor(s => s.playing), selected = useEditor(s => s.selected), editMode = useEditor(s => s.mediaEditMode);
   const root = useRef<HTMLDivElement>(null), cleanup = useRef<(() => void) | null>(null);
   const dragSize = useRef<(MediaSize & { clipId: string }) | null>(null);
@@ -196,11 +196,26 @@ export default function MediaDragLayer({ sizes, actions }: { sizes: Record<strin
     const x=Math.max(0,Math.min(1,raw.x)),y=Math.max(0,Math.min(1,raw.y)),point:BezierMaskPoint={x,y,inX:x,inY:y,outX:x,outY:y,kind:'line'};
     state.updateClip(clip.id,{videoMask:{...clip.videoMask,points:[...clip.videoMask.points,point]}});
   };
+  const sampleChromaAt=async(event:ReactPointerEvent<HTMLButtonElement>,renderedClip:Clip,source:SourceSize)=>{
+    if(event.button!==0||cleanup.current||useEditor.getState().gestureActive)return;
+    event.preventDefault();event.stopPropagation();event.currentTarget.focus({preventScroll:true});
+    const state=useEditor.getState(),clip=state.project.clips.find(item=>item.id===renderedClip.id),viewport=root.current;
+    if(!clip?.chromaKey||!viewport||state.playing||state.mediaEditMode!=='chroma'||state.project.tracks.find(track=>track.id===clip.trackId)?.locked)return;
+    const rect=viewport.getBoundingClientRect();if(!rect.width||!rect.height)return;
+    const point=mediaNormalizedPoint(clip,source,state.project,{x:(event.clientX-rect.left)/rect.width*state.project.width,y:(event.clientY-rect.top)/rect.height*state.project.height});
+    if(point.x<0||point.x>1||point.y<0||point.y>1){state.notify('素材の内側をクリックしてください。');return;}
+    try{
+      const color=await onSampleChroma(clip.id,point),current=useEditor.getState(),latest=current.project.clips.find(item=>item.id===clip.id);
+      if(!latest?.chromaKey||current.playing||current.mediaEditMode!=='chroma'||current.project.tracks.find(track=>track.id===latest.trackId)?.locked)return;
+      current.updateClip(latest.id,{chromaKey:{...latest.chromaKey,color}});current.notify(`背景色 ${color.toUpperCase()} を取得しました。`);
+    }catch(error){useEditor.getState().notify((error as Error).message);}
+  };
   const current = active.find(item => selected.includes(item.clip.id));
   const effectOverlay=()=>{
     if(!current||current.locked)return null;const {clip,asset}=current;if(sizes[clip.id]?.source!==mediaSourceKey(project,asset))return null;
     const source=sourceSize(clip,asset),bounds=mediaBounds(clip,source,project),z=900000+(order.get(clip.id)||1);
     const style=(center:{x:number;y:number},width:number,height:number,ellipse=false)=>({left:center.x/project.width*100+'%',top:center.y/project.height*100+'%',width:width/project.width*100+'%',height:height/project.height*100+'%',transform:`translate(-50%,-50%) rotate(${clip.rotation}deg)`,borderRadius:ellipse?'50%':'0',zIndex:z});
+    if(editMode==='chroma'&&clip.chromaKey)return <button type="button" className="chroma-sample-target" aria-label="クロマキーの背景色を採る" title="クリックした場所を5×5画素で平均採色" style={style({x:bounds.x,y:bounds.y},bounds.width,bounds.height)} onPointerDown={event=>void sampleChromaAt(event,clip,source)}/>;
     if(editMode==='crop'){
       const crop=clip.crop||EMPTY_CROP,center=mediaPoint(clip,source,project,{x:(crop.left+1-crop.right)/2,y:(crop.top+1-crop.bottom)/2});
       const edgePoints:{edge:keyof Crop;point:{x:number;y:number};cursor:string}[]=[{edge:'top',point:mediaPoint(clip,source,project,{x:(crop.left+1-crop.right)/2,y:crop.top}),cursor:'ns-resize'},{edge:'right',point:mediaPoint(clip,source,project,{x:1-crop.right,y:(crop.top+1-crop.bottom)/2}),cursor:'ew-resize'},{edge:'bottom',point:mediaPoint(clip,source,project,{x:(crop.left+1-crop.right)/2,y:1-crop.bottom}),cursor:'ns-resize'},{edge:'left',point:mediaPoint(clip,source,project,{x:crop.left,y:(crop.top+1-crop.bottom)/2}),cursor:'ew-resize'}];

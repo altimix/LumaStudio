@@ -21,9 +21,11 @@ import { mediaSourceKey, type MediaSize } from '../media-transform';
 import FrameSaveDialog from './FrameSaveDialog';
 import type { Clip, Asset, Project } from '../types';
 import { disposeMaskedFrame, evictInactiveMaskedFrames, maskedCompositeSize, maskedVideoFrame, type MaskedFrame } from '../video-mask';
+import { sampleSourceColor } from '../chroma-preview';
 
 export default function Preview() {
   const canvas = useRef<HTMLCanvasElement>(null); const stage = useRef<HTMLDivElement>(null); const mediaBin = useRef<HTMLDivElement>(null);
+  const sampleChroma = useRef<(clipId:string,point:{x:number;y:number})=>string>(()=>{throw Error('素材フレームを準備しています。少し待ってからもう一度お試しください。');});
   const captureRequest = useRef<{ project: Project; time: number; resolve: (png: string) => void; reject: (error: Error) => void } | null>(null);
   const [frameDialog, setFrameDialog] = useState<{ project: Project; time: number } | null>(null);
   const captureFrame = () => new Promise<string>((resolve, reject) => {
@@ -53,6 +55,19 @@ export default function Preview() {
     const clearFrame=(item:VideoItem)=>{if(item.frame)item.frame.width=item.frame.height=0;item.frame=undefined;item.frameTime=undefined;item.frameRevision=undefined;};
     const media = new Map<string, VideoItem>();
     const pictures = new Map<string, HTMLImageElement>(); const titles = new Map<string, { key: string; canvas: HTMLCanvasElement }>();
+    const sampleCanvas=document.createElement('canvas');
+    sampleChroma.current=(clipId,point)=>{
+      const state=useEditor.getState(),clip=state.project.clips.find(item=>item.id===clipId),asset=state.project.assets.find(item=>item.id===clip?.assetId);
+      if(!clip||!asset||state.playing)throw Error('停止中の選択素材から背景色を取得してください。');
+      if(clip.kind==='image'){
+        const image=pictures.get(asset.id);if(!image?.complete||!image.naturalWidth)throw Error('画像を準備しています。少し待ってからもう一度お試しください。');
+        return sampleSourceColor(image,image.naturalWidth,image.naturalHeight,point.x,point.y,sampleCanvas);
+      }
+      const item=media.get(clip.id),desired=visualSourceTime(clip,asset,state.playhead),element=item?.element;
+      const ready=element&&element.readyState>=2&&!element.seeking&&element.videoWidth>0&&Math.abs(element.currentTime-desired)<=Math.max(.008,Math.abs(clip.speed)/state.project.fps);
+      if(!ready)throw Error('素材フレームを準備しています。少し待ってからもう一度お試しください。');
+      return sampleSourceColor(element,element.videoWidth,element.videoHeight,point.x,point.y,sampleCanvas);
+    };
     const maskedFrames = new Map<string, MaskedFrame>();
     const gpuPool=new GpuTransitionPool();
     const knownSizes = new Map<string, MediaSize>(); let sizeProject = '';
@@ -249,8 +264,8 @@ export default function Preview() {
           const masked = clip.kind === 'video' || clip.kind === 'image' ? maskedVideoFrame(source, clip, maskWidth, maskHeight, maskedFrames.get(clip.id)) : undefined;
           if (masked) { maskedFrames.set(clip.id, masked); activeMaskedFrames.add(clip.id); } else if (maskedFrames.has(clip.id)) { disposeMaskedFrame(maskedFrames.get(clip.id)!); maskedFrames.delete(clip.id); }
           drawContext.save(); drawContext.translate(w / 2 + w * (clip.graphic?0:clip.x) / 100, h / 2 + h * (clip.graphic?0:clip.y) / 100); drawContext.rotate((clip.graphic?0:clip.rotation) * Math.PI / 180);
-          drawContext.globalAlpha = opacityAt(clip.opacityKeyframes, t - clip.start, clip.opacity) * fade;
-          if (clip.kind !== 'title' && (clip.exposure !== 0 || clip.contrast !== 1 || clip.saturation !== 1)) drawContext.filter = `brightness(${2 ** clip.exposure}) contrast(${clip.contrast}) saturate(${clip.saturation})`;
+          drawContext.globalAlpha = clip.chromaKey?.matte ? 1 : opacityAt(clip.opacityKeyframes, t - clip.start, clip.opacity) * fade;
+          if (!clip.chromaKey?.matte && clip.kind !== 'title' && (clip.exposure !== 0 || clip.contrast !== 1 || clip.saturation !== 1)) drawContext.filter = `brightness(${2 ** clip.exposure}) contrast(${clip.contrast}) saturate(${clip.saturation})`;
           drawContext.drawImage(masked?.canvas || source, -fittedWidth / 2, -fittedHeight / 2, fittedWidth, fittedHeight); drawContext.restore();
           if(buffers){if(clip.id===pair!.fromId){buffers.aAvailable=true;buffers.aReady=sourceReady;buffers.aUsable=sourceUsable;}else{buffers.bAvailable=true;buffers.bReady=sourceReady;buffers.bUsable=sourceUsable;}}
         }
@@ -291,13 +306,13 @@ export default function Preview() {
       target.dataset.transitionsPresented=String(transitionsPresented);target.dataset.transitionBackend=active.map(pair=>transitionBuffers.get(pair.id)?.renderer.backend||'').join(',');target.dataset.previewTime=String(t);target.dataset.transitionKind=active.map(pair=>pair.video).join(',');target.dataset.transitionsReady=String(transitionsReady);frame = requestAnimationFrame(draw);
     };
     frame = requestAnimationFrame(draw);
-    return () => { captureRequest.current?.reject(new Error('写真の保存を中止しました。')); captureRequest.current = null; cancelAnimationFrame(frame); unsubscribe(); unbindMeterReset(); audio.dispose();for(const buffers of transitionBuffers.values())buffers.renderer.dispose();for(const item of maskedFrames.values())disposeMaskedFrame(item);gpuPool.dispose(); for (const item of media.values()) { clearFrame(item);item.element.pause(); item.element.removeAttribute('src'); item.element.load(); item.element.remove(); } };
+    return () => { sampleChroma.current=()=>{throw Error('素材フレームを準備しています。少し待ってからもう一度お試しください。');};sampleCanvas.width=sampleCanvas.height=0;captureRequest.current?.reject(new Error('写真の保存を中止しました。')); captureRequest.current = null; cancelAnimationFrame(frame); unsubscribe(); unbindMeterReset(); audio.dispose();for(const buffers of transitionBuffers.values())buffers.renderer.dispose();for(const item of maskedFrames.values())disposeMaskedFrame(item);gpuPool.dispose(); for (const item of media.values()) { clearFrame(item);item.element.pause(); item.element.removeAttribute('src'); item.element.load(); item.element.remove(); } };
   }, []);
   const seek = useEditor(s => s.seek);
   return <section className="preview-panel panel">
     <div className="panel-heading"><div className="panel-title"><Monitor size={15}/><span>プログラムモニター</span></div><div className="preview-transform-actions" ref={setTransformActions}/><span className="subtle tiny">{project.width} × {project.height} <span className="dot-separator">·</span> {project.fps} fps</span></div>
-    <div className="media-elements" aria-hidden="true" ref={mediaBin}/><div className="preview-stage" ref={stage}>
-      <div className="canvas-wrap" style={{ aspectRatio: `${project.width}/${project.height}`, '--preview-ratio':project.width/project.height } as CSSProperties}><canvas ref={canvas} aria-label="動画プレビュー"/><MediaDragLayer sizes={mediaSizes} actions={transformActions}/><TitleDragLayer fontVersion={fontVersion}/><DrawLayer/>{fontStatus ? <div className="preview-font-status" role="status">{fontStatus}<button className="text-button" onClick={() => setFontRetry(value => value + 1)}>再試行</button></div> : null}{safeGuides ? <div className="safe-guides"><div/></div> : null}{project.clips.length === 0 ? <div className="preview-empty"><Monitor size={36}/><strong>あなたの物語を、タイムラインへ。</strong><span>素材をドラッグして編集をはじめましょう</span></div> : null}</div>
+      <div className="media-elements" aria-hidden="true" ref={mediaBin}/><div className="preview-stage" ref={stage}>
+      <div className="canvas-wrap" style={{ aspectRatio: `${project.width}/${project.height}`, '--preview-ratio':project.width/project.height } as CSSProperties}><canvas ref={canvas} aria-label="動画プレビュー"/><MediaDragLayer sizes={mediaSizes} actions={transformActions} onSampleChroma={(clipId,point)=>sampleChroma.current(clipId,point)}/><TitleDragLayer fontVersion={fontVersion}/><DrawLayer/>{fontStatus ? <div className="preview-font-status" role="status">{fontStatus}<button className="text-button" onClick={() => setFontRetry(value => value + 1)}>再試行</button></div> : null}{safeGuides ? <div className="safe-guides"><div/></div> : null}{project.clips.length === 0 ? <div className="preview-empty"><Monitor size={36}/><strong>あなたの物語を、タイムラインへ。</strong><span>素材をドラッグして編集をはじめましょう</span></div> : null}</div>
       <div className="monitor-badge"><span/> PROGRAM</div>
     </div>
     <div className="preview-bottom"><div className="preview-meta"><span className="timecode accent">{timecode(playhead, project.fps)}</span><span className="shuttle-status" role="status" aria-label="シャトル状態">{playing ? `${shuttleRate < 0 ? '逆再生' : '再生'} ${Math.abs(shuttleRate)}×${audioLoading ? '・音声準備中' : ''}` : '停止'}</span><div className="preview-options"><select aria-label="プレビュー画質" value={quality} onChange={e => useEditor.setState({ previewQuality: Number(e.target.value) })}><option value={1}>フル画質</option><option value={0.5}>1/2 画質</option><option value={0.25}>1/4 画質</option></select><span>フィット</span><ChevronDown size={12}/></div><span className="timecode subtle">{timecode(total, project.fps)}</span></div>
