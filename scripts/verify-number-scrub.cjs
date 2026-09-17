@@ -1,0 +1,62 @@
+const { _electron: electron } = require('playwright');
+const fs = require('node:fs/promises'), path = require('node:path'), assert = require('node:assert/strict');
+const { ffmpeg, run, inspectMedia } = require('../electron/media.cjs');
+const root = path.join(__dirname, '..');
+
+(async () => {
+  const results=path.join(root,'test-results');await fs.mkdir(results,{recursive:true});await fs.mkdir(path.join(root,'.local'),{recursive:true});const file=path.join(results,'数値ドラッグ検証.luma'),mediaFile=path.join(results,'数値ドラッグ素材.mp4');
+  await run(ffmpeg,['-v','error','-y','-f','lavfi','-i','color=c=0x285ca8:s=640x360:r=30:d=3','-c:v','libx264','-pix_fmt','yuv420p',mediaFile]);const asset=await inspectMedia(mediaFile,path.join(root,'.local','number-scrub-cache'));
+  const fixture={version:1,id:'number-scrub',name:'数値ドラッグ検証',width:640,height:360,fps:30,assets:[asset],markers:[],tracks:[{id:'v1',name:'Video1',kind:'video',muted:false,hidden:false,locked:false,solo:false}],clips:[{id:'clip',assetId:asset.id,trackId:'v1',name:asset.name,kind:'video',start:0,in:0,duration:3,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,contrast:1,saturation:1,volume:0,fadeIn:0,fadeOut:0,text:'',fontSize:94,color:'#ffffff',textStyle:'hero',audioMuted:true}]};await fs.writeFile(file,JSON.stringify(fixture));
+  const profile=await fs.mkdtemp(path.join(root,'.local','number-scrub-')),env={...process.env,LUMA_TEST_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;delete env.LUMA_DEMO_FIXTURE;delete env.LUMA_TEST_FIXTURES;
+  const executablePath=process.env.LUMA_VERIFY_EXE,app=await electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000});
+  const page=await app.firstWindow(),checks=[],errors=[];page.on('pageerror',error=>errors.push(error.message));
+  const save=async()=>{
+    await page.evaluate(()=>document.activeElement instanceof HTMLElement&&document.activeElement.blur());
+    const before=(await fs.stat(file).catch(()=>null))?.mtimeMs;await page.keyboard.press('Control+s');const deadline=Date.now()+20000;
+    while((await fs.stat(file).catch(()=>null))?.mtimeMs===before){if(Date.now()>deadline)throw Error('数値ドラッグ後の保存が完了しませんでした。');await new Promise(resolve=>setTimeout(resolve,25));}
+    await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));await page.getByRole('dialog',{name:'プロジェクトを保存しています',exact:true}).waitFor({state:'hidden'});return JSON.parse(await fs.readFile(file,'utf8'));
+  };
+  const scrub=async(locator,dx,cancel)=>{
+    await locator.scrollIntoViewIfNeeded();const box=await locator.boundingBox();assert.ok(box,'scrubbable number input');const x=box.x+box.width/2,y=box.y+box.height/2;
+    await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+dx,y,{steps:Math.max(2,Math.ceil(Math.abs(dx)/2))});
+    if(cancel==='escape')await page.keyboard.press('Escape');
+    if(cancel==='blur')await page.evaluate(()=>window.dispatchEvent(new Event('blur')));
+    if(cancel==='pointer')await page.evaluate(()=>window.dispatchEvent(new PointerEvent('pointercancel',{pointerId:1,bubbles:true})));
+    await page.mouse.up();
+  };
+  const value=(project,id,key)=>project.clips.find(clip=>clip.id===id)[key];
+  try{
+    await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},file);await page.keyboard.press('Control+o');await page.getByRole('button',{name:fixture.name,exact:true}).waitFor({timeout:60000});
+    let project=JSON.parse(await fs.readFile(file,'utf8')),clip=project.clips.find(item=>item.kind==='video');assert.ok(clip,'video clip');
+    await page.locator(`.media-drag-target[data-media-clip-id="${clip.id}"]`).click();const rotation=page.locator('#prop-rotation');await rotation.waitFor();
+    const initial=value(project,clip.id,'rotation');assert.equal(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),true);
+    await scrub(rotation,2);project=await save();assert.equal(value(project,clip.id,'rotation'),initial);assert.equal(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),true);
+    await rotation.click();await rotation.press('Control+a');await rotation.fill('7');await rotation.press('Enter');project=await save();assert.equal(value(project,clip.id,'rotation'),7);
+    await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),initial);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),7);
+    checks.push('a click remains a normal number edit and sub-threshold movement creates no history');
+
+    await scrub(rotation,20);project=await save();assert.equal(value(project,clip.id,'rotation'),17);await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),7);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),17);
+    await scrub(rotation,-10);project=await save();assert.equal(value(project,clip.id,'rotation'),12);await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),17);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),12);
+    checks.push('right raises and left lowers by step with one Undo and Redo per scrub');
+
+    for(const cancellation of ['escape','blur','pointer']){await scrub(rotation,24,cancellation);assert.equal(value(await save(),clip.id,'rotation'),12);}
+    await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),17);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),12);
+    checks.push('Escape, focus loss and pointer cancellation restore both value and history');
+
+    const opacity=page.locator('#prop-opacity');await opacity.click();await opacity.press('Control+a');await opacity.fill('99');await opacity.press('Enter');assert.ok(Math.abs(value(await save(),clip.id,'opacity')-.99)<1e-9);
+    await scrub(opacity,20);assert.equal(value(await save(),clip.id,'opacity'),1);await page.keyboard.press('Control+z');assert.ok(Math.abs(value(await save(),clip.id,'opacity')-.99)<1e-9);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'opacity'),1);
+    await scrub(opacity,20);assert.equal(value(await save(),clip.id,'opacity'),1);await page.keyboard.press('Control+z');assert.ok(Math.abs(value(await save(),clip.id,'opacity')-.99)<1e-9);await page.keyboard.press('Control+Shift+z');await save();
+    checks.push('limits are clamped and a no-op drag at the limit creates no Undo entry');
+
+    const cropBottom=page.locator('input[id^="effect-"][id$="-下"]');await scrub(cropBottom,20);project=await save();assert.ok(Math.abs(project.clips.find(item=>item.id===clip.id).crop.bottom-.01)<1e-9);
+    await page.locator('#video-mask-type').selectOption('ellipse');const maskX=page.locator('input[id^="effect-"][id$="-位置-X"]');await scrub(maskX,20);project=await save();assert.ok(Math.abs(project.clips.find(item=>item.id===clip.id).videoMask.x-.51)<1e-9);
+    await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'videoMask').x,.5);await page.keyboard.press('Control+Shift+z');await save();
+    checks.push('crop and mask fields use the same persisted scrub gesture');
+
+    await rotation.click();await rotation.press('Tab');assert.notEqual(await page.evaluate(()=>document.activeElement?.id),'prop-rotation');
+    const track=project.tracks.find(item=>item.id===clip.trackId);await page.getByRole('button',{name:`${track.name} ロック`,exact:true}).click();await save();assert.equal(await rotation.isDisabled(),true);
+    checks.push('Tab navigation remains available and locked tracks disable scrubbing');
+    assert.deepEqual(errors,[]);await page.screenshot({path:path.join(results,'number-scrub.png')});await fs.writeFile(path.join(results,'number-scrub-verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,checks,errors},null,2));
+    console.log('Number input scrubbing verified:',checks.length,'checks.');
+  }catch(error){await page.screenshot({path:path.join(results,'number-scrub-failure.png')}).catch(()=>{});throw error;}finally{await app.close();}
+})().catch(error=>{console.error(error);process.exitCode=1;});
