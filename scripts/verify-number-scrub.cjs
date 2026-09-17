@@ -6,8 +6,10 @@ const root = path.join(__dirname, '..');
 (async () => {
   const results=path.join(root,'test-results');await fs.mkdir(results,{recursive:true});await fs.mkdir(path.join(root,'.local'),{recursive:true});const file=path.join(results,'数値ドラッグ検証.luma'),mediaFile=path.join(results,'数値ドラッグ素材.mp4');
   await run(ffmpeg,['-v','error','-y','-f','lavfi','-i','color=c=0x285ca8:s=640x360:r=30:d=3','-f','lavfi','-i','anullsrc=r=48000:cl=stereo:d=3','-shortest','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',mediaFile]);const asset=await inspectMedia(mediaFile,path.join(root,'.local','number-scrub-cache'));
-  const video={id:'clip',assetId:asset.id,trackId:'v1',linkId:'linked-av',name:asset.name,kind:'video',start:0,in:0,duration:3,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,contrast:1,saturation:1,volume:0,fadeIn:0,fadeOut:0,text:'',fontSize:94,color:'#ffffff',textStyle:'hero',audioDetached:true};
-  const fixture={version:1,id:'number-scrub',name:'数値ドラッグ検証',width:640,height:360,fps:30,assets:[asset],markers:[],tracks:[{id:'v1',name:'Video1',kind:'video',muted:false,hidden:false,locked:false,solo:false},{id:'a1',name:'Audio1',kind:'audio',muted:false,hidden:false,locked:false,solo:false}],clips:[video,{...video,id:'audio',trackId:'a1',kind:'audio',name:`${asset.name}（音声）`,audioDetached:undefined}]};await fs.writeFile(file,JSON.stringify(fixture));
+  const video={id:'clip',assetId:asset.id,trackId:'v1',linkId:'linked-av',name:asset.name,kind:'video',start:0,in:0,duration:3,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,contrast:1,saturation:1,volume:0,fadeIn:.4,fadeOut:.6,text:'',fontSize:94,color:'#ffffff',textStyle:'hero',audioDetached:true};
+  const audio={...video,id:'audio',trackId:'a1',kind:'audio',name:`${asset.name}（音声）`,audioDetached:undefined,volume:1,volumeKeyframes:[{time:.5,value:.4},{time:2.5,value:.9}]};
+  const next={...video,id:'next',linkId:undefined,start:3,name:`${asset.name} 2`,audioDetached:undefined,audioMuted:true,fadeIn:0,fadeOut:0};
+  const fixture={version:1,id:'number-scrub',name:'数値ドラッグ検証',width:640,height:360,fps:30,assets:[asset],markers:[],tracks:[{id:'v1',name:'Video1',kind:'video',muted:false,hidden:false,locked:false,solo:false},{id:'a1',name:'Audio1',kind:'audio',muted:false,hidden:false,locked:false,solo:false}],clips:[video,audio,next],transitions:[{id:'number-transition',fromId:'clip',toId:'next',mode:'fixed',duration:1,video:'dissolve'}]};await fs.writeFile(file,JSON.stringify(fixture));
   const profile=await fs.mkdtemp(path.join(root,'.local','number-scrub-')),env={...process.env,LUMA_TEST_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;delete env.LUMA_DEMO_FIXTURE;delete env.LUMA_TEST_FIXTURES;
   const executablePath=process.env.LUMA_VERIFY_EXE,app=await electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000});
   const page=await app.firstWindow(),checks=[],errors=[];page.on('pageerror',error=>errors.push(error.message));
@@ -24,6 +26,10 @@ const root = path.join(__dirname, '..');
     if(cancel==='blur')await page.evaluate(()=>window.dispatchEvent(new Event('blur')));
     if(cancel==='pointer')await page.evaluate(()=>window.dispatchEvent(new PointerEvent('pointercancel',{pointerId:1,bubbles:true})));
     await page.mouse.up();
+  };
+  const scrubRoundTrip=async(locator,dx)=>{
+    await locator.scrollIntoViewIfNeeded();const box=await locator.boundingBox();assert.ok(box,'round-trip scrubbable number input');const x=box.x+box.width/2,y=box.y+box.height/2;
+    await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+dx,y,{steps:4});await page.mouse.move(x,y,{steps:4});await page.mouse.up();
   };
   const value=(project,id,key)=>project.clips.find(clip=>clip.id===id)[key];
   try{
@@ -61,6 +67,9 @@ const root = path.join(__dirname, '..');
 
     const duration=page.locator('#prop-duration');await scrub(duration,20);assert.equal(Number(await duration.inputValue()),3);project=await save();assert.equal(value(project,clip.id,'duration'),3);assert.equal(value(project,'audio','duration'),3);
     checks.push('the input reconciles to the normalized accepted duration when the source limit rejects a requested value');
+
+    const roundTripBefore={video:project.clips.find(item=>item.id===clip.id),audio:project.clips.find(item=>item.id==='audio'),transitions:project.transitions};await scrubRoundTrip(duration,-200);project=await save();assert.deepEqual(project.clips.find(item=>item.id===clip.id),roundTripBefore.video);assert.deepEqual(project.clips.find(item=>item.id==='audio'),roundTripBefore.audio);assert.deepEqual(project.transitions,roundTripBefore.transitions);
+    checks.push('a duration round trip restores fades, volume automation, linked timing and transitions from the gesture snapshot');
 
     const cropBottom=page.locator('input[id^="effect-"][id$="-下"]');await scrub(cropBottom,20);project=await save();assert.ok(Math.abs(project.clips.find(item=>item.id===clip.id).crop.bottom-.01)<1e-9);
     await page.locator('#video-mask-type').selectOption('ellipse');const maskX=page.locator('input[id^="effect-"][id$="-位置-X"]');await scrub(maskX,20);project=await save();assert.ok(Math.abs(project.clips.find(item=>item.id===clip.id).videoMask.x-.51)<1e-9);
