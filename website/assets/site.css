@@ -10,4 +10,21 @@
 
 .video-guide{padding:48px 0}.video-guide h2{font-size:clamp(26px,3vw,40px);line-height:1.4;margin:0 0 16px}.video-player{aspect-ratio:16/9;width:100%;background:#152019;border-radius:16px;overflow:hidden;margin-top:24px}.video-player iframe{display:block;width:100%;height:100%;border:0}.video-caption{display:flex;gap:16px;justify-content:space-between;flex-wrap:wrap;font-size:14px}.video-caption span{color:#657267}
 
+.prose a.button{color:#fffef8}.prose a.button:hover{color:#fff}
+.developer-section{padding-bottom:60px;border-bottom:1px solid var(--line)}
+.developer-intro{display:grid;grid-template-columns:1.15fr 1fr;gap:60px;align-items:center}
+.developer-summary{font-size:16px;line-height:2;margin:22px 0 18px;max-width:38em}
+.developer-profile{display:flex;align-items:center;gap:22px}
+.developer-portrait{display:block;width:180px;height:180px;object-fit:cover;flex-shrink:0;border-radius:8px;background:#ddd}
+.developer-profile figcaption{min-width:0}.developer-profile figcaption>strong{display:block;font-size:26px;font-weight:600}
+.developer-profile figcaption>span,.roman-name{font-size:14px;color:var(--muted)}
+.developer-credentials{list-style:none;padding:0;margin:12px 0 0;font-size:14px;line-height:1.9}.developer-credentials li+li{margin-top:8px}
+.developer-message{margin:36px 0 0;padding:28px 34px;border-left:4px solid #809b65;background:#eaf0e1;font-size:16px;line-height:2}
+.developer-message p+p{margin-top:16px}.developer-message footer{margin-top:20px;font-weight:600}.developer-message footer span{font-size:14px;font-weight:400}
+.trust-points{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;margin-top:32px}.trust-points h3{font-size:19px}.trust-points p{font-size:15px;line-height:1.9;margin-top:10px;color:var(--muted)}
+.developer-page-profile{display:grid;grid-template-columns:230px 1fr;gap:36px;align-items:center;margin:36px 0 48px}.developer-page-profile .developer-portrait{width:230px;height:230px}.developer-page-profile h2{font-size:30px}.developer-page-profile p:last-child{margin-top:20px;font-size:16px}.developer-page>.developer-message{margin-bottom:48px}.developer-page .prose p,.school-details{font-size:16px}
+.school-details{margin:24px 0}.school-details dt{font-weight:650;border-top:1px solid var(--line);padding-top:20px}.school-details dd{margin:8px 0 22px;color:var(--muted)}.developer-page .affiliation-note{font-size:14px;border:1px solid var(--line);padding:18px;border-radius:8px}
+@media(max-width:1100px){.developer-intro{grid-template-columns:1fr;gap:28px}.developer-profile{max-width:560px}.site-header nav{gap:16px}}
+@media(max-width:740px){html{scroll-padding-top:165px}.site-header nav{flex-wrap:wrap;justify-content:flex-start;gap:12px 18px;font-size:13px}.developer-section{padding-bottom:40px}.developer-profile{gap:18px;align-items:flex-start}.developer-profile .developer-portrait{width:110px;height:110px}.developer-profile figcaption>strong{font-size:24px}.developer-credentials{font-size:14px}.developer-message{padding:22px 20px;margin-top:28px}.trust-points{grid-template-columns:1fr;gap:24px}.developer-page h1{font-size:30px}.developer-page-profile{grid-template-columns:1fr;gap:22px}.developer-page-profile .developer-portrait{width:200px;height:200px}.developer-page-profile h2{font-size:28px}}
+
 .release-highlights{padding-top:70px;padding-bottom:30px}.release-highlights h2{max-width:800px}.release-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:30px}.release-grid article{padding:28px 32px;border:1px solid var(--line);border-radius:12px;background:var(--white)}.release-grid .feature-number{margin:0 0 14px}.release-grid p,.release-grid ul{font-size:14px;line-height:1.95;color:var(--muted);margin:16px 0}.release-grid ul{padding-left:20px}.release-grid li+li{margin-top:5px}@media(max-width:740px){.release-highlights{padding-top:45px}.release-grid{grid-template-columns:1fr;gap:18px}.release-grid article{padding:24px}}
