@@ -1,0 +1,4 @@
+.scrubbable-number{cursor:ew-resize;touch-action:none}
+.scrubbable-number:focus:not([data-number-scrubbing]){cursor:text}
+.scrubbable-number[data-number-scrubbing]{cursor:ew-resize!important;caret-color:transparent}
+html[data-number-scrub],html[data-number-scrub] *{cursor:ew-resize!important;user-select:none!important}
