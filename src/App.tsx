@@ -34,6 +34,12 @@ function errorText(e: unknown) { const message = e instanceof Error ? e.message 
 function downloadJSON(p: Project) {
   const blob = new Blob([JSON.stringify(p, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${p.name}.luma`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+function ProjectOperationDialog({ title, message, blockKeys = false }: { title: string; message: string; blockKeys?: boolean }) {
+  return <div className="modal-backdrop"><section className="modal project-operation-dialog" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={element => { element?.focus(); }} onKeyDown={blockKeys ? e => { e.preventDefault(); e.stopPropagation(); } : undefined}>
+    <div className="modal-heading"><h2>{title}</h2></div>
+    <div className="project-operation-status" role="status" aria-live="polite"><span className="project-operation-spinner" aria-hidden="true"><LoaderCircle size={21} className="spin"/></span><span>{message}</span></div>
+  </section></div>;
+}
 export default function App() {
   const p = useEditor(s => s.project); const ready = useEditor(s => s.ready); const dirty = useEditor(s => s.dirty); const toast = useEditor(s => s.toast); const tab = useEditor(s => s.inspectorTab); const savedAt = useEditor(s => s.autosavedAt); const sourceId = useEditor(s => s.sourceId);
   const gestureActive = useEditor(s => s.gestureActive);
@@ -260,7 +266,7 @@ export default function App() {
     </Modal> : null}
 
     <input ref={importInput} hidden type="file" multiple accept="video/*,audio/*,image/*" onChange={e => { void browserImport(e.target.files); e.target.value = ''; }}/><input ref={openInput} hidden type="file" accept=".luma" onChange={async e => { const file = e.target.files?.[0]; if (file) { try { const project = JSON.parse(await file.text()) as Project; if (project.version !== 1 || !Array.isArray(project.clips) || !Array.isArray(project.assets)) throw new Error('プロジェクト形式が不正です'); validateTransitions(project); project.clips.forEach(c => { validateGraphic(c); validateVolumeKeys(c); validateTextBox(c); if (c.kind === 'title') validateTextStyle(c); }); project.assets = project.assets.map(a => a.url.startsWith('blob:') ? { ...a, offline: true, url: '' } : a); useEditor.getState().load(project); } catch (error) { useEditor.getState().notify(errorText(error)); } } e.target.value = ''; }}/>
-    {projectBusy && !savingOnClose ? <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-label={projectBusy} tabIndex={-1} ref={element => { element?.focus(); }}><div className="modal-heading"><h2>{projectBusy}</h2></div><p role="status"><LoaderCircle size={16} className="spin"/> 処理が終わるまでお待ちください。</p></section></div> : null}
-    {savingOnClose ? <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-label="プロジェクトを保存しています" tabIndex={-1} ref={element => { element?.focus(); }} onKeyDown={e => { e.preventDefault(); e.stopPropagation(); }}><div className="modal-heading"><h2>プロジェクトを保存しています</h2></div><p role="status"><LoaderCircle size={16} className="spin"/> 保存が完了すると終了します。</p></section></div> : null}
+    {projectBusy && !savingOnClose ? <ProjectOperationDialog title={projectBusy} message="処理が終わるまでお待ちください。"/> : null}
+    {savingOnClose ? <ProjectOperationDialog title="プロジェクトを保存しています" message="保存が完了すると終了します。" blockKeys/> : null}
   </div>;
 }
