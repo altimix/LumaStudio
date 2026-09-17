@@ -1,4 +1,4 @@
-import { applyChromaPixel, averageSampleColor, chromaUniforms } from '../shared/chroma-key.mjs';
+import { applyChromaPixels, averageSampleColor, chromaUniforms } from '../shared/chroma-key.mjs';
 import type { ChromaKey } from './types';
 
 const shader = `#version 300 es
@@ -69,8 +69,7 @@ export class GpuChromaPreview {
 export function paintChromaCpu(canvas:HTMLCanvasElement,source:CanvasImageSource,width:number,height:number,key:ChromaKey){
   if(canvas.width!==width||canvas.height!==height){canvas.width=width;canvas.height=height;}
   const context=canvas.getContext('2d',{alpha:true,willReadFrequently:true})!;context.globalCompositeOperation='copy';context.globalAlpha=1;context.filter='none';context.drawImage(source,0,0,width,height);
-  const image=context.getImageData(0,0,width,height),pixels=image.data;
-  for(let index=0;index<pixels.length;index+=4){const result=applyChromaPixel(pixels[index],pixels[index+1],pixels[index+2],pixels[index+3],key);if(key.matte){pixels[index]=pixels[index+1]=pixels[index+2]=result.alpha;pixels[index+3]=255;}else{pixels[index]=result.red;pixels[index+1]=result.green;pixels[index+2]=result.blue;pixels[index+3]=result.alpha;}}
+  const image=context.getImageData(0,0,width,height);applyChromaPixels(image.data,key);
   context.putImageData(image,0,0);return canvas;
 }
 

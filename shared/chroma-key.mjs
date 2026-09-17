@@ -64,6 +64,35 @@ export function applyChromaPixel(red, green, blue, alpha, key) {
   };
 }
 
+// CPU preview fallback. Resolve the key color and its constants once per frame;
+// allocating objects or reparsing the color for every pixel makes HD playback
+// unusable on machines that cannot create a WebGL2 context.
+export function applyChromaPixels(pixels, key) {
+  if (!(pixels instanceof Uint8ClampedArray) || pixels.length % 4) throw new Error('クロマキーの画素データが不正です。');
+  const target = chromaUniforms(key);
+  const proximityRange = Math.max(.01, key.tolerance + key.softness + .15);
+  for (let index = 0; index < pixels.length; index += 4) {
+    const red = pixels[index], green = pixels[index + 1], blue = pixels[index + 2], alpha = pixels[index + 3];
+    const cb = (-.168736 * red - .331264 * green + .5 * blue) / 255;
+    const cr = (.5 * red - .418688 * green - .081312 * blue) / 255;
+    const cbDistance = cb - target.cb, crDistance = cr - target.cr;
+    const distance = Math.sqrt(cbDistance * cbDistance + crDistance * crDistance);
+    const linear = key.softness > 1e-8 ? clamp01((distance - key.tolerance) / key.softness) : distance > key.tolerance ? 1 : 0;
+    const matte = linear * linear * (3 - 2 * linear), proximity = 1 - clamp01(distance / proximityRange);
+    const greenExcess = Math.max(0, green - Math.max(red, blue)), blueExcess = Math.max(0, blue - Math.max(red, green));
+    const outputAlpha = Math.round(alpha * matte);
+    if (key.matte) {
+      pixels[index] = pixels[index + 1] = pixels[index + 2] = outputAlpha;
+      pixels[index + 3] = 255;
+    } else {
+      pixels[index + 1] = Math.round(green - greenExcess * key.greenSpill * proximity);
+      pixels[index + 2] = Math.round(blue - blueExcess * key.blueSpill * proximity);
+      pixels[index + 3] = outputAlpha;
+    }
+  }
+  return pixels;
+}
+
 const number = value => Number(value.toFixed(8));
 export function ffmpegChromaFilter(clip) {
   const key = clip?.chromaKey;

@@ -150,7 +150,11 @@ export default function Preview() {
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
       const alive = new Set<string>(), activeTitles = new Set<string>(), activeMaskedFrames = new Set<string>();
       if(plannedProject!==p){plans=transitionPlan(p);plannedProject=p;projectRevision++;const ids=new Set(p.clips.map(c=>c.id));for(const id of knownSizes.keys())if(!ids.has(id)){knownSizes.delete(id);sizesChanged=true;}for(const [id,item] of maskedFrames)if(!ids.has(id)){disposeMaskedFrame(item);maskedFrames.delete(id);}}
-      const active=plans.filter(pair=>pair.video&&t>=pair.start&&t<pair.end&&!p.tracks.find(track=>track.id===pair.from.trackId)?.hidden),pairs=new Map(active.flatMap(pair=>[[pair.fromId,pair],[pair.toId,pair]] as const));
+      const diagnosticMatteId=s.selected.length===1?p.clips.find(clip=>clip.id===s.selected[0]&&(clip.kind==='video'||clip.kind==='image')&&clip.chromaKey?.matte&&t>=clip.start&&t<clip.start+clip.duration&&!p.tracks.find(track=>track.id===clip.trackId)?.hidden&&!p.assets.find(asset=>asset.id===clip.assetId)?.offline)?.id:undefined;
+      // A key matte is a diagnostic view of the selected source, not another
+      // composited layer. Keep the monitor black outside that source/mask and
+      // bypass transitions and lower tracks while the diagnostic is visible.
+      const active=diagnosticMatteId?[]:plans.filter(pair=>pair.video&&t>=pair.start&&t<pair.end&&!p.tracks.find(track=>track.id===pair.from.trackId)?.hidden),pairs=new Map(active.flatMap(pair=>[[pair.fromId,pair],[pair.toId,pair]] as const));
       // Ordinary cuts need the same decoder warm-up as transitions. Prepare
       // only the nearest incoming clip per visible track, so long edits do not
       // open every decoder at once.
@@ -179,9 +183,10 @@ export default function Preview() {
       for(const pair of active){let buffers=transitionBuffers.get(pair.id);if(!buffers){buffers={a:document.createElement('canvas'),b:document.createElement('canvas'),aReady:false,bReady:false,aUsable:false,bUsable:false,aAvailable:false,bAvailable:false,renderer:new TransitionPreview(message=>{useEditor.getState().stop();useEditor.getState().notify(message);},gpuPool)};transitionBuffers.set(pair.id,buffers);}buffers.aReady=buffers.bReady=buffers.aUsable=buffers.bUsable=buffers.aAvailable=buffers.bAvailable=false;for(const buffer of [buffers.a,buffers.b]){if(buffer.width!==w||buffer.height!==h){buffer.width=w;buffer.height=h;}buffer.getContext('2d')!.clearRect(0,0,w,h);}}
       let frameReady=true; let transitionsReady=true,transitionsPresented=true;const tracks = [...p.tracks].reverse();
       for (const track of tracks) for (const clip of p.clips.filter(c => c.trackId === track.id).sort((a,b) => a.start - b.start)) {
+        if(diagnosticMatteId&&clip.id!==diagnosticMatteId)continue;
         if ((t < clip.start || t >= clip.start + clip.duration) && !pairs.has(clip.id)) continue;
         const asset = p.assets.find(a => a.id === clip.assetId);
-        const fade = fadeAt(clip, t); let source: CanvasImageSource | null = null; let sourceReady=true,sourceUsable=true; let sw = p.width; let sh = p.height;
+        const fade = fadeAt(clip, t); let source: CanvasImageSource | null = null; let sourceKey:string|undefined;let sourceReady=true,sourceUsable=true; let sw = p.width; let sh = p.height;
         if (clip.kind === 'title') {
           activeTitles.add(clip.id); if (isFontReady(clip)) {
           const key = JSON.stringify([clip.text, clip.fontSize, clip.color, clip.textStyle, clip.fontFamily, clip.fontWeight, clip.textShadow, clip.shadowColor, clip.shadowBlur, clip.shadowDistance, clip.textStroke, clip.strokeColor, clip.strokeWidth, clip.captionBackgroundOpacity, clip.textBox, clip.graphic, clip.graphic?[clip.x,clip.y,clip.scale,clip.rotation]:null, fontRevision(), p.width, w, h]);
@@ -192,7 +197,7 @@ export default function Preview() {
           if (clip.kind === 'image') {
             let img = pictures.get(asset.id);
             if (!img || img.src !== new URL(asset.url,location.href).href) { img = new Image(); img.crossOrigin = 'anonymous'; img.src = asset.url; pictures.set(asset.id, img); }
-            if (img.complete && img.naturalWidth) { source = img; sw = img.naturalWidth; sh = img.naturalHeight; }
+            if (img.complete && img.naturalWidth) { source = img; sw = img.naturalWidth; sh = img.naturalHeight; sourceKey=mediaSourceKey(p,asset); }
           } else if (clip.kind === 'video') {
             const item = prepareVideo(clip, asset);
             const el = item.element; alive.add(clip.id);
@@ -245,7 +250,7 @@ export default function Preview() {
             // its end slightly before the audio clock reaches the cut.
             if (nativePlayback && !waitingNative && el.paused && !el.ended && !el.seeking) void el.play().catch(() => {});
             if ((!nativePlayback||waitingNative) && !el.paused) el.pause();
-            if (item.frame && (sourceUsable || !s.playing)) { source = item.frame; sw = item.frame.width; sh = item.frame.height; }
+            if (item.frame && (sourceUsable || !s.playing)) { source = item.frame; sw = item.frame.width; sh = item.frame.height; sourceKey=JSON.stringify([mediaSourceKey(p,asset),item.frameTime,item.frameRevision,sw,sh]); }
           }
         }
         if (!track.hidden && clip.kind !== 'audio' && (!source || !sourceReady)) frameReady = false;
@@ -261,11 +266,12 @@ export default function Preview() {
           // reveal more source detail, while scaling this intermediate canvas to
           // 300% would multiply its memory by nine (over 1 GB for an 8K clip).
           const composite = maskedCompositeSize(sw, sh, w, h), maskWidth = composite.width, maskHeight = composite.height;
-          const masked = clip.kind === 'video' || clip.kind === 'image' ? maskedVideoFrame(source, clip, maskWidth, maskHeight, maskedFrames.get(clip.id)) : undefined;
+          const showMatte=clip.id===diagnosticMatteId,previewClip=clip.chromaKey&&clip.chromaKey.matte!==showMatte?{...clip,chromaKey:{...clip.chromaKey,matte:showMatte}}:clip;
+          const masked = clip.kind === 'video' || clip.kind === 'image' ? maskedVideoFrame(source, previewClip, maskWidth, maskHeight, maskedFrames.get(clip.id),sourceKey) : undefined;
           if (masked) { maskedFrames.set(clip.id, masked); activeMaskedFrames.add(clip.id); } else if (maskedFrames.has(clip.id)) { disposeMaskedFrame(maskedFrames.get(clip.id)!); maskedFrames.delete(clip.id); }
           drawContext.save(); drawContext.translate(w / 2 + w * (clip.graphic?0:clip.x) / 100, h / 2 + h * (clip.graphic?0:clip.y) / 100); drawContext.rotate((clip.graphic?0:clip.rotation) * Math.PI / 180);
-          drawContext.globalAlpha = clip.chromaKey?.matte ? 1 : opacityAt(clip.opacityKeyframes, t - clip.start, clip.opacity) * fade;
-          if (!clip.chromaKey?.matte && clip.kind !== 'title' && (clip.exposure !== 0 || clip.contrast !== 1 || clip.saturation !== 1)) drawContext.filter = `brightness(${2 ** clip.exposure}) contrast(${clip.contrast}) saturate(${clip.saturation})`;
+          drawContext.globalAlpha = showMatte ? 1 : opacityAt(clip.opacityKeyframes, t - clip.start, clip.opacity) * fade;
+          if (!showMatte && clip.kind !== 'title' && (clip.exposure !== 0 || clip.contrast !== 1 || clip.saturation !== 1)) drawContext.filter = `brightness(${2 ** clip.exposure}) contrast(${clip.contrast}) saturate(${clip.saturation})`;
           drawContext.drawImage(masked?.canvas || source, -fittedWidth / 2, -fittedHeight / 2, fittedWidth, fittedHeight); drawContext.restore();
           if(buffers){if(clip.id===pair!.fromId){buffers.aAvailable=true;buffers.aReady=sourceReady;buffers.aUsable=sourceUsable;}else{buffers.bAvailable=true;buffers.bReady=sourceReady;buffers.bUsable=sourceUsable;}}
         }

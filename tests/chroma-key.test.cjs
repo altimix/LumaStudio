@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { applyChromaPixel, averageSampleColor, DEFAULT_CHROMA_KEY, ffmpegChromaFilter, parseChromaColor, validateChromaKey } = require('../shared/chroma-key.mjs');
+const { applyChromaPixel, applyChromaPixels, averageSampleColor, DEFAULT_CHROMA_KEY, ffmpegChromaFilter, parseChromaColor, validateChromaKey } = require('../shared/chroma-key.mjs');
 
 const clip = patch => ({ kind: 'video', ...patch });
 
@@ -27,6 +27,14 @@ test('keys matching chroma, smooths the boundary, preserves source alpha and sup
   const removed = applyChromaPixel(0, 255, 0, 173, key); assert.equal(removed.alpha, 0); assert.ok(removed.green < 255);
   const foreground = applyChromaPixel(255, 0, 0, 173, key); assert.equal(foreground.alpha, 173); assert.equal(foreground.red, 255);
   const edge = applyChromaPixel(0, 180, 0, 200, key); assert.ok(edge.alpha > 0 && edge.alpha < 200); assert.ok(edge.green < 180);
+});
+
+test('processes a CPU fallback frame with one prepared key and supports diagnostic matte output', () => {
+  const key = { ...DEFAULT_CHROMA_KEY, color: '#00ff00', tolerance: .02, softness: .2, greenSpill: 1, blueSpill: 0 };
+  const source = new Uint8ClampedArray([0,255,0,173,255,0,0,173,0,180,0,200]);
+  const expected=[];for(let index=0;index<source.length;index+=4){const pixel=applyChromaPixel(source[index],source[index+1],source[index+2],source[index+3],key);expected.push(pixel.red,pixel.green,pixel.blue,pixel.alpha);}
+  const output=source.slice();assert.equal(applyChromaPixels(output,key),output);assert.deepEqual([...output],expected);
+  const matte=source.slice();applyChromaPixels(matte,{...key,matte:true});assert.deepEqual([...matte.slice(0,4)],[0,0,0,255]);assert.deepEqual([...matte.slice(4,8)],[173,173,173,255]);
 });
 
 test('builds a bounded FFmpeg filter and never exports the diagnostic matte view', () => {

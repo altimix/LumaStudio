@@ -201,6 +201,7 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
     event.preventDefault();event.stopPropagation();event.currentTarget.focus({preventScroll:true});
     const state=useEditor.getState(),clip=state.project.clips.find(item=>item.id===renderedClip.id),viewport=root.current;
     if(!clip?.chromaKey||!viewport||state.playing||state.mediaEditMode!=='chroma'||state.project.tracks.find(track=>track.id===clip.trackId)?.locked)return;
+    if(state.playhead<clip.start||state.playhead>=clip.start+clip.duration){state.notify('再生ヘッドを選択素材の上に移動してください。');return;}
     const rect=viewport.getBoundingClientRect();if(!rect.width||!rect.height)return;
     const point=mediaNormalizedPoint(clip,source,state.project,{x:(event.clientX-rect.left)/rect.width*state.project.width,y:(event.clientY-rect.top)/rect.height*state.project.height});
     if(point.x<0||point.x>1||point.y<0||point.y>1){state.notify('素材の内側をクリックしてください。');return;}
@@ -211,11 +212,17 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
     }catch(error){useEditor.getState().notify((error as Error).message);}
   };
   const current = active.find(item => selected.includes(item.clip.id));
+  const selectedClip=selected.length===1?project.clips.find(clip=>clip.id===selected[0]):undefined,selectedAsset=assets.get(selectedClip?.assetId||''),selectedTrack=tracks.get(selectedClip?.trackId||'');
+  const chromaCurrent=selectedClip&&selectedAsset&&selectedTrack&&(selectedClip.kind==='video'||selectedClip.kind==='image')&&selectedClip.chromaKey&&!selectedTrack.hidden&&!selectedAsset.offline?{clip:selectedClip,asset:selectedAsset,locked:selectedTrack.locked}:undefined;
   const effectOverlay=()=>{
+    if(editMode==='chroma'){
+      if(!chromaCurrent||chromaCurrent.locked)return null;
+      const {clip,asset}=chromaCurrent,source=sourceSize(clip,asset),bounds=mediaBounds(clip,source,project),z=900000+(order.get(clip.id)||1);
+      return <><button type="button" className="chroma-sample-target" aria-label="クロマキーの背景色を採る" title="クリックした場所を5×5画素で平均採色" style={{zIndex:z}} onPointerDown={event=>void sampleChromaAt(event,clip,source)}/><div className="chroma-sample-bounds" aria-hidden="true" style={{left:bounds.x/project.width*100+'%',top:bounds.y/project.height*100+'%',width:bounds.width/project.width*100+'%',height:bounds.height/project.height*100+'%',transform:`translate(-50%,-50%) rotate(${clip.rotation}deg)`,zIndex:z+1}}/></>;
+    }
     if(!current||current.locked)return null;const {clip,asset}=current;if(sizes[clip.id]?.source!==mediaSourceKey(project,asset))return null;
     const source=sourceSize(clip,asset),bounds=mediaBounds(clip,source,project),z=900000+(order.get(clip.id)||1);
     const style=(center:{x:number;y:number},width:number,height:number,ellipse=false)=>({left:center.x/project.width*100+'%',top:center.y/project.height*100+'%',width:width/project.width*100+'%',height:height/project.height*100+'%',transform:`translate(-50%,-50%) rotate(${clip.rotation}deg)`,borderRadius:ellipse?'50%':'0',zIndex:z});
-    if(editMode==='chroma'&&clip.chromaKey)return <button type="button" className="chroma-sample-target" aria-label="クロマキーの背景色を採る" title="クリックした場所を5×5画素で平均採色" style={style({x:bounds.x,y:bounds.y},bounds.width,bounds.height)} onPointerDown={event=>void sampleChromaAt(event,clip,source)}/>;
     if(editMode==='crop'){
       const crop=clip.crop||EMPTY_CROP,center=mediaPoint(clip,source,project,{x:(crop.left+1-crop.right)/2,y:(crop.top+1-crop.bottom)/2});
       const edgePoints:{edge:keyof Crop;point:{x:number;y:number};cursor:string}[]=[{edge:'top',point:mediaPoint(clip,source,project,{x:(crop.left+1-crop.right)/2,y:crop.top}),cursor:'ns-resize'},{edge:'right',point:mediaPoint(clip,source,project,{x:1-crop.right,y:(crop.top+1-crop.bottom)/2}),cursor:'ew-resize'},{edge:'bottom',point:mediaPoint(clip,source,project,{x:(crop.left+1-crop.right)/2,y:1-crop.bottom}),cursor:'ns-resize'},{edge:'left',point:mediaPoint(clip,source,project,{x:crop.left,y:(crop.top+1-crop.bottom)/2}),cursor:'ew-resize'}];

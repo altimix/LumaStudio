@@ -8,4 +8,5 @@ export function averageSampleColor(pixels: Uint8ClampedArray): string;
 export function chromaCoordinates(red: number, green: number, blue: number): { cb: number; cr: number };
 export function chromaUniforms(key: ChromaKey): { cb: number; cr: number; tolerance: number; softness: number; greenSpill: number; blueSpill: number; matte: boolean };
 export function applyChromaPixel(red: number, green: number, blue: number, alpha: number, key: ChromaKey): { red: number; green: number; blue: number; alpha: number; matte: number };
+export function applyChromaPixels(pixels: Uint8ClampedArray, key: ChromaKey): Uint8ClampedArray;
 export function ffmpegChromaFilter(clip: Partial<Clip> | undefined): string;

@@ -3,7 +3,7 @@ import { hasVideoMask, maskAlphaAt, rasterizeBezierMask } from '../shared/video-
 import { hasChromaKey } from '../shared/chroma-key.mjs';
 import { GpuChromaPreview, paintChromaCpu } from './chroma-preview';
 
-export type MaskedFrame = { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D; mask: HTMLCanvasElement; key: string; chroma?:GpuChromaPreview; chromaFallback?:HTMLCanvasElement; chromaUnavailable?:boolean };
+export type MaskedFrame = { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D; mask: HTMLCanvasElement; key: string; renderKey?:string; chroma?:GpuChromaPreview; chromaFallback?:HTMLCanvasElement; chromaUnavailable?:boolean };
 
 // The matte contains only normalized alpha information, so it does not need to
 // match a 4K/8K source pixel-for-pixel. Keeping the longer edge bounded avoids
@@ -47,12 +47,16 @@ export function paintVideoMask(canvas: HTMLCanvasElement, clip: Clip, width: num
   return canvas;
 }
 
-export function maskedVideoFrame(source: CanvasImageSource, clip: Clip, width: number, height: number, cached?: MaskedFrame): MaskedFrame | undefined {
+export function maskedVideoFrame(source: CanvasImageSource, clip: Clip, width: number, height: number, cached?: MaskedFrame, sourceKey?: string): MaskedFrame | undefined {
   if (!hasVideoMask(clip) && !hasChromaKey(clip)) return undefined;
+  const key = videoMaskKey(clip, width, height), renderKey = sourceKey === undefined ? undefined : JSON.stringify([sourceKey, key, clip.chromaKey || null]);
+  // requestAnimationFrame continues while paused. Reuse the completed matte
+  // until the decoded source frame or an effect setting actually changes.
+  if (renderKey !== undefined && cached?.renderKey === renderKey && !cached.chroma?.lost) return cached;
   const canvas = cached?.canvas || document.createElement('canvas');
   if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
   const context = cached?.context || canvas.getContext('2d', { alpha: true, willReadFrequently: false })!;
-  const mask = cached?.mask || document.createElement('canvas'), key = videoMaskKey(clip, width, height);
+  const mask = cached?.mask || document.createElement('canvas');
   if (hasVideoMask(clip) && cached?.key !== key) paintVideoMask(mask, clip, width, height);
   let processed=source,chroma=cached?.chroma,chromaFallback=cached?.chromaFallback,chromaUnavailable=cached?.chromaUnavailable;
   if(clip.chromaKey){
@@ -64,7 +68,7 @@ export function maskedVideoFrame(source: CanvasImageSource, clip: Clip, width: n
   context.save(); context.globalCompositeOperation = 'copy'; context.globalAlpha = 1; context.filter = 'none';
   context.drawImage(processed, 0, 0, width, height);
   if(hasVideoMask(clip)){context.globalCompositeOperation = 'destination-in'; context.imageSmoothingEnabled = !!clip.videoMask?.feather; context.drawImage(mask, 0, 0, width, height);}context.restore();
-  return { canvas, context, mask, key, chroma, chromaFallback, chromaUnavailable };
+  return { canvas, context, mask, key, renderKey, chroma, chromaFallback, chromaUnavailable };
 }
 
 export function disposeMaskedFrame(frame: MaskedFrame) {
