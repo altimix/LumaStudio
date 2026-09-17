@@ -6,14 +6,14 @@ import { PanelRightClose, SlidersHorizontal, RotateCcw, ChevronDown, Move, Scan,
 import { useEditor } from '../store';
 import { normalizeClip, timecode } from '../model';
 import { IconButton } from './UI';
-import type { Clip } from '../types';
+import type { BezierVideoMask, Clip, VideoMask } from '../types';
 import TitleOpacity from './TitleOpacity';
 import AudioEnhancement from './AudioEnhancement';
 import TextEffects from './TextEffects';
 import GraphicEffects from './GraphicEffects';
 import { linkedIds, clipsLocked } from '../../shared/clip-links.mjs';
 import { MAX_MEDIA_SECONDS } from '../../shared/time.mjs';
-import { clampCropEdge, DEFAULT_VIDEO_MASK, EMPTY_CROP } from '../../shared/video-mask.mjs';
+import { clampCropEdge, DEFAULT_BEZIER_MASK, DEFAULT_VIDEO_MASK, EMPTY_CROP, MAX_BEZIER_MASK_POINTS } from '../../shared/video-mask.mjs';
 import './mask-effects.css';
 
 function NumericField({ clip, property, label, min, max, step = 1, factor = 1, offset = 0, suffix = '', slider = true }: { clip: Clip; property: keyof Clip; label: string; min: number; max: number; step?: number; factor?: number; offset?: number; suffix?: string; slider?: boolean }) {
@@ -83,7 +83,31 @@ function EffectField({ clip, label, value, min, max, step = 1, suffix = '', patc
 function CropMaskEffects({clip}:{clip:Clip}){
   const mode=useEditor(s=>s.mediaEditMode),crop=clip.crop||EMPTY_CROP,mask=clip.videoMask;
   const cropPatch=(key:keyof typeof EMPTY_CROP)=>(current:Clip,value:number)=>({crop:{...(current.crop||EMPTY_CROP),[key]:clampCropEdge(current.crop||EMPTY_CROP,key,value/100)}});
-  const maskPatch=(key:'x'|'y'|'width'|'height'|'feather')=>(current:Clip,value:number)=>({videoMask:{...(current.videoMask||DEFAULT_VIDEO_MASK),[key]:value/100}});
+  const basicMaskPatch=(key:'x'|'y'|'width'|'height')=>(current:Clip,value:number)=>{
+    const currentMask=current.videoMask?.type==='bezier'?DEFAULT_VIDEO_MASK:(current.videoMask||DEFAULT_VIDEO_MASK);
+    return {videoMask:{...currentMask,[key]:value/100}};
+  };
+  const commonMaskPatch=(key:'feather')=>(current:Clip,value:number)=>({videoMask:{...(current.videoMask||DEFAULT_VIDEO_MASK),[key]:value/100} as VideoMask});
+  const updateBezier=(change:(mask:BezierVideoMask)=>BezierVideoMask)=>{
+    const state=useEditor.getState(),current=state.project.clips.find(item=>item.id===clip.id);
+    if(current?.videoMask?.type==='bezier')state.updateClip(clip.id,{videoMask:change(current.videoMask)});
+  };
+  const changeMaskType=(type:string)=>{
+    const state=useEditor.getState();
+    let next:VideoMask|undefined;
+    if(type==='none')next=undefined;
+    else if(type==='bezier')next=mask?.type==='bezier'?mask:{...DEFAULT_BEZIER_MASK,points:[],feather:mask?.feather||0,inverted:mask?.inverted||false};
+    else {
+      const basic=mask&&mask.type!=='bezier'?mask:DEFAULT_VIDEO_MASK;
+      next={...basic,type:type as 'rectangle'|'ellipse',feather:mask?.feather||0,inverted:mask?.inverted||false};
+    }
+    state.updateClip(clip.id,{videoMask:next});
+    if(type==='none'&&state.mediaEditMode==='mask')state.setMediaEditMode('transform');
+  };
+  const setPointKind=(index:number,kind:'line'|'curve')=>updateBezier(current=>{
+    const points=current.points.map((point,pointIndex)=>pointIndex!==index?point:kind==='line'?{...point,kind,inX:point.x,inY:point.y,outX:point.x,outY:point.y}:{...point,kind,inX:point.x-.08,inY:point.y,outX:point.x+.08,outY:point.y});
+    return {...current,points};
+  });
   return <>
     <Section title="クロップ" icon={Scan} onReset={()=>useEditor.getState().updateClip(clip.id,{crop:undefined})}>
       <div className="mask-edit-buttons"><button className={'secondary-button '+(mode==='crop'?'active':'')} onClick={()=>useEditor.getState().setMediaEditMode(mode==='crop'?'transform':'crop')}>モニターでクロップ</button></div>
@@ -93,11 +117,27 @@ function CropMaskEffects({clip}:{clip:Clip}){
       <EffectField clip={clip} label="左" value={crop.left*100} min={0} max={(0.99-crop.right)*100} step={.1} suffix="%" patch={cropPatch('left')}/>
     </Section>
     <Section title="マスク" icon={Scan} onReset={()=>{const state=useEditor.getState();state.updateClip(clip.id,{videoMask:undefined});if(state.mediaEditMode==='mask')state.setMediaEditMode('transform');}}>
-      <div className="property-label"><label htmlFor="video-mask-type">形</label><select id="video-mask-type" value={mask?.type||'none'} onChange={e=>{const state=useEditor.getState(),type=e.target.value;state.updateClip(clip.id,{videoMask:type==='none'?undefined:{...(clip.videoMask||DEFAULT_VIDEO_MASK),type:type as 'rectangle'|'ellipse'}});if(type==='none'&&state.mediaEditMode==='mask')state.setMediaEditMode('transform');}}><option value="none">なし</option><option value="rectangle">長方形</option><option value="ellipse">楕円</option></select></div>
-      {mask?<><div className="mask-edit-buttons"><button className={'secondary-button '+(mode==='mask'?'active':'')} onClick={()=>useEditor.getState().setMediaEditMode(mode==='mask'?'transform':'mask')}>モニターでマスクを編集</button></div>
-      <EffectField clip={clip} label="位置 X" value={mask.x*100} min={0} max={100} step={.1} suffix="%" patch={maskPatch('x')}/><EffectField clip={clip} label="位置 Y" value={mask.y*100} min={0} max={100} step={.1} suffix="%" patch={maskPatch('y')}/>
-      <EffectField clip={clip} label="幅" value={mask.width*100} min={1} max={100} step={.1} suffix="%" patch={maskPatch('width')}/><EffectField clip={clip} label="高さ" value={mask.height*100} min={1} max={100} step={.1} suffix="%" patch={maskPatch('height')}/><EffectField clip={clip} label="境界のぼかし" value={mask.feather*100} min={0} max={50} step={.1} suffix="%" patch={maskPatch('feather')}/>
-      <label className="mask-checkbox"><input type="checkbox" checked={mask.inverted} onChange={e=>useEditor.getState().updateClip(clip.id,{videoMask:{...mask,inverted:e.target.checked}})}/>内側と外側を反転</label></>:<p className="field-help">長方形または楕円を選ぶと、外側を透明にできます。</p>}
+      <div className="property-label"><label htmlFor="video-mask-type">形</label><select id="video-mask-type" value={mask?.type||'none'} onChange={e=>changeMaskType(e.target.value)}><option value="none">なし</option><option value="rectangle">長方形</option><option value="ellipse">楕円</option><option value="bezier">ベジェペン</option></select></div>
+      {mask?<>
+        <div className="mask-edit-buttons"><button className={'secondary-button '+(mode==='mask'?'active':'')} onClick={()=>useEditor.getState().setMediaEditMode(mode==='mask'?'transform':'mask')}>モニターでマスクを編集</button></div>
+        {mask.type==='bezier'?<div className="bezier-mask-settings">
+          <div className="bezier-mask-status"><span>{mask.closed?'閉じたパス':'作成中の開いたパス'}</span><span>{mask.points.length}/{MAX_BEZIER_MASK_POINTS} 点</span></div>
+          <p className="field-help">{mask.closed?'点とハンドルをドラッグして形を調整できます。':'モニターをクリックして点を追加してください。閉じるまでは映像を切り抜きません。'}</p>
+          <div className="mask-edit-buttons bezier-actions">
+            {mask.closed?<button className="secondary-button" onClick={()=>updateBezier(current=>({...current,closed:false}))}>パスを開いて点を追加</button>:<button className="secondary-button" disabled={mask.points.length<3} onClick={()=>updateBezier(current=>({...current,closed:true}))}>パスを閉じる</button>}
+          </div>
+          {mask.points.map((point,index)=><div className="bezier-point-row" key={index}>
+            <span>点 {index+1}</span>
+            <select aria-label={`点 ${index+1}の種類`} value={point.kind} onChange={e=>setPointKind(index,e.target.value as 'line'|'curve')}><option value="line">直線</option><option value="curve">曲線</option></select>
+            <button type="button" className="secondary-button" aria-label={`点 ${index+1}を削除`} onClick={()=>updateBezier(current=>{const points=current.points.filter((_,pointIndex)=>pointIndex!==index);return {...current,points,closed:current.closed&&points.length>=3};})}>削除</button>
+          </div>)}
+        </div>:<>
+          <EffectField clip={clip} label="位置 X" value={mask.x*100} min={0} max={100} step={.1} suffix="%" patch={basicMaskPatch('x')}/><EffectField clip={clip} label="位置 Y" value={mask.y*100} min={0} max={100} step={.1} suffix="%" patch={basicMaskPatch('y')}/>
+          <EffectField clip={clip} label="幅" value={mask.width*100} min={1} max={100} step={.1} suffix="%" patch={basicMaskPatch('width')}/><EffectField clip={clip} label="高さ" value={mask.height*100} min={1} max={100} step={.1} suffix="%" patch={basicMaskPatch('height')}/>
+        </>}
+        <EffectField clip={clip} label="境界のぼかし" value={mask.feather*100} min={0} max={50} step={.1} suffix="%" patch={commonMaskPatch('feather')}/>
+        <label className="mask-checkbox"><input type="checkbox" checked={mask.inverted} onChange={e=>useEditor.getState().updateClip(clip.id,{videoMask:{...mask,inverted:e.target.checked}})}/>内側と外側を反転</label>
+      </>:<p className="field-help">長方形、楕円、ベジェペンを選ぶと、外側を透明にできます。</p>}
     </Section>
   </>;
 }

@@ -3,3 +3,9 @@
 .mask-edit-buttons .secondary-button.active{background:#35442e;border-color:#77965f;color:#dff6c6}
 .mask-checkbox{display:flex;align-items:center;gap:8px;color:#aab4c2;font-size:11px;margin-top:5px;cursor:pointer}
 .mask-checkbox input{accent-color:#b9db95}
+.bezier-mask-settings{display:flex;flex-direction:column;gap:7px;margin-bottom:8px}
+.bezier-mask-status{display:flex;justify-content:space-between;gap:8px;color:#dce7cc;font-size:11px}
+.bezier-actions{margin:0}
+.bezier-point-row{display:grid;grid-template-columns:1fr 76px 45px;align-items:center;gap:5px;font-size:11px;color:#aab4c2}
+.bezier-point-row select{min-width:0}
+.bezier-point-row .secondary-button{height:25px;padding:0 6px;font-size:10px}

@@ -15,7 +15,7 @@ const { validateTextStyle } = require('../shared/text-style.mjs');
 const { validateTextBox } = require('../shared/text-box.mjs');
 const { validateGraphic } = require('../shared/graphics.mjs');
 const { validateTreatment } = require('../shared/audio-treatment.mjs');
-const { ffmpegMaskExpression, hasVideoMask, validateVideoMask } = require('../shared/video-mask.mjs');
+const { ffmpegMaskExpression, hasBezierMask, hasVideoMask, rasterizeBezierMask, validateVideoMask } = require('../shared/video-mask.mjs');
 const { encodingArgs, exportEncoders, validateEncoder, ENCODERS } = require('./encoders.cjs');
 
 const { validateTransitions, transitionPlan, audioEnvelopes, mediaWindow } = require('../shared/transitions.mjs');
@@ -103,7 +103,7 @@ function exportAssets(p) {
   }
   return p.assets.filter(a => ids.has(a.id));
 }
-function buildExport(p, settings, sourcePaths, output, audioPaths = {}) {
+function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPaths = {}) {
   validateProject(p);
   if (settings.target === 'shorts' && p.width * 16 !== p.height * 9) throw new Error('Shortsは縦型9:16のシーケンスで書き出してください。シーケンス設定を確認してください。');
   if (settings.target === 'shorts' && (settings.width !== 1080 || settings.height !== 1920 || Math.max(0, ...p.clips.map(c => c.start + c.duration)) > 180 + 0.000001)) throw new Error('Shortsは1080×1920・3分以内にしてください。タイムラインで必要な範囲に編集してください。');
@@ -141,11 +141,31 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}) {
       else args.push('-ss', number(window.sourceIn));
       args.push('-t', number(window.sourceDuration), '-i', source);
       const index = input++;
+      let maskIndex;
+      if (hasBezierMask(c)) {
+        const maskPath = maskPaths[c.id];
+        if (!maskPath) throw new Error(`ベジェマスクを準備できませんでした: ${c.name}`);
+        args.push('-loop', '1', '-framerate', String(fps), '-i', maskPath);
+        maskIndex = input++;
+      }
       const fitW = Math.max(2, Math.round(width * (c.graphic?1:c.scale) / 2) * 2); const fitH = Math.max(2, Math.round(height * (c.graphic?1:c.scale) / 2) * 2);
       const f = [`[${index}:v]setpts=(PTS-STARTPTS)/${number(c.speed)}`, `fps=${fps}:eof_action=pass`, `scale=${fitW}:${fitH}:force_original_aspect_ratio=decrease:force_divisible_by=2`, 'setsar=1', ...(directVideo ? [`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`] : ['format=rgba'])];
       f.push(`tpad=start_mode=clone:start_duration=${number(videoWindow.padBefore)}:stop_mode=clone:stop_duration=${number(videoWindow.padAfter+1/fps)}`,`trim=duration=${number(videoWindow.duration)}`,'setpts=PTS-STARTPTS');
       if (c.kind !== 'title' && (c.exposure !== 0 || c.contrast !== 1 || c.saturation !== 1)) f.push(colorFilter(c));
-      if (hasVideoMask(c)) f.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${ffmpegMaskExpression(c)})'`);
+      if (hasBezierMask(c)) {
+        filters.push(f.join(',') + `[premask${index}]`);
+        filters.push(`[${maskIndex}:v]format=gray[maskraw${index}]`);
+        // In the bundled FFmpeg scale2ref, iw/ih are the dimensions of the
+        // second (reference) input. This also follows decoded autorotation,
+        // unlike dimensions calculated from container metadata in JavaScript.
+        filters.push(`[maskraw${index}][premask${index}]scale2ref=w=iw:h=ih[maskscaled${index}][maskref${index}]`);
+        filters.push(`[maskref${index}]split=2[maskcolor${index}][maskalpha${index}]`);
+        filters.push(`[maskalpha${index}]alphaextract[originalalpha${index}]`);
+        filters.push(`[maskscaled${index}]format=gray[maskgray${index}]`);
+        filters.push(`[originalalpha${index}][maskgray${index}]lut2=c0='x*y/255'[combinedalpha${index}]`);
+        filters.push(`[maskcolor${index}][combinedalpha${index}]alphamerge[masked${index}]`);
+        f.length = 0; f.push(`[masked${index}]null`);
+      } else if (hasVideoMask(c)) f.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${ffmpegMaskExpression(c)})'`);
       if (c.rotation&&!c.graphic) { const angle = number(c.rotation * Math.PI / 180); f.push(`rotate=${angle}:ow=rotw(${angle}):oh=roth(${angle}):c=none`); }
       if (c.opacityKeyframes?.length) f.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacityExpression(c.opacityKeyframes)})'`);
       else if (c.opacity !== 1) f.push(`colorchannelmixer=aa=${number(c.opacity)}`);
@@ -202,8 +222,18 @@ async function exportProject(p, settings, output, { titleImages = {}, audioPaths
       const file = path.join(tempDir, `${randomUUID()}.png`);
       await fs.writeFile(file, Buffer.from(data.split(',')[1], 'base64')); sources[c.id] = file;
     }
+    const masks = {};
+    for (const c of p.clips.filter(c => hasBezierMask(c) && c.kind !== 'audio' && !p.tracks.find(t => t.id === c.trackId)?.hidden)) {
+      const asset = p.assets.find(a => a.id === c.assetId);
+      const sourceWidth = Math.max(1, Math.round(asset?.width || p.width)), sourceHeight = Math.max(1, Math.round(asset?.height || p.height));
+      const scale = Math.min(1, 512 / Math.max(sourceWidth, sourceHeight));
+      const width = Math.max(1, Math.round(sourceWidth * scale)), height = Math.max(1, Math.round(sourceHeight * scale));
+      const file = path.join(tempDir, `${randomUUID()}.pgm`), alpha = rasterizeBezierMask(c, width, height);
+      await fs.writeFile(file, Buffer.concat([Buffer.from(`P5\n${width} ${height}\n255\n`), Buffer.from(alpha)]));
+      masks[c.id] = file;
+    }
     const encode = async () => {
-    const { args, duration } = buildExport(p, { ...settings, encoder: encoder.id }, sources, partial, audioPaths);
+    const { args, duration } = buildExport(p, { ...settings, encoder: encoder.id }, sources, partial, audioPaths, masks);
     const processArgs = await writeFilterScript(args, tempDir);
     if (signal?.aborted) throw new Error('書き出しをキャンセルしました。');
     onProgress({ status: 'rendering', progress: 0, output, encoder: encoder.id, encoderLabel: encoder.label, warning });
