@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { emptyProject, makeClip, splitClip } from './model';
 import { useEditor } from './store';
 import type { Asset, VideoMask } from './types';
+import { MAX_VIDEO_MASK_RASTER_EDGE, videoMaskRasterSize } from './video-mask';
 
 const asset:Asset={id:'mask-asset',name:'mask.mp4',path:'C:\\mask.mp4',url:'luma://mask',thumbnail:'',kind:'video',duration:10,width:1920,height:1080,fps:30,hasAudio:false,waveform:[],size:100,codec:'h264'};
 function fixture(){const p=emptyProject();p.assets=[asset];p.clips=[{...makeClip(p.tracks[1].id,0,asset),id:'mask-clip',duration:8}];return p;}
@@ -23,5 +24,16 @@ describe('crop and basic shape mask editing',()=>{
   });
   it('keeps monitor edit mode only while the same clip stays selected',()=>{
     const p=fixture(),s=useEditor.getState();s.load(p);s.setMediaEditMode('crop');s.select(['mask-clip']);expect(useEditor.getState().mediaEditMode).toBe('crop');s.select([]);expect(useEditor.getState().mediaEditMode).toBe('transform');s.setMediaEditMode('mask');s.load(p);expect(useEditor.getState().mediaEditMode).toBe('transform');
+  });
+  it('leaves mask edit mode when Undo removes the selected mask',()=>{
+    const p=fixture(),s=useEditor.getState();s.load(p);s.updateClip('mask-clip',{videoMask:mask});s.setMediaEditMode('mask');
+    s.undo();expect(useEditor.getState().project).toBe(p);expect(useEditor.getState().selected).toEqual(['mask-clip']);expect(useEditor.getState().mediaEditMode).toBe('transform');
+    s.redo();expect(useEditor.getState().project.clips[0].videoMask).toEqual(mask);expect(useEditor.getState().mediaEditMode).toBe('transform');
+  });
+  it('bounds high-resolution preview mattes while preserving aspect ratio',()=>{
+    expect(videoMaskRasterSize(320,180)).toEqual({width:320,height:180});
+    expect(videoMaskRasterSize(640,360)).toEqual({width:MAX_VIDEO_MASK_RASTER_EDGE,height:288});
+    expect(videoMaskRasterSize(7680,4320)).toEqual({width:MAX_VIDEO_MASK_RASTER_EDGE,height:288});
+    expect(videoMaskRasterSize(4320,7680)).toEqual({width:288,height:MAX_VIDEO_MASK_RASTER_EDGE});
   });
 });

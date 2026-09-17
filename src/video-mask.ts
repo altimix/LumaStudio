@@ -3,11 +3,26 @@ import { hasVideoMask, maskAlphaAt } from '../shared/video-mask.mjs';
 
 export type MaskedFrame = { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D; mask: HTMLCanvasElement; key: string };
 
+// The matte contains only normalized alpha information, so it does not need to
+// match a 4K/8K source pixel-for-pixel. Keeping the longer edge bounded avoids
+// allocating and filling tens of millions of pixels on the renderer thread
+// while a handle is dragged. Canvas scales this reusable matte onto the output
+// frame; exports continue to evaluate the full-resolution FFmpeg expression.
+export const MAX_VIDEO_MASK_RASTER_EDGE = 512;
+
+export function videoMaskRasterSize(width: number, height: number) {
+  const safeWidth = Math.max(1, Math.round(width)), safeHeight = Math.max(1, Math.round(height));
+  const scale = Math.min(1, MAX_VIDEO_MASK_RASTER_EDGE / Math.max(safeWidth, safeHeight));
+  return { width: Math.max(1, Math.round(safeWidth * scale)), height: Math.max(1, Math.round(safeHeight * scale)) };
+}
+
 export function videoMaskKey(clip: Clip, width: number, height: number) {
   return JSON.stringify([width, height, clip.crop || null, clip.videoMask || null]);
 }
 
 export function paintVideoMask(canvas: HTMLCanvasElement, clip: Clip, width: number, height: number) {
+  const raster = videoMaskRasterSize(width, height);
+  width = raster.width; height = raster.height;
   if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
   const context = canvas.getContext('2d', { alpha: true, willReadFrequently: false })!;
   const image = context.createImageData(width, height), pixels = image.data;
@@ -32,7 +47,7 @@ export function maskedVideoFrame(source: CanvasImageSource, clip: Clip, width: n
   if (cached?.key !== key) paintVideoMask(mask, clip, width, height);
   context.save(); context.globalCompositeOperation = 'copy'; context.globalAlpha = 1; context.filter = 'none';
   context.drawImage(source, 0, 0, width, height);
-  context.globalCompositeOperation = 'destination-in'; context.drawImage(mask, 0, 0, width, height); context.restore();
+  context.globalCompositeOperation = 'destination-in'; context.imageSmoothingEnabled = !!clip.videoMask?.feather; context.drawImage(mask, 0, 0, width, height); context.restore();
   return { canvas, context, mask, key };
 }
 

@@ -263,7 +263,10 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!Number.isInteger(index) || index < 0 || index >= states.length || index === s.history.length) return;
     const labels = [...s.historyLabels, s.currentAction, ...s.futureLabels];
     const positions=[...s.historyPlayheads,s.playhead,...s.futurePlayheads];
-    set({ activeVolumePoint:null, project: states[index], zoom: boundedZoom(s.zoom, endTime(states[index])), history: states.slice(0, index), future: states.slice(index + 1), historyPlayheads:positions.slice(0,index),futurePlayheads:positions.slice(index+1), historyLabels: labels.slice(0, index), currentAction: labels[index], futureLabels: labels.slice(index + 1), dirty: true, selected: s.selected.filter(id => states[index].clips.some(c => c.id === id)), playing: false, shuttleRate: 1, playhead: Math.min(positions[index]??s.playhead, endTime(states[index])), seekRevision: s.seekRevision + 1 });
+    const project=states[index],selected=s.selected.filter(id => project.clips.some(c => c.id === id));
+    const selectedClip=selected.length===1?project.clips.find(c=>c.id===selected[0]):undefined;
+    const mediaEditMode=s.mediaEditMode==='mask'&&!selectedClip?.videoMask?'transform':s.mediaEditMode;
+    set({ activeVolumePoint:null, project, zoom: boundedZoom(s.zoom, endTime(project)), history: states.slice(0, index), future: states.slice(index + 1), historyPlayheads:positions.slice(0,index),futurePlayheads:positions.slice(index+1), historyLabels: labels.slice(0, index), currentAction: labels[index], futureLabels: labels.slice(index + 1), dirty: true, selected, mediaEditMode, playing: false, shuttleRate: 1, playhead: Math.min(positions[index]??s.playhead, endTime(project)), seekRevision: s.seekRevision + 1 });
   },
   undo: () => { const s = get(); if (s.history.length) s.restoreHistory(s.history.length - 1); },
   redo: () => { const s = get(); if (s.future.length) s.restoreHistory(s.history.length + 1); },
