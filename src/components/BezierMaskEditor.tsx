@@ -20,7 +20,7 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
   useLayoutEffect(() => { setTool(mask.closed ? 'direct' : 'pen'); }, [mask.closed]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if (event.isComposing || (event.target as HTMLElement | null)?.closest('input,textarea,select,[contenteditable=true]')) return;
+      if (event.type === 'keydown' && (event.isComposing || (event.target as HTMLElement | null)?.closest('input,textarea,select,[contenteditable=true]'))) return;
       setTemporaryDirect(event.ctrlKey || event.metaKey);
     };
     const blur = () => setTemporaryDirect(false);
