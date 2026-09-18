@@ -27,7 +27,7 @@ async function assertMediaRevision(asset) {
   const stat = await fs.stat(asset.path).catch(() => null);
   if (!stat?.isFile() || mediaRevision(asset.path, stat) !== (asset.revision || asset.id)) throw new Error('素材が変更または削除されています。素材を再リンクしてください。');
 }
-async function inspectMedia(file, cacheDir, { signal, onStage = () => {}, previewProxy = false } = {}) {
+async function inspectMedia(file, cacheDir, { signal, onStage = () => {}, previewProxy = false, skipCache = false } = {}) {
   signal?.throwIfAborted(); onStage('素材を解析しています');
   const stat = await fs.stat(file);
   if (!stat.isFile()) throw new Error('ファイルを選択してください。');
@@ -37,11 +37,12 @@ async function inspectMedia(file, cacheDir, { signal, onStage = () => {}, previe
   const sound = info.streams.find(s => s.codec_type === 'audio');
   const kind = /\.(png|jpe?g|webp|bmp|gif|tiff?)$/i.test(file) ? 'image' : video ? 'video' : sound ? 'audio' : null;
   if (!kind) throw new Error('この素材には読み込める映像・音声がありません。');
-  await fs.mkdir(cacheDir, { recursive: true });
+  if (!skipCache) await fs.mkdir(cacheDir, { recursive: true });
   const duration = kind === 'image' ? 5 : Number(info.format.duration || video?.duration || sound?.duration);
   if (!Number.isFinite(duration) || duration <= 0) throw new Error('素材の長さを取得できません。');
   let playbackPath = file;
   const compatible = (kind === 'audio' && /\.(mp3|wav|m4a|ogg|aac|flac)$/i.test(file)) || (kind === 'video' && ['h264', 'vp8', 'vp9', 'av1'].includes(video.codec_name) && /\.(mp4|m4v|webm|mov)$/i.test(file) && (!sound || ['aac', 'mp3', 'opus', 'vorbis'].includes(sound.codec_name)));
+  if (skipCache && !compatible) throw Error('原本の再生に互換プロキシが必要です。');
   const useProxy = !compatible || (kind === 'video' && previewProxy);
   if (useProxy) {
     playbackPath = path.join(cacheDir, `${id}-proxy.${kind === 'image' ? 'png' : kind === 'audio' ? 'm4a' : 'mp4'}`);
@@ -56,7 +57,7 @@ async function inspectMedia(file, cacheDir, { signal, onStage = () => {}, previe
     }
   }
   let thumbnailPath; let waveform = [];
-  if (kind !== 'audio') {
+  if (kind !== 'audio' && !skipCache) {
     thumbnailPath = path.join(cacheDir, `${id}.jpg`);
     try { if (!(await fs.stat(thumbnailPath)).size) throw new Error('Empty thumbnail'); } catch {
       onStage('サムネイルを作成しています');
@@ -70,7 +71,7 @@ async function inspectMedia(file, cacheDir, { signal, onStage = () => {}, previe
       if (!(await fs.stat(thumbnailPath)).size) throw new Error('素材の縮小画像を作成できませんでした。');
     }
   }
-  if (sound) {
+  if (sound && !skipCache) {
     onStage('音声波形を作成しています');
     const meta = await ensureWaveform(file, cacheDir, id, duration, sound.channels, signal);
     waveform = await overview(cacheDir, id, meta, duration);

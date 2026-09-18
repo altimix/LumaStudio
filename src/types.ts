@@ -13,7 +13,7 @@ export interface Graphic { shape: 'arrow' | 'rectangle' | 'ellipse'; width:numbe
 export interface Asset {
   id: string; name: string; path: string; url: string; thumbnail: string; kind: MediaKind;
   duration: number; width: number; height: number; fps: number; hasAudio: boolean;
-  waveform: number[]; size: number; codec: string; proxy?: boolean; previewProxy?: boolean; offline?: boolean; revision?: string;
+  waveform: number[]; size: number; codec: string; proxy?: boolean; previewProxy?: boolean; proxyWarning?: string; offline?: boolean; revision?: string;
 }
 export interface Track { id: string; name: string; autoName?: boolean; audioSourceTrackId?: string; kind: 'video' | 'audio'; muted: boolean; hidden: boolean; locked: boolean; solo: boolean }
 export interface Clip {

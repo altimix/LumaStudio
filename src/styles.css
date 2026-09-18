@@ -31,3 +31,5 @@
 .project-operation-status strong{font-size:12px;overflow-wrap:anywhere;max-width:100%}.project-operation-status progress{width:100%;accent-color:#b9d993}.project-operation-status small{font-size:11px;color:#b7c4ad}
 
 .media-proxy-action{display:grid;gap:6px;padding:8px 12px}.media-proxy-action small{font-size:10px;color:var(--muted)}
+
+.media-card-info .proxy-warning{white-space:normal;color:#e5c880;line-height:1.5}

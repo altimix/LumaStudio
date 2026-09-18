@@ -8,6 +8,9 @@ test('optional video proxies preserve original metadata, persist preferences and
  const info=await probe(proxy.playbackPath);assert.equal(info.streams[0].width,1280);assert.equal(info.streams[0].height,720);
  const project={version:1,id:'p',name:'proxy',width:1920,height:1080,fps:30,assets:[proxy],clips:[],tracks:[{id:'v',kind:'video'}],markers:[]};const saved=JSON.parse(serializeProject(project));assert.equal(saved.assets[0].playbackPath,undefined);
  const hydrated=await hydrateProject(saved,(file,options)=>inspectMedia(file,cache,options),a=>a);assert.equal(hydrated.assets[0].previewProxy,true);assert.equal(hydrated.assets[0].playbackPath,proxy.playbackPath);
+ const fallback=await hydrateProject(saved,async(file,options)=>{if(options.previewProxy)throw Error('disk full');return inspectMedia(file,path.join(dir,'cannot-write'),options);},a=>a);
+ assert.equal(fallback.assets[0].offline,undefined);assert.equal(fallback.assets[0].playbackPath,file);assert.equal(fallback.assets[0].previewProxy,undefined);assert.match(fallback.assets[0].proxyWarning,/原本/);assert.equal(JSON.parse(serializeProject(fallback)).assets[0].proxyWarning,undefined);
+ await assert.rejects(fs.access(path.join(dir,'cannot-write')));
  const disabled=await inspectMedia(file,cache);assert.equal(disabled.previewProxy,undefined);assert.equal(disabled.playbackPath,file);
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
