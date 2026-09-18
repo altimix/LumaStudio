@@ -96,7 +96,8 @@ export default function YouTubeStudio({ onClose }: { onClose: () => void }) {
   };
   const selectCue = (index: number) => {
     if (document.activeElement instanceof HTMLElement && scroll.current?.contains(document.activeElement)) document.activeElement.blur();
-    if (draftCommitFailed.current || invalidDraft.current) return false;
+    if (draftCommitFailed.current) { draftCommitFailed.current = false; return false; }
+    if (invalidDraft.current) return false;
     const current = useEditor.getState(), cues = current.project.youtube?.cues || [], cue = cues[index];
     if (!cue) return false;
     setActiveCue(index); current.stop(); current.seek(cue.start);

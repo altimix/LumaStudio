@@ -100,6 +100,14 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
       await page.getByRole('button',{name:'一時停止 (Space)',exact:true}).waitFor();
     }
     await page.getByRole('button',{name:'反復再生を停止',exact:true}).click();
+    await finalEnd.fill('37');await finalEnd.press('Tab');
+    await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.caption-monitor .timecode.accent')?.textContent.startsWith('00:00:34'),undefined,{timeout:15000});
+    await page.waitForFunction(()=>document.querySelector('.caption-monitor .timecode.accent')?.textContent.startsWith('00:00:32'),undefined,{timeout:5000});
+    await page.getByRole('button',{name:'反復再生を停止',exact:true}).click();
+    const finalStart=page.getByRole('spinbutton',{name:'字幕4の開始秒',exact:true});
+    for(const start of ['35','36']){await finalStart.fill(start);await finalStart.press('Tab');await page.getByRole('button',{name:'字幕4の映像を確認',exact:true}).click();assert.equal(await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).isDisabled(),true);await page.getByText('この字幕はタイムラインの再生範囲外のため、反復再生できません。',{exact:true}).waitFor();}
+    await finalStart.fill('32');await finalStart.press('Tab');
     await finalEnd.fill('34');await finalEnd.press('Tab');await page.getByRole('button',{name:'字幕1の映像を確認',exact:true}).click();
     checks.push('a cue ending at the sequence end repeats twice without being stopped by Preview');
     const firstCue=await page.getByRole('textbox',{name:'字幕1の本文',exact:true}).inputValue();
@@ -112,6 +120,13 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
     await first.press('Tab'); assert.equal(await first.inputValue(),originalCue); assert.match(await page.locator('.yt-error').textContent(),/空行/);
     const cueEnd=page.getByRole('spinbutton',{name:'字幕1の終了秒',exact:true}); await cueEnd.fill('13'); assert.equal(await page.getByRole('button',{name:'SRT保存',exact:true}).isDisabled(),true); await cueEnd.press('Tab'); assert.equal(await cueEnd.inputValue(),'2.5');
     checks.push('invalid subtitle drafts block apply/export and revert to accepted text and times on blur');
+    await page.getByRole('button',{name:'字幕2の映像を確認',exact:true}).click();
+    assert.equal(await page.getByRole('button',{name:'字幕1の映像を確認',exact:true}).getAttribute('aria-pressed'),'true');
+    await page.getByRole('button',{name:'字幕2の映像を確認',exact:true}).click();
+    assert.equal(await page.getByRole('button',{name:'字幕2の映像を確認',exact:true}).getAttribute('aria-pressed'),'true');
+    await page.getByRole('button',{name:'前の字幕',exact:true}).click();
+    await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).click();await page.getByRole('button',{name:'反復再生を停止',exact:true}).click();
+    checks.push('failed drafts only reject one navigation; subsequent cue jumps and loops recover; out-of-range loops are disabled');
     await first.fill('日本語の字幕を\n読みやすく作成します。'); await first.press('Tab');
     await page.getByRole('button',{name:'字幕をタイムラインに適用',exact:true}).click();
     await page.getByRole('button',{name:'SRT保存',exact:true}).click(); await done(); await page.getByRole('button',{name:'VTT保存',exact:true}).click(); await done();
