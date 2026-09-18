@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 
 // Runs in both development and the Windows/macOS packaged Bezier suite.
-module.exports = async function verifyBezierModifiers({ page, save, checks }) {
+module.exports = async function verifyBezierModifiers({ page, save, checks, loadMask }) {
   await page.locator('#video-mask-type').selectOption('bezier');
   await page.getByRole('button', { name: 'モニターでマスクを編集', exact: true }).click();
   const view = await page.locator('.canvas-wrap').boundingBox();
@@ -104,6 +104,17 @@ module.exports = async function verifyBezierModifiers({ page, save, checks }) {
   await page.mouse.click(nearFirst.x + 9, nearFirst.y);
   assert.equal((await read()).closed, true);
   checks.push('overlapping end/start merges the endpoints, closes with one undo and shows a close hint near the start');
+
+  const blocked = { ...openPath, points: openPath.points.map((point, index) => index === 3 ? { ...point, kind: 'curve', inX: -1, inY: point.y, outX: point.x, outY: point.y } : point) };
+  await loadMask(blocked);
+  await page.getByRole('button', { name: 'モニターでマスクを編集', exact: true }).click();
+  await direct.click(); start = await center(anchor(4)); const blockedFirst = await center(anchor(1));
+  await page.mouse.move(start.x, start.y); await page.mouse.down();
+  await page.mouse.move(blockedFirst.x, blockedFirst.y, { steps: 5 });
+  assert.equal(await page.locator('.bezier-mask-anchor.close-candidate').count(), 0);
+  await page.mouse.up(); mask = await read();
+  assert.equal(mask.closed, false); assert.equal(mask.points.length, 4);
+  checks.push('a handle at its boundary prevents false closure when only the pointer reaches the start');
 
   // The caller continues its original persistence/export/lock suite from an empty mask.
   await page.locator('#video-mask-type').selectOption('none'); await save();

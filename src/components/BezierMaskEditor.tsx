@@ -92,12 +92,17 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
       if (target.hasPointerCapture(pointer)) target.releasePointerCapture(pointer);
     };
     const restore = () => useEditor.setState({ project: before.project, history: before.history, future: before.future, historyPlayheads: before.historyPlayheads, futurePlayheads: before.futurePlayheads, historyLabels: before.historyLabels, futureLabels: before.futureLabels, currentAction: before.currentAction, dirty: before.dirty });
+    const endpointsOverlap = (latest: BezierVideoMask) => {
+      const first = mediaPoint(originalClip, source, initial.project, latest.points[0]);
+      const end = mediaPoint(originalClip, source, initial.project, latest.points.at(-1)!);
+      return Math.hypot((end.x - first.x) / initial.project.width * rect.width, (end.y - first.y) / initial.project.height * rect.height) <= 10;
+    };
     const finish = () => {
       if (closed) return;
       const state = useEditor.getState();
       if (moved && operation.part === 'anchor' && operation.index === originalMask.points.length - 1 && indices.length === 1 && originalMask.points.length >= 4 && !originalMask.closed && state.project === expected && state.gestureOwner === owner && nearStart(last)) {
         const latest = state.project.clips.find(item => item.id === clip.id)?.videoMask;
-        if (latest?.type === 'bezier') {
+        if (latest?.type === 'bezier' && endpointsOverlap(latest)) {
           const points = latest.points.slice(0, -1), first = points[0], end = latest.points.at(-1)!;
           const incoming = end.kind === 'curve' ? { inX: end.inX + first.x - end.x, inY: end.inY + first.y - end.y } : { inX: first.x, inY: first.y };
           points[0] = { ...editBezierHandle(first, 'in', { x: incoming.inX - first.x, y: incoming.inY - first.y }, true), kind: first.kind === 'curve' || end.kind === 'curve' ? 'curve' : 'line' };
@@ -146,8 +151,9 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
       last = { clientX: e.clientX, clientY: e.clientY, shiftKey: e.shiftKey, altKey: e.altKey };
       if (!moved && Math.hypot(e.clientX - origin.clientX, e.clientY - origin.clientY) < 3) return;
       moved = true;
-      setCloseCandidate(operation.part === 'anchor' && index === originalMask.points.length - 1 && indices.length === 1 && !originalMask.closed && originalMask.points.length >= 4 && nearStart(e));
       update();
+      const latest = useEditor.getState().project.clips.find(item => item.id === clip.id)?.videoMask;
+      setCloseCandidate(latest?.type === 'bezier' && endpointsOverlap(latest) && operation.part === 'anchor' && index === originalMask.points.length - 1 && indices.length === 1 && !originalMask.closed && originalMask.points.length >= 4 && nearStart(e));
     };
     const up = (e: PointerEvent) => { if (e.pointerId === pointer) { move(e); finish(); } };
     const pointerCancel = (e: PointerEvent) => { if (e.pointerId === pointer) cancel(); };
