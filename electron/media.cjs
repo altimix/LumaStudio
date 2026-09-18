@@ -27,7 +27,7 @@ async function assertMediaRevision(asset) {
   const stat = await fs.stat(asset.path).catch(() => null);
   if (!stat?.isFile() || mediaRevision(asset.path, stat) !== (asset.revision || asset.id)) throw new Error('素材が変更または削除されています。素材を再リンクしてください。');
 }
-async function inspectMedia(file, cacheDir, { signal, onStage = () => {} } = {}) {
+async function inspectMedia(file, cacheDir, { signal, onStage = () => {}, previewProxy = false } = {}) {
   signal?.throwIfAborted(); onStage('素材を解析しています');
   const stat = await fs.stat(file);
   if (!stat.isFile()) throw new Error('ファイルを選択してください。');
@@ -42,7 +42,8 @@ async function inspectMedia(file, cacheDir, { signal, onStage = () => {} } = {})
   if (!Number.isFinite(duration) || duration <= 0) throw new Error('素材の長さを取得できません。');
   let playbackPath = file;
   const compatible = (kind === 'audio' && /\.(mp3|wav|m4a|ogg|aac|flac)$/i.test(file)) || (kind === 'video' && ['h264', 'vp8', 'vp9', 'av1'].includes(video.codec_name) && /\.(mp4|m4v|webm|mov)$/i.test(file) && (!sound || ['aac', 'mp3', 'opus', 'vorbis'].includes(sound.codec_name)));
-  if (!compatible) {
+  const useProxy = !compatible || (kind === 'video' && previewProxy);
+  if (useProxy) {
     playbackPath = path.join(cacheDir, `${id}-proxy.${kind === 'image' ? 'png' : kind === 'audio' ? 'm4a' : 'mp4'}`);
     try { await fs.access(playbackPath); } catch {
       onStage('再生用の軽量ファイルを作成しています');
@@ -76,6 +77,6 @@ async function inspectMedia(file, cacheDir, { signal, onStage = () => {} } = {})
   }
   signal?.throwIfAborted();
   const fpsParts = String(video?.avg_frame_rate || '0/1').split('/').map(Number);
-  return { id, name: path.basename(file), path: file, playbackPath, thumbnailPath, kind, duration, width: video?.width || 0, height: video?.height || 0, fps: fpsParts[1] ? fpsParts[0] / fpsParts[1] : 0, hasAudio: !!sound, waveform, size: stat.size, codec: video?.codec_name || sound?.codec_name, proxy: !compatible };
+  return { id, name: path.basename(file), path: file, playbackPath, thumbnailPath, kind, duration, width: video?.width || 0, height: video?.height || 0, fps: fpsParts[1] ? fpsParts[0] / fpsParts[1] : 0, hasAudio: !!sound, waveform, size: stat.size, codec: video?.codec_name || sound?.codec_name, proxy: useProxy, ...(kind === 'video' && previewProxy ? { previewProxy: true } : {}) };
 }
 module.exports = { ffmpeg, ffprobe, run, probe, inspectMedia, assertMediaRevision };

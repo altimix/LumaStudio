@@ -49,6 +49,7 @@ function validateProject(p, { allowForeignPaths = false } = {}) {
     if (!Array.isArray(a.waveform) || a.waveform.length > 4096 || a.waveform.some(v => !Number.isFinite(v) || v < 0 || v > 1)) throw new Error('素材の波形データが不正です。');
     finite(a.width, 0, 65536, '素材の幅'); finite(a.height, 0, 65536, '素材の高さ');
     finite(a.fps, 0, 1000, '素材のFPS'); finite(a.size, 0, Number.MAX_SAFE_INTEGER, '素材のサイズ');
+    if (a.previewProxy !== undefined && (typeof a.previewProxy !== 'boolean' || a.kind !== 'video')) throw new Error('プレビュー用プロキシの指定が不正です。');
     assetIds.add(a.id); finite(a.duration, 0.001, MAX_MEDIA_SECONDS, '素材の長さ');
   }
   const clipIds = new Set();

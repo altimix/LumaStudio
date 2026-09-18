@@ -13,7 +13,7 @@ export interface Graphic { shape: 'arrow' | 'rectangle' | 'ellipse'; width:numbe
 export interface Asset {
   id: string; name: string; path: string; url: string; thumbnail: string; kind: MediaKind;
   duration: number; width: number; height: number; fps: number; hasAudio: boolean;
-  waveform: number[]; size: number; codec: string; proxy?: boolean; offline?: boolean; revision?: string;
+  waveform: number[]; size: number; codec: string; proxy?: boolean; previewProxy?: boolean; offline?: boolean; revision?: string;
 }
 export interface Track { id: string; name: string; autoName?: boolean; audioSourceTrackId?: string; kind: 'video' | 'audio'; muted: boolean; hidden: boolean; locked: boolean; solo: boolean }
 export interface Clip {
@@ -83,6 +83,7 @@ export interface DesktopAPI {
   cancelWaveform(requestId:string):Promise<void>;
   importMedia(): Promise<{ assets: Asset[]; errors: string[]; cancelled?: boolean }>;
   importDroppedFiles(files: File[]): Promise<{ assets: Asset[]; errors: string[]; cancelled?: boolean }>;
+  previewProxy(asset: Asset, enabled: boolean): Promise<Asset | null>;
   cancelImport(): Promise<void>;
   relink(asset: Asset): Promise<Asset | null>;
   saveProject(project: Project, saveAs?: boolean): Promise<string | null>;
