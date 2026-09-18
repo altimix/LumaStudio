@@ -14,6 +14,7 @@ const {_electron:electron}=require('playwright');const fs=require('node:fs/promi
  await open();await action('すべてのクリップを選択').click();assert.equal(await page.locator('.timeline-clip.selected').count(),count);
  await page.getByRole('button',{name:'Video1 ロック',exact:true}).click();await open();assert.ok(await action('削除').isDisabled());assert.ok(await action('複製').isDisabled());
  await page.keyboard.press('End');assert.equal(await page.evaluate(()=>document.activeElement?.textContent.startsWith('すべてのクリップ')),true);await page.keyboard.press('Escape');assert.equal(await menu().count(),0);
+ await page.keyboard.press('Control+n');await page.getByRole('button',{name:'保存しないで続行',exact:true}).click();await page.getByRole('button',{name:/YouTube 横動画/}).click();await open();assert.equal(await menu().locator('button:not(:disabled)').count(),0);await page.keyboard.press('Escape');assert.equal(await menu().count(),0);
  await page.screenshot({path:path.join(root,'test-results','edit-menu.png')});assert.deepEqual(errors,[]);console.log('Edit menu: Undo/Redo/copy/duplicate/delete/select-all, lock protection, keyboard navigation and OS labels passed.');
  }finally{await app.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

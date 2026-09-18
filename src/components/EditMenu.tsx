@@ -17,11 +17,9 @@ export default function EditMenu({ onOpen }: { onOpen: () => void }) {
     { label:'削除', key:'Delete', disabled:empty || locked, action:() => state.remove() },
     { label:'すべてのクリップを選択', key:'Ctrl+A', disabled:!state.project.clips.length, action:() => state.select(state.project.clips.map(clip => clip.id)) },
   ];
-  return <div className="file-menu-wrap" onKeyDown={event => event.stopPropagation()}><button ref={trigger} aria-haspopup="menu" aria-expanded={open} onClick={() => { onOpen(); setOpen(!open); }}>編集</button>{open ? <>
+  return <div className="file-menu-wrap" onKeyDown={event => { if (!open) return; event.stopPropagation(); if (event.key === 'Escape' && open) { event.preventDefault(); close(); } if (event.key === 'Tab') setOpen(false); }}><button ref={trigger} aria-haspopup="menu" aria-expanded={open} onClick={() => { onOpen(); setOpen(!open); }}>編集</button>{open ? <>
     <button className="menu-dismiss" aria-label="編集メニューを閉じる" onClick={close}/>
     <div ref={menu} className="popup-menu file-menu" role="menu" aria-label="編集" onKeyDown={event => {
-      if (event.key === 'Escape') { event.preventDefault(); close(); }
-      if (event.key === 'Tab') setOpen(false);
       if (['ArrowUp','ArrowDown','Home','End'].includes(event.key)) { event.preventDefault(); const buttons = [...menu.current!.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')]; const index = buttons.indexOf(document.activeElement as HTMLButtonElement); buttons[event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus(); }
     }}>{items.map(item => <button role="menuitem" key={item.label} disabled={item.disabled || state.gestureActive} onClick={() => { close(); item.action(); }}><span>{item.label}</span><kbd>{shortcutLabel(item.key)}</kbd></button>)}</div>
   </> : null}</div>;
