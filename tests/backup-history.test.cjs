@@ -10,6 +10,7 @@ test('retains ten generations per project independently of singleton recovery cl
  await recovery.clear();const list=await history.list();assert.equal(list.length,11);assert.equal(list.filter(x=>x.projectId==='a').length,10);assert.equal(list[0].name,'別の作品');
  const latest=list.find(x=>x.projectId==='a');assert.equal(latest.name,'版11');assert.equal((await history.read(latest.id)).project.name,'版11');
  await assert.rejects(history.read('../autosave.luma'),/識別子/);
+ await fs.writeFile(path.join(dir,'backups',latest.id),JSON.stringify({project:project('a'),savedAt:0}));assert.equal((await history.list()).length,10);await assert.rejects(history.read(latest.id),/日時/);
  await fs.writeFile(path.join(dir,'backups',latest.id),'broken json');assert.equal((await history.list()).length,10);
  await assert.rejects(history.read(latest.id));
  }finally{await fs.rm(dir,{recursive:true,force:true});}

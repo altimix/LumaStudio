@@ -13,14 +13,14 @@ function createBackupHistory(directory, limit = 10) {
     if ((await fs.stat(file)).size > MAX_PROJECT_BYTES + 1000) throw Error('バックアップが大きすぎます。');
     const value = JSON.parse(await fs.readFile(file, 'utf8'));
     serializeProject(value.project);
-    if (!Number.isFinite(Date.parse(value.savedAt))) throw Error('バックアップの日時が不正です。');
+    if (typeof value.savedAt !== 'string' || !Number.isFinite(Date.parse(value.savedAt))) throw Error('バックアップの日時が不正です。');
     return value;
   };
   const ids = async () => (await fs.readdir(directory).catch(error => { if (error.code === 'ENOENT') return []; throw error; })).filter(id => VALID_ID.test(id)).sort().reverse();
   return {
     write(contents) { return enqueue(async () => {
       const snapshot = JSON.parse(contents); serializeProject(snapshot.project);
-      if (!Number.isFinite(Date.parse(snapshot.savedAt))) throw Error('バックアップの日時が不正です。');
+      if (typeof snapshot.savedAt !== 'string' || !Number.isFinite(Date.parse(snapshot.savedAt))) throw Error('バックアップの日時が不正です。');
       const prefix = createHash('sha256').update(snapshot.project.id).digest('hex').slice(0, 24);
       const id = `${prefix}-${Date.now()}-${randomUUID()}.luma`;
       await atomicWrite(path.join(directory, id), contents);
