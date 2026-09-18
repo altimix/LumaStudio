@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useEditor } from '../store';
 import type { BezierVideoMask, Clip, Project } from '../types';
@@ -13,10 +13,11 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
   const [tool, setTool] = useState<'pen' | 'direct'>(mask.closed ? 'direct' : 'pen');
   const [temporaryDirect, setTemporaryDirect] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
+  const [closeCandidate, setCloseCandidate] = useState(false);
   const cancelGesture = useRef<(() => void) | null>(null);
   const gestureActive = useEditor(s => s.gestureActive);
   const direct = tool === 'direct' || temporaryDirect || mask.closed;
-  useEffect(() => { setTool(mask.closed ? 'direct' : 'pen'); }, [mask.closed]);
+  useLayoutEffect(() => { setTool(mask.closed ? 'direct' : 'pen'); }, [mask.closed]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (event.isComposing || (event.target as HTMLElement | null)?.closest('input,textarea,select,[contenteditable=true]')) return;
@@ -32,6 +33,11 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
   }), []);
   useEffect(() => { cancelGesture.current?.(); }, [source.width, source.height]);
 
+  const nearStart = (position: { clientX: number; clientY: number }) => {
+    if (!mask.points.length || !viewport.current) return false;
+    const rect = viewport.current.getBoundingClientRect(), first = mediaPoint(clip, source, project, mask.points[0]);
+    return Math.hypot(position.clientX - rect.left - first.x / project.width * rect.width, position.clientY - rect.top - first.y / project.height * rect.height) <= 10;
+  };
   const begin = (event: ReactPointerEvent<HTMLButtonElement>, operation: Operation) => {
     if (event.button !== 0 || useEditor.getState().gestureActive) return;
     event.preventDefault(); event.stopPropagation(); event.currentTarget.focus({ preventScroll: true });
@@ -51,10 +57,13 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
       if (event.ctrlKey || event.metaKey) setTool('direct');
       return;
     }
+    if (operation.part === 'add' && !isDirect && !event.shiftKey && originalMask.points.length >= 3 && nearStart(event)) {
+      initial.updateClip(clip.id, { videoMask: { ...originalMask, closed: true } }); setCloseCandidate(false); return;
+    }
     if (operation.part === 'add' && (originalMask.closed || originalMask.points.length >= MAX_BEZIER_MASK_POINTS || startPoint.x < 0 || startPoint.x > 1 || startPoint.y < 0 || startPoint.y > 1)) return;
     if (operation.part !== 'add' && !originalMask.points[operation.index]) return;
     if (operation.part === 'anchor' && !isDirect && !event.shiftKey && operation.index === 0 && originalMask.points.length >= 3) {
-      initial.updateClip(clip.id, { videoMask: { ...originalMask, closed: true } }); return;
+      initial.updateClip(clip.id, { videoMask: { ...originalMask, closed: true } }); setCloseCandidate(false); return;
     }
     const previousSelection = selected;
     const index = operation.part === 'add' ? originalMask.points.length : operation.index;
@@ -75,7 +84,7 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
       }
     };
     const detach = () => {
-      closed = true; cancelGesture.current = null; unsubscribe(); observer.disconnect();
+      closed = true; cancelGesture.current = null; setCloseCandidate(false); unsubscribe(); observer.disconnect();
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', pointerCancel);
       window.removeEventListener('keydown', key, true); window.removeEventListener('keyup', key, true);
       window.removeEventListener('blur', cancel); window.removeEventListener('resize', cancel); document.removeEventListener('visibilitychange', visibility);
@@ -85,6 +94,16 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
     const restore = () => useEditor.setState({ project: before.project, history: before.history, future: before.future, historyPlayheads: before.historyPlayheads, futurePlayheads: before.futurePlayheads, historyLabels: before.historyLabels, futureLabels: before.futureLabels, currentAction: before.currentAction, dirty: before.dirty });
     const finish = () => {
       if (closed) return;
+      const state = useEditor.getState();
+      if (moved && operation.part === 'anchor' && operation.index === originalMask.points.length - 1 && indices.length === 1 && originalMask.points.length >= 4 && !originalMask.closed && state.project === expected && state.gestureOwner === owner && nearStart(last)) {
+        const latest = state.project.clips.find(item => item.id === clip.id)?.videoMask;
+        if (latest?.type === 'bezier') {
+          const points = latest.points.slice(0, -1), first = points[0], end = latest.points.at(-1)!;
+          const incoming = end.kind === 'curve' ? { inX: end.inX + first.x - end.x, inY: end.inY + first.y - end.y } : { inX: first.x, inY: first.y };
+          points[0] = { ...editBezierHandle(first, 'in', { x: incoming.inX - first.x, y: incoming.inY - first.y }, true), kind: first.kind === 'curve' || end.kind === 'curve' ? 'curve' : 'line' };
+          write({ ...latest, points, closed: true }); setSelected([]);
+        }
+      }
       const current = useEditor.getState(); detach();
       // Returning to the initial shape is a no-op, including a modifier-key-only detour.
       if (changed && current.gestureOwner === owner && current.project === expected && JSON.stringify(current.project.clips.find(item => item.id === clip.id)?.videoMask) === JSON.stringify(originalMask)) restore();
@@ -126,7 +145,9 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
       rememberAlt(e.altKey);
       last = { clientX: e.clientX, clientY: e.clientY, shiftKey: e.shiftKey, altKey: e.altKey };
       if (!moved && Math.hypot(e.clientX - origin.clientX, e.clientY - origin.clientY) < 3) return;
-      moved = true; update();
+      moved = true;
+      setCloseCandidate(operation.part === 'anchor' && index === originalMask.points.length - 1 && indices.length === 1 && !originalMask.closed && originalMask.points.length >= 4 && nearStart(e));
+      update();
     };
     const up = (e: PointerEvent) => { if (e.pointerId === pointer) { move(e); finish(); } };
     const pointerCancel = (e: PointerEvent) => { if (e.pointerId === pointer) cancel(); };
@@ -178,10 +199,10 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
   }
   const positionStyle = (point: Position, layer: number) => ({ left: point.x / project.width * 100 + '%', top: point.y / project.height * 100 + '%', zIndex: z + layer });
   return <>
-    <button className={`bezier-add-target ${direct ? 'direct' : ''}`} aria-label={direct ? 'ベジェマスクの選択を解除' : 'ベジェマスクの点を追加'} title={direct ? '空白をクリックして点の選択を解除' : 'クリックで点を追加・ドラッグで曲線・Ctrl / ⌘でポイント編集'} style={{ inset: 0, zIndex: z }} onPointerDown={event => begin(event, { part: 'add' })}/>
+    <button className={`bezier-add-target ${direct ? 'direct' : ''}`} aria-label={direct ? 'ベジェマスクの選択を解除' : 'ベジェマスクの点を追加'} title={direct ? '空白をクリックして点の選択を解除' : 'クリックで点を追加・ドラッグで曲線・Ctrl / ⌘でポイント編集'} style={{ inset: 0, zIndex: z }} onPointerMove={event => { if (!gestureActive) setCloseCandidate(!direct && !event.shiftKey && mask.points.length >= 3 && nearStart(event)); }} onPointerLeave={() => { if (!gestureActive) setCloseCandidate(false); }} onPointerDown={event => begin(event, { part: 'add' })}/>
     <svg className="bezier-mask-path" viewBox={`0 0 ${project.width} ${project.height}`} preserveAspectRatio="none" style={{ zIndex: z + 1 }} aria-hidden="true"><path d={path}/>{screen.flatMap((point, index) => point.kind === 'curve' ? [<line key={`in-${index}`} x1={point.anchor.x} y1={point.anchor.y} x2={point.incoming.x} y2={point.incoming.y}/>, <line key={`out-${index}`} x1={point.anchor.x} y1={point.anchor.y} x2={point.outgoing.x} y2={point.outgoing.y}/>] : [])}</svg>
     {screen.map((point, index) => <Fragment key={index}>
-      <button className="bezier-mask-anchor" aria-label={`ベジェマスクの点 ${index + 1}を移動`} aria-pressed={selected.includes(index)} style={positionStyle(point.anchor, 3)} onPointerDown={event => begin(event, { part: 'anchor', index })}/>
+      <button className={`bezier-mask-anchor ${index === 0 && closeCandidate && !mask.closed ? 'close-candidate' : ''}`} title={index === 0 && !direct && mask.points.length >= 3 ? 'クリックしてパスを閉じる' : 'ドラッグで移動・Shiftクリックで追加選択'} onPointerEnter={() => { if (!gestureActive && index === 0 && !direct && mask.points.length >= 3) setCloseCandidate(true); }} onPointerLeave={() => { if (!gestureActive) setCloseCandidate(false); }} aria-label={`ベジェマスクの点 ${index + 1}を移動`} aria-pressed={selected.includes(index)} style={positionStyle(point.anchor, 3)} onPointerDown={event => begin(event, { part: 'anchor', index })}/>
       {point.kind === 'curve' ? <>
         <button className="bezier-mask-handle" aria-label={`点 ${index + 1}の入力ハンドルを移動`} style={positionStyle(point.incoming, 2)} onPointerDown={event => begin(event, { part: 'in', index })}/>
         <button className="bezier-mask-handle" aria-label={`点 ${index + 1}の出力ハンドルを移動`} style={positionStyle(point.outgoing, 2)} onPointerDown={event => begin(event, { part: 'out', index })}/>
@@ -190,7 +211,7 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
     {actions ? createPortal(<div className="bezier-tools" role="group" aria-label="ベジェ編集ツール">
       <button aria-pressed={!direct} disabled={mask.closed || gestureActive} onClick={() => setTool('pen')}>ペン</button>
       <button aria-pressed={direct} disabled={gestureActive} onClick={() => setTool('direct')}>ダイレクト選択</button>
-      <span role="status">{temporaryDirect && tool === 'pen' ? '一時切替' : `${selected.length}点選択`}</span>
+      <span role="status">{closeCandidate && !mask.closed ? 'パスを閉じる' : temporaryDirect && tool === 'pen' ? '一時切替' : `${selected.length}点選択`}</span>
     </div>, actions) : null}
   </>;
 }

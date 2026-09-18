@@ -36,3 +36,4 @@
 .bezier-tools button{padding:3px 6px;border:1px solid #61784d;border-radius:3px;white-space:nowrap;color:#d7e5c7}
 .bezier-tools button[aria-pressed=true]{background:#d1e8a9;color:#1c2918}
 .bezier-tools span{white-space:nowrap;color:#b9caa9}
+.bezier-mask-anchor.close-candidate{outline:3px solid #fff;outline-offset:4px;border-radius:50%;background:#77bce8;cursor:crosshair}

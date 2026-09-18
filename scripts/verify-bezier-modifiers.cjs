@@ -85,6 +85,26 @@ module.exports = async function verifyBezierModifiers({ page, save, checks }) {
   assert.equal(await page.locator('.bezier-mask-anchor').count(), 3);
   assert.equal(JSON.stringify(await read()), asymmetric);
   checks.push('cancelling pen creation removes the new point and its gesture history');
+  end = at(.3, .8); await page.mouse.click(end.x, end.y);
+  assert.equal(await page.locator('.bezier-mask-anchor').count(), 4);
+  const openPath = await read();
+  await direct.click(); start = await center(anchor(4)); const first = await center(anchor(1));
+  await page.mouse.move(start.x, start.y); await page.mouse.down();
+  await page.mouse.move(first.x + 8, first.y, { steps: 5 });
+  assert.equal(await page.locator('.bezier-mask-anchor.close-candidate').count(), 1);
+  await page.mouse.up(); mask = await read();
+  assert.equal(mask.closed, true); assert.equal(mask.points.length, 3);
+  await page.keyboard.press('Control+z'); assert.deepEqual(await read(), openPath);
+  await page.keyboard.press('Control+Shift+z'); assert.deepEqual(await read(), mask);
+  await page.getByRole('button', { name: 'パスを開いて点を追加', exact: true }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll('.bezier-tools button')].some(button => button.textContent === 'ペン' && button.getAttribute('aria-pressed') === 'true'));
+  const nearFirst = await center(anchor(1));
+  await page.mouse.move(nearFirst.x + 9, nearFirst.y);
+  await page.waitForFunction(() => document.querySelector('.bezier-mask-anchor.close-candidate'), undefined, { timeout: 2000 });
+  await page.mouse.click(nearFirst.x + 9, nearFirst.y);
+  assert.equal((await read()).closed, true);
+  checks.push('overlapping end/start merges the endpoints, closes with one undo and shows a close hint near the start');
+
   // The caller continues its original persistence/export/lock suite from an empty mask.
   await page.locator('#video-mask-type').selectOption('none'); await save();
 };
