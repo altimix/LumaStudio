@@ -41,7 +41,8 @@ async function hydrateProject(project, inspect, present) {
       try { fresh = await inspect(saved.path, { previewProxy: saved.previewProxy === true }); }
       catch (error) {
         if (!saved.previewProxy) throw error;
-        fresh = { ...await inspect(saved.path, { previewProxy: false, skipCache: true }), proxyWarning: '軽量プロキシを準備できなかったため原本を使用しています。再作成するには「軽量プロキシを作成」を選んでください。' };
+        const original = await inspect(saved.path, { previewProxy: false, skipCache: true });
+        fresh = { ...original, waveform: original.id === (saved.revision || saved.id) ? saved.waveform : original.waveform, proxyWarning: '軽量プロキシを準備できなかったため原本を使用しています。再作成するには「軽量プロキシを作成」を選んでください。' };
       }
       assertReplacement(saved, fresh);
       const candidate = { ...fresh, id: saved.id, name: saved.name, revision: fresh.id };
