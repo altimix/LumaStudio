@@ -42,7 +42,7 @@ async function verify() {
     await page.locator('.inspector-section').filter({ has: page.locator('summary').filter({hasText:'クロップ'}) }).locator('summary').click();await page.getByRole('button',{name:'モニターでクロップ',exact:true}).click();
     const left=page.locator('[data-crop-edge="left"]');await left.waitFor();assert.equal(await page.locator('.media-effect-handle.edge').count(),4);
     await drag(left,64,0);let saved=await save();assert.ok(Math.abs(saved.clips[0].crop.left-.1)<.015,`left crop ${saved.clips[0].crop.left}`);
-    await page.keyboard.press('Control+z');let undone=await save();assert.ok(!undone.clips[0].crop||undone.clips[0].crop.left===0);await page.keyboard.press('Control+Shift+z');saved=await save();assert.ok(saved.clips[0].crop.left>.08);
+    await page.keyboard.press('Control+z');let undone=await save();assert.ok(!undone.clips[0].crop||undone.clips[0].crop.left===0);assert.equal(await page.getByRole('button',{name:'モニターでクロップ',exact:true}).isVisible(),true);await page.keyboard.press('Control+Shift+z');saved=await save();assert.ok(saved.clips[0].crop.left>.08);
     checks.push('monitor crop edge is one Undo/Redo edit and persists');
     const bottomInput=page.getByLabel('下',{exact:true});await bottomInput.fill('0.1');await bottomInput.press('Enter');
     const topSlider=page.getByRole('slider',{name:'上スライダー',exact:true}),sliderBox=await topSlider.boundingBox();assert.ok(sliderBox);await page.mouse.move(sliderBox.x+2,sliderBox.y+sliderBox.height/2);await page.mouse.down();await page.mouse.move(sliderBox.x+sliderBox.width-2,sliderBox.y+sliderBox.height/2,{steps:12});await page.mouse.up();await topSlider.dispatchEvent('pointerup',{button:0});await topSlider.evaluate(element=>element.blur());
