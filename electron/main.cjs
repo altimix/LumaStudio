@@ -26,6 +26,7 @@ const { assertDestination, atomicWrite } = require('./persistence.cjs');
 const { resolveProjectMedia, serializeAt, collectProject, relinkFolder } = require('./portable-project.cjs');
 const { assertReplacement, hydrateProject, parseProjectJson, serializeProject, MAX_PROJECT_BYTES } = require('./project.cjs');
 const { createRecoveryStore } = require('./recovery.cjs');
+const { createBackupHistory } = require('./backup-history.cjs');
 const { createCredentials, createOpenAI } = require('./openai.cjs');
 const { audioClips, totalTime, transcribeTimeline, generateMetadata, generateThumbnail } = require('./youtube.cjs');
 const { subtitleFile, youtubeText } = require('../shared/youtube.mjs');
@@ -138,6 +139,7 @@ function installIPC() {
   });
   handle('bgm-load', id => bgm.load(id));
   const recoveryFiles = createRecoveryStore(autosavePath());
+  const backups = createBackupHistory(path.join(app.getPath('userData'), 'backups'));
   const credentials = createCredentials(path.join(app.getPath('userData'), 'openai-key.bin'), safeStorage,
     [process.env.LUMA_ENV_FILE, path.join(process.env.PORTABLE_EXECUTABLE_DIR || root, '.env'), path.join(process.cwd(), '.env')].filter(Boolean), process.env.OPENAI_API_KEY);
   const ai = createOpenAI(() => credentials.get());
@@ -314,9 +316,11 @@ function installIPC() {
     await recoveryFiles.clear(); projectPathGeneration++; projectPath = target; dirty = false;
     return { project: p, path: target };
   });
+  handle('list-backups', () => backups.list());
+  handle('read-backup', async id => { const snapshot = await backups.read(id); return { ...snapshot, project: await hydrate(snapshot.project) }; });
   handle('autosave', (p) => {
     const contents = JSON.stringify({ savedAt: new Date().toISOString(), project: JSON.parse(serialize(p)) });
-    return recoveryFiles.write(contents);
+    return recoveryFiles.write(contents).then(() => backups.write(contents));
   });
   handle('clear-recovery', expectedSavedAt => {
     if (expectedSavedAt !== undefined && typeof expectedSavedAt !== 'string') throw new Error('自動保存の識別子が不正です。');
