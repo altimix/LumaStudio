@@ -14,7 +14,9 @@ export default function BackupHistory({ onClose, onRestore }: { onClose: () => v
     try { const snapshot = await window.luma.readBackup(id); if (mounted.current) onRestore(snapshot.project); }
     catch (e) { if (mounted.current) setError(String(e)); } finally { if (mounted.current) setBusy(false); }
   };
-  const projects = [...new Map(entries.map(entry => [entry.projectId, entry.name])).entries()];
+  const projectNames = new Map<string, string>();
+  for (const entry of entries) if (!projectNames.has(entry.projectId)) projectNames.set(entry.projectId, entry.name);
+  const projects = [...projectNames.entries()];
   return <Modal title="バックアップ履歴" blockEditorShortcuts onClose={() => { if (!busy) onClose(); }}>
     <p className="modal-description">プロジェクトごとに最近の自動保存を10世代保持します。復元後は「名前を付けて保存」で保存先を選べます。素材の原本はバックアップに含まれません。</p>
     <div className="backup-history-body">

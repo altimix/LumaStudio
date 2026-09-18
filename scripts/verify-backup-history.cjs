@@ -10,6 +10,7 @@ const root=path.join(__dirname,'..');
  const list=await page.evaluate(()=>window.luma.listBackups());assert.equal(list.length,2);assert.equal(list[0].name,project.name);
  await page.getByRole('button',{name:'ファイル',exact:true}).click();await page.getByRole('button',{name:'バックアップ履歴',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'バックアップ履歴',exact:true});await dialog.getByRole('button',{name:'この版を復元'}).first().waitFor();
+ assert.equal(await dialog.getByRole('option',{name:project.name,exact:true}).count(),1);assert.equal(await dialog.getByRole('option',{name:'以前の版',exact:true}).count(),0);
  await page.screenshot({path:path.join(root,'test-results','backup-history.png'),animations:'disabled'});
  await dialog.locator('article').filter({hasText:'以前の版'}).getByRole('button',{name:'この版を復元'}).click();await page.getByRole('button',{name:'以前の版',exact:true}).waitFor();assert.equal(await page.locator('.unsaved-dot').count(),1);
  const file=path.join(profile,'recovered.luma');await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},file);await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
