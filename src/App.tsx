@@ -15,7 +15,7 @@ import { validateTextStyle } from '../shared/text-style.mjs';
 import { validateTextBox } from '../shared/text-box.mjs';
 import { validateGraphic } from '../shared/graphics.mjs';
 import { validateVolumeKeys } from '../shared/volume-automation.mjs';
-import type { Asset, ExportProgress, ExportSettings, Project, UpdateInfo } from './types';
+import type { Asset, ExportProgress, ExportSettings, ImportProgress, Project, UpdateInfo } from './types';
 import MediaLibrary from './components/MediaLibrary';
 import WorkspaceLayout from './components/WorkspaceLayout';
 import { useLayoutPreferences } from './layout-preferences';
@@ -34,10 +34,20 @@ function errorText(e: unknown) { const message = e instanceof Error ? e.message 
 function downloadJSON(p: Project) {
   const blob = new Blob([JSON.stringify(p, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${p.name}.luma`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-function ProjectOperationDialog({ title, message, blockKeys = false }: { title: string; message: string; blockKeys?: boolean }) {
-  return <div className="modal-backdrop"><section className="modal project-operation-dialog" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={element => { element?.focus(); }} onKeyDown={blockKeys ? e => { e.preventDefault(); e.stopPropagation(); } : undefined}>
+function ProjectOperationDialog({ title, message, blockKeys = false, progress, onCancel, cancelling = false }: { title: string; message: string; blockKeys?: boolean; progress?: ImportProgress | null; onCancel?: () => void; cancelling?: boolean }) {
+  const dialog = useRef<HTMLElement>(null);
+  useEffect(() => { dialog.current?.focus(); }, []);
+  return <div className="modal-backdrop"><section ref={dialog} className="modal project-operation-dialog" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onKeyDown={event => {
+    event.stopPropagation();
+    if (blockKeys) event.preventDefault();
+    else if (event.key === 'Escape' && onCancel) { event.preventDefault(); onCancel(); }
+    else if (event.key === 'Tab') { event.preventDefault(); dialog.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus(); }
+  }}>
     <div className="modal-heading"><h2>{title}</h2></div>
-    <div className="project-operation-status" role="status" aria-live="polite"><span className="project-operation-spinner" aria-hidden="true"><LoaderCircle size={21} className="spin"/></span><span>{message}</span></div>
+    <div className="project-operation-status" role="status" aria-live="polite"><span className="project-operation-spinner" aria-hidden="true"><LoaderCircle size={21} className="spin"/></span><span>{message}</span>
+      {progress ? <><strong>{progress.index} / {progress.total} 件：{progress.name}</strong><progress aria-label="素材読み込みの完了件数" value={progress.completed ?? progress.index - 1} max={progress.total}/><small>完了 {(progress.completed ?? progress.index - 1)} 件・残り {progress.total - (progress.completed ?? progress.index - 1)} 件</small></> : null}
+    </div>
+    {onCancel ? <div className="modal-footer"><button className="secondary-button" disabled={cancelling} onClick={onCancel}>{cancelling ? '中止しています…' : '読み込みを中止'}</button></div> : null}
   </section></div>;
 }
 export default function App() {
@@ -58,6 +68,9 @@ export default function App() {
   const [historyOpen, setHistoryOpen] = useState(false); const [windowMenu, setWindowMenu] = useState(false);
   const [savingOnClose, setSavingOnClose] = useState(false);
   const [projectBusy, setProjectBusy] = useState('');
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
+  const [cancellingImport, setCancellingImport] = useState(false);
+  const cancelImport = () => { if (!importInFlight.current || cancellingImport) return; setCancellingImport(true); void window.luma?.cancelImport().catch(error => { setCancellingImport(false); useEditor.getState().notify(errorText(error)); }); };
   const projectBusyRef = useRef(false);
   const saveInFlight = useRef(false);
   const importInFlight = useRef(false);
@@ -105,7 +118,7 @@ export default function App() {
     };
     void start();
     const exportOff = window.luma?.onExportProgress(setProgress);
-    const importOff = window.luma?.onImportProgress(data => { if (importInFlight.current) setImportLabel(`${data.index}/${data.total} 読み込み中: ${data.name}`); });
+    const importOff = window.luma?.onImportProgress(data => { if (importInFlight.current) { setImportProgress(data); setImportLabel(`${data.index}/${data.total} 読み込み中: ${data.name}`); } });
     return () => { exportOff?.(); importOff?.(); };
   }, []);
   useEffect(() => {
@@ -174,9 +187,9 @@ export default function App() {
     if (!window.luma) { importInput.current?.click(); return; }
     if (!beginProjectOperation('素材を読み込んでいます')) return;
     const importProject = useEditor.getState().project.id;
-    importInFlight.current = true; setImportLabel('素材を読み込み中…');
-    try { const result = files ? await window.luma.importDroppedFiles(files) : await window.luma.importMedia(); if (useEditor.getState().project.id !== importProject) return; if (result.assets.length) useEditor.getState().importAssets(result.assets); if (result.errors.length) useEditor.getState().notify(result.errors.join('\n')); }
-    catch (e) { useEditor.getState().notify(errorText(e)); } finally { importInFlight.current = false; setImportLabel(''); endProjectOperation(); }
+    importInFlight.current = true; setImportProgress(null); setCancellingImport(false); setImportLabel('素材を読み込み中…');
+    try { const result = files ? await window.luma.importDroppedFiles(files) : await window.luma.importMedia(); if (useEditor.getState().project.id !== importProject) return; if (result.assets.length) useEditor.getState().importAssets(result.assets); if (result.errors.length || result.cancelled) useEditor.getState().notify([...(result.cancelled ? [`読み込みを中止しました。完了した${result.assets.length}件を追加しました。`] : []), ...result.errors].join('\n')); }
+    catch (e) { useEditor.getState().notify(errorText(e)); } finally { importInFlight.current = false; setImportLabel(''); setImportProgress(null); setCancellingImport(false); endProjectOperation(); }
   };
   const relink = async (a: Asset) => {
     if (!window.luma) { useEditor.getState().notify('素材の再リンクはデスクトップアプリでご利用ください'); return; }
@@ -202,7 +215,7 @@ export default function App() {
   };
   useEffect(() => {
     const keydown = (e: KeyboardEvent) => {
-      if (savingOnClose || projectBusyRef.current) { e.preventDefault(); return; }
+      if (savingOnClose || projectBusyRef.current) { if (!(e.target instanceof HTMLElement && e.target.closest('.project-operation-dialog'))) e.preventDefault(); return; }
       if (useEditor.getState().clipMenuOpen) return;
       if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || e.altKey) return;
       const target = e.target instanceof HTMLElement ? e.target : null;
@@ -238,7 +251,7 @@ export default function App() {
     }
     useEditor.getState().importAssets(assets);
   };
-  return <div className="app" onKeyDownCapture={e => { if (projectBusyRef.current) { e.preventDefault(); e.stopPropagation(); } }} onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); if (savingOnClose || projectBusyRef.current) return; if (window.luma) void importMedia(Array.from(e.dataTransfer.files)); else void browserImport(e.dataTransfer.files); } }}>
+  return <div className="app" onKeyDownCapture={e => { if (projectBusyRef.current && !(e.target instanceof HTMLElement && e.target.closest('.project-operation-dialog'))) { e.preventDefault(); e.stopPropagation(); } }} onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); if (savingOnClose || projectBusyRef.current) return; if (window.luma) void importMedia(Array.from(e.dataTransfer.files)); else void browserImport(e.dataTransfer.files); } }}>
     <div className="app-titlebar"><div className="brand"><svg width="23" height="25" viewBox="0 0 23 25" aria-hidden="true"><path d="M3 2h6v15h11v6H3z" fill="#b9d993"/><path d="m12 3 8 8h-8z" fill="#778e61"/></svg><span>Luma<span>Studio</span></span></div><div className="app-menu"><div className="file-menu-wrap"><button onClick={() => { setWindowMenu(false); setFileMenu(!fileMenu); }}>ファイル</button>{fileMenu ? <><button className="menu-dismiss" aria-label="メニューを閉じる" onClick={() => setFileMenu(false)}/><div className="popup-menu file-menu"><button onClick={() => safely(newProject)}><Plus size={14}/>新規プロジェクト<kbd>Ctrl N</kbd></button><button onClick={() => safely(() => { void open(); })}><FolderOpen size={14}/>プロジェクトを開く<kbd>Ctrl O</kbd></button><hr/><button onClick={() => { void save(); setFileMenu(false); }}><Save size={14}/>保存<kbd>Ctrl S</kbd></button><button onClick={() => { void save(true); setFileMenu(false); }}><Save size={14}/>名前を付けて保存</button><hr/><button onClick={() => { void importMedia(); setFileMenu(false); }}><Upload size={14}/>素材を読み込む<kbd>Ctrl I</kbd></button><button onClick={() => { showExport(); setFileMenu(false); }}><Download size={14}/>動画を書き出す<kbd>Ctrl E</kbd></button></div></> : null}</div><button onClick={() => setModal('shortcuts')}>編集</button><button onClick={editSettings}>シーケンス</button><div className="file-menu-wrap"><button aria-expanded={windowMenu} onClick={() => { setFileMenu(false); setWindowMenu(!windowMenu); }}>ウィンドウ</button>{windowMenu ? <><button className="menu-dismiss" aria-label="ウィンドウメニューを閉じる" onClick={() => setWindowMenu(false)}/><div className="popup-menu file-menu"><button aria-pressed={historyOpen} onClick={() => { setHistoryOpen(!historyOpen); setWindowMenu(false); }}>ヒストリー{historyOpen ? <Check size={14}/> : null}</button><hr/><button aria-pressed={!layout.libraryCollapsed} onClick={() => { setLayout(current => ({ ...current, libraryCollapsed: !current.libraryCollapsed })); setWindowMenu(false); }}>素材パネル{!layout.libraryCollapsed ? <Check size={14}/> : null}</button><button aria-pressed={!layout.inspectorCollapsed} onClick={() => { setLayout(current => ({ ...current, inspectorCollapsed: !current.inspectorCollapsed })); setWindowMenu(false); }}>プロパティパネル{!layout.inspectorCollapsed ? <Check size={14}/> : null}</button><hr/><button onClick={() => { resetLayout(); setWindowMenu(false); }}><RotateCcw size={14}/>レイアウトを初期状態に戻す</button></div></> : null}</div><HelpMenu onSelect={page => {setFileMenu(false);setWindowMenu(false);useEditor.getState().stop();setModal(page);}}/></div><div className="titlebar-center">{p.name}{dirty ? <span className="unsaved-dot"/> : null}</div><span className="titlebar-version">{updateInfo?.status === 'available' ? <button className="update-badge" onClick={() => setModal('updates')}>更新あり</button> : null}{isDesktop ? version : 'BROWSER PREVIEW'}</span></div>
     <header className="workspace-header"><div className="project-heading"><span className="project-folder"><Film size={19}/></span><div><button onClick={editSettings}>{p.name}<ChevronDown size={12}/></button><span>{isDesktop ? 'ローカルプロジェクト' : 'ブラウザプレビュー'} <span> / </span> シーケンス 01</span></div></div><nav className="workspace-tabs" aria-label="ワークスペース">{[{ label: '編集', active: tab === 'video' && modal !== 'youtube', action: () => { revealPanels(); useEditor.setState({ panel: 'media', inspectorTab: 'video' }); } }, { label: 'カラー', active: tab === 'color' && modal !== 'youtube', action: () => { revealPanels(); useEditor.setState({ panel: 'effects', inspectorTab: 'color' }); } }, { label: 'オーディオ', active: tab === 'audio' && modal !== 'youtube', action: () => { revealPanels(); useEditor.setState({ panel: 'media', inspectorTab: 'audio' }); } }, { label: 'YouTube', active: modal === 'youtube', action: () => { useEditor.getState().stop(); setModal('youtube'); } }].map(w => <button className={w.active ? 'active' : ''} key={w.label} aria-pressed={w.active} onClick={w.action}>{w.label}</button>)}</nav><div className="header-actions"><button className="text-button guide-open" onClick={() => { useEditor.getState().stop(); setModal('guide'); }}><HelpCircle size={15}/>使い方</button><IconButton label="プロジェクトを保存 (Ctrl+S)" onClick={() => { void save(); }}><Save size={17}/></IconButton><button className="import-button" onClick={() => { void importMedia(); }} disabled={!!importLabel}><Plus size={15}/>読み込み</button><button className="primary-button export-button" onClick={showExport} disabled={!p.clips.length}><Download size={15}/>書き出し<ArrowUpRight size={14}/></button></div></header>
     {recovery ? <div className="recovery-banner"><RotateCcw size={14}/><span>前回の自動保存があります：{recovery.project.name}</span><button onClick={() => { useEditor.getState().load(recovery.project); useEditor.setState({ dirty: true }); void window.luma?.resetProjectPath(true).catch(e => useEditor.getState().notify(errorText(e))); setRecovery(null); }}>復元する</button><IconButton label="この自動保存を破棄" onClick={() => { void window.luma?.clearRecovery(recovery.savedAt).then(() => setRecovery(null)).catch(e => useEditor.getState().notify(errorText(e))); }}><X size={13}/></IconButton></div> : null}
@@ -266,7 +279,7 @@ export default function App() {
     </Modal> : null}
 
     <input ref={importInput} hidden type="file" multiple accept="video/*,audio/*,image/*" onChange={e => { void browserImport(e.target.files); e.target.value = ''; }}/><input ref={openInput} hidden type="file" accept=".luma" onChange={async e => { const file = e.target.files?.[0]; if (file) { try { const project = JSON.parse(await file.text()) as Project; if (project.version !== 1 || !Array.isArray(project.clips) || !Array.isArray(project.assets)) throw new Error('プロジェクト形式が不正です'); validateTransitions(project); project.clips.forEach(c => { validateGraphic(c); validateVolumeKeys(c); validateTextBox(c); if (c.kind === 'title') validateTextStyle(c); }); project.assets = project.assets.map(a => a.url.startsWith('blob:') ? { ...a, offline: true, url: '' } : a); useEditor.getState().load(project); } catch (error) { useEditor.getState().notify(errorText(error)); } } e.target.value = ''; }}/>
-    {projectBusy && !savingOnClose ? <ProjectOperationDialog title={projectBusy} message="処理が終わるまでお待ちください。"/> : null}
+    {projectBusy && !savingOnClose ? <ProjectOperationDialog title={projectBusy} message={cancellingImport ? '処理を中止して一時ファイルを片付けています。' : importProgress?.stage || '処理が終わるまでお待ちください。'} progress={importProgress} onCancel={importLabel ? cancelImport : undefined} cancelling={cancellingImport}/> : null}
     {savingOnClose ? <ProjectOperationDialog title="プロジェクトを保存しています" message="保存が完了すると終了します。" blockKeys/> : null}
   </div>;
 }

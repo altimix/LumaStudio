@@ -42,7 +42,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }
 ]);
 let exportFinished = Promise.resolve();
-let window; let exportController; let projectPath = null; let projectPathGeneration = 0; let dirty = false; let importing = false;
+let window; let exportController; let projectPath = null; let projectPathGeneration = 0; let dirty = false;
 let pendingCloseId = null; let preparingCloseId = null; let rendererGone = false; let nextCloseId = 0; let allowClose = false;
 const mediaFiles = new Map(); const completedExports = new Set();
 const registeredAssets = new Map(); const protectedSourcePaths = new Set();
@@ -252,23 +252,17 @@ function installIPC() {
     return { assets, recovery, startupProject, startupError, version: app.getVersion() };
   });
   const importFolderConfig = path.join(app.getPath('userData'), 'import-folder.json');
+  const importer = require('./media-import.cjs').createMediaImporter((file, options) => inspectMedia(file, cacheDir(), options), present, data => window.webContents.send('import-progress', data));
+  handle('cancel-import', () => importer.cancel());
   const importFiles = async paths => {
-    if (importing) throw new Error('前の素材を読み込み中です。');
+    if (importer.busy) throw new Error('前の素材を読み込み中です。');
     if (!paths) {
       const result = await dialog.showOpenDialog(window, { title: '素材を読み込む', defaultPath: await recentFolder(importFolderConfig, app.getPath('documents')), properties: ['openFile', 'multiSelections'], filters: [{ name: '動画・音声・画像', extensions: ['mp4','mov','mkv','avi','webm','m4v','mxf','mp3','wav','aac','m4a','flac','ogg','png','jpg','jpeg','webp','bmp','gif','tif','tiff'] }] });
       if (result.canceled) return { assets: [], errors: [] }; paths = result.filePaths;
     }
-    if (!Array.isArray(paths) || paths.length > 100 || paths.some(p => typeof p !== 'string' || !path.isAbsolute(p))) throw new Error('読み込み先が不正です。');
-    importing = true;
-    try {
-      const assets = []; const errors = [];
-      for (const [i, file] of paths.entries()) {
-        window.webContents.send('import-progress', { index: i + 1, total: paths.length, name: path.basename(file) });
-        try { assets.push(present(await inspectMedia(file, cacheDir()))); } catch (e) { errors.push(`${path.basename(file)}: ${e.message.slice(-350)}`); }
-      }
-      if (assets.length) await rememberFolder(importFolderConfig, assets[0].path).catch(() => { errors.push('素材は読み込みましたが、読み込み先フォルダを記憶できませんでした。'); });
-      return { assets, errors };
-    } finally { importing = false; }
+    const result = await importer.run(paths);
+    if (result.assets.length) await rememberFolder(importFolderConfig, result.assets[0].path).catch(() => { result.errors.push('素材は読み込みましたが、読み込み先フォルダを記憶できませんでした。'); });
+    return result;
   };
   handle('import', () => importFiles());
   handle('import-dropped', paths => {

@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('luma', {
     }
     return ipcRenderer.invoke('import-dropped', paths);
   },
+  cancelImport: () => ipcRenderer.invoke('cancel-import'),
   relink: asset => ipcRenderer.invoke('relink', asset),
   saveProject: (p, saveAs) => ipcRenderer.invoke('save-project', p, saveAs),
   openProject: () => ipcRenderer.invoke('open-project'),
