@@ -37,7 +37,7 @@ async function hydrateProject(project, inspect, present) {
   for (const saved of project.assets) {
     try {
       if (!isLocalProjectPath(saved.path)) throw new Error('別のOSの素材は再リンクしてください。');
-      const fresh = await inspect(saved.path);
+      const fresh = await inspect(saved.path, { previewProxy: saved.previewProxy === true });
       assertReplacement(saved, fresh);
       const candidate = { ...fresh, id: saved.id, name: saved.name, revision: fresh.id };
       // Validate refreshed metadata and every source interval before exposing it.

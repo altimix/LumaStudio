@@ -31,3 +31,5 @@
 .project-operation-status strong{font-size:12px;overflow-wrap:anywhere;max-width:100%}.project-operation-status progress{width:100%;accent-color:#b9d993}.project-operation-status small{font-size:11px;color:#b7c4ad}
 .basic-settings>.section-properties{display:grid;grid-template-columns:1fr 1fr;gap:8px}.basic-settings .property-field{margin:0}.basic-settings .property-label{display:flex;flex-direction:column;align-items:stretch;gap:5px}.basic-settings .number-wrap{width:100%}.basic-settings .number-wrap input{width:100%}.basic-settings select{width:100%;max-width:none}
 .backup-list{max-height:45vh;overflow:auto;margin-top:16px}.backup-list article{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}.backup-list article div{display:grid;gap:5px;min-width:0}.backup-list strong{overflow-wrap:anywhere}.backup-list span{color:var(--muted);font-size:11px}.backup-list button{flex-shrink:0}
+
+.media-proxy-action{display:grid;gap:6px;padding:8px 12px}.media-proxy-action small{font-size:10px;color:var(--muted)}

@@ -48,7 +48,7 @@ let window; let exportController; let projectPath = null; let projectPathGenerat
 let pendingCloseId = null; let preparingCloseId = null; let rendererGone = false; let nextCloseId = 0; let allowClose = false;
 const mediaFiles = new Map(); const completedExports = new Set();
 const registeredAssets = new Map(); const protectedSourcePaths = new Set();
-const assetKey = a => `${a.id}/${a.revision || a.id}`;
+const assetKey = a => `${a.id}/${a.revision || a.id}${a.previewProxy ? '-preview' : ''}`;
 let aiController;
 let audioPrepareController;
 const fontLibrary = createFontLibrary(() => path.join(cacheDir(), 'fonts'), (file, key) => { mediaFiles.set('font/' + key, file); return 'media://local/font/' + key; });
@@ -82,7 +82,7 @@ function present(a) {
   return { ...a, url, thumbnail: a.thumbnailPath ? `media://local/thumb/${assetKey(a)}` : '' };
 }
 async function hydrate(p) {
-  const hydrated = await hydrateProject(p, file => inspectMedia(file, cacheDir()), present);
+  const hydrated = await hydrateProject(p, (file, options) => inspectMedia(file, cacheDir(), options), present);
   // Failed inspection keeps an asset offline. Its saved path is still source
   // media and must never become a photo, project, or export destination.
   for (const asset of hydrated.assets) protectedSourcePaths.add(asset.path);
@@ -257,6 +257,17 @@ function installIPC() {
   const importFolderConfig = path.join(app.getPath('userData'), 'import-folder.json');
   const importer = require('./media-import.cjs').createMediaImporter((file, options) => inspectMedia(file, cacheDir(), options), present, data => window.webContents.send('import-progress', data));
   handle('cancel-import', () => importer.cancel());
+  handle('preview-proxy', async (asset, enabled) => {
+    if (typeof enabled !== 'boolean') throw Error('プロキシの指定が不正です。');
+    const original = await registered(asset);
+    if (original.kind !== 'video') throw Error('動画素材を選択してください。');
+    const result = await importer.run([original.path], { previewProxy: enabled });
+    if (result.cancelled) return null;
+    if (result.errors.length) throw Error(result.errors.join('\n'));
+    const fresh = result.assets[0];
+    return present({ ...fresh, id: original.id, name: original.name, revision: fresh.id });
+  });
+
   const importFiles = async paths => {
     if (importer.busy) throw new Error('前の素材を読み込み中です。');
     if (!paths) {

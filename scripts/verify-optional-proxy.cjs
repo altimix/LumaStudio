@@ -1,0 +1,26 @@
+const {_electron:electron}=require('playwright');const fs=require('node:fs/promises'),path=require('node:path'),assert=require('node:assert/strict'),os=require('node:os');
+const {ffmpeg,run,inspectMedia}=require('../electron/media.cjs');const root=path.join(__dirname,'..');
+(async()=>{
+ await fs.mkdir(path.join(root,'.local'),{recursive:true});await fs.mkdir(path.join(root,'test-results'),{recursive:true});const profile=await fs.mkdtemp(path.join(root,'.local','optional-proxy-')),env={...process.env,LUMA_TEST_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;
+ const file=path.join(profile,'4K 素材.mp4');await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','testsrc2=size=3840x2160:rate=30:duration=3','-c:v','libx264','-preset','ultrafast','-crf','23','-pix_fmt','yuv420p',file]);
+ const cache=path.join(profile,'fixture-cache'),asset=await inspectMedia(file,cache),projectFile=path.join(profile,'long.luma');
+ const clip={assetId:asset.id,trackId:'v',kind:'video',name:'4K素材',in:0,duration:3,speed:1,scale:1,x:0,y:0,rotation:0,opacity:1,volume:0,exposure:0,contrast:1,saturation:1,fadeIn:0,fadeOut:0};
+ const project={version:1,id:'proxy',name:'30分・600クリップ',width:3840,height:2160,fps:30,assets:[asset],tracks:[{id:'v',name:'Video1',kind:'video'}],markers:[],clips:Array.from({length:600},(_,i)=>({...clip,id:`c${i}`,start:i*3}))};await fs.writeFile(projectFile,JSON.stringify(project));
+ const executablePath=process.env.LUMA_VERIFY_EXE,app=await electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000}),page=await app.firstWindow(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ try{
+ await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},projectFile);
+ const start=performance.now();await page.keyboard.press('Control+o');await page.getByRole('button',{name:project.name,exact:true}).waitFor();const openMs=performance.now()-start;
+ await page.getByRole('button',{name:asset.name+' を選択',exact:true}).click();
+ // Source video seek timings measure real browser decoding for both registered URLs.
+ const decode=async()=>{await page.getByRole('button',{name:asset.name+' をプレビュー',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.source-monitor video')?.readyState>=2);const result=await page.locator('.source-monitor video').evaluate(async v=>{v.pause();const times=[];for(const t of [.25,2.5,.8,2,1.3]){const start=performance.now();await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('seek timeout')),10000);v.addEventListener('seeked',()=>{clearTimeout(timer);resolve();},{once:true});v.currentTime=t;});times.push(performance.now()-start);}return{width:v.videoWidth,height:v.videoHeight,seekMs:times};});await page.keyboard.press('Escape');return result;};
+ const original=await decode();assert.equal(original.width,3840);
+ const proxyStart=performance.now();await page.getByRole('button',{name:'軽量プロキシを作成',exact:true}).click();await page.getByRole('button',{name:'軽量プロキシを解除',exact:true}).waitFor({timeout:120000});const proxyBuildMs=performance.now()-proxyStart;
+ const proxy=await decode();assert.equal(proxy.width,1280);assert.equal(proxy.height,720);
+ await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));const saved=JSON.parse(await fs.readFile(projectFile,'utf8'));assert.equal(saved.assets[0].previewProxy,true);assert.equal(saved.assets[0].path,file);assert.equal(saved.assets[0].width,3840);assert.equal(saved.clips.length,600);
+ await page.keyboard.press('Control+z');await page.getByRole('button',{name:'軽量プロキシを作成',exact:true}).waitFor();assert.equal((await decode()).width,3840);
+ await page.keyboard.press('Control+Shift+z');await page.getByRole('button',{name:'軽量プロキシを解除',exact:true}).waitFor();assert.equal((await decode()).width,1280);
+ await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));await page.keyboard.press('Control+o');await page.getByRole('button',{name:asset.name+' を選択',exact:true}).click();await page.getByRole('button',{name:'軽量プロキシを解除',exact:true}).waitFor();assert.equal((await decode()).width,1280);
+ await page.keyboard.press('End');assert.equal(await page.locator('.preview-meta > .timecode.accent').textContent(),'00:30:00:00');await page.keyboard.press('Home');await page.keyboard.press('Space');await page.waitForFunction(()=>document.querySelector('.preview-meta > .timecode.accent')?.textContent.startsWith('00:00:01'));await page.keyboard.press('Space');
+ const report={platform:process.platform,arch:process.arch,cpu:os.cpus()[0].model,timelineSeconds:1800,clips:600,openMs,proxyBuildMs,original,proxy,errors};assert.deepEqual(errors,[]);await fs.writeFile(path.join(root,'test-results','optional-proxy-performance.json'),JSON.stringify(report,null,2));await page.screenshot({path:path.join(root,'test-results','optional-proxy.png')});console.log(JSON.stringify(report,null,2));
+ }finally{await app.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

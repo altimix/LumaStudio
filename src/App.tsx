@@ -194,6 +194,19 @@ export default function App() {
     try { const result = files ? await window.luma.importDroppedFiles(files) : await window.luma.importMedia(); if (useEditor.getState().project.id !== importProject) return; if (result.assets.length) useEditor.getState().importAssets(result.assets); if (result.errors.length || result.cancelled) useEditor.getState().notify([...(result.cancelled ? [`読み込みを中止しました。完了した${result.assets.length}件を追加しました。`] : []), ...result.errors].join('\n')); }
     catch (e) { useEditor.getState().notify(errorText(e)); } finally { importInFlight.current = false; setImportLabel(''); setImportProgress(null); setCancellingImport(false); endProjectOperation(); }
   };
+  const changeProxy = async (asset: Asset) => {
+    if (!window.luma || !beginProjectOperation('プレビュー用の素材を準備しています')) return;
+    const before = useEditor.getState().project;
+    importInFlight.current = true; setImportProgress(null); setCancellingImport(false); setImportLabel('プロキシを準備中…');
+    try {
+      const fresh = await window.luma.previewProxy(asset, !asset.previewProxy);
+      if (fresh && useEditor.getState().project === before) {
+        useEditor.getState().commit({ ...before, assets: before.assets.map(item => item.id === asset.id ? fresh : item) }, fresh.previewProxy ? '軽量プロキシを使用' : '軽量プロキシを解除');
+        useEditor.getState().notify(fresh.previewProxy ? 'プレビューに軽量プロキシを使用します。書き出しは原本から行います。' : fresh.proxy ? 'この形式は再生互換用のプロキシを引き続き使用します。' : '原本でプレビューします。');
+      } else if (!fresh) useEditor.getState().notify('プロキシの準備を中止しました。');
+    } catch (error) { useEditor.getState().notify(errorText(error)); }
+    finally { importInFlight.current = false; setImportLabel(''); setImportProgress(null); setCancellingImport(false); endProjectOperation(); }
+  };
   const relink = async (a: Asset) => {
     if (!window.luma) { useEditor.getState().notify('素材の再リンクはデスクトップアプリでご利用ください'); return; }
     if (!beginProjectOperation('素材を再リンクしています')) return;
@@ -273,7 +286,7 @@ export default function App() {
     <header className="workspace-header"><div className="project-heading"><span className="project-folder"><Film size={19}/></span><div><button onClick={editSettings}>{p.name}<ChevronDown size={12}/></button><span>{isDesktop ? 'ローカルプロジェクト' : 'ブラウザプレビュー'} <span> / </span> シーケンス 01</span></div></div><nav className="workspace-tabs" aria-label="ワークスペース">{[{ label: '編集', active: tab === 'video' && modal !== 'youtube', action: () => { revealPanels(); useEditor.setState({ panel: 'media', inspectorTab: 'video' }); } }, { label: 'カラー', active: tab === 'color' && modal !== 'youtube', action: () => { revealPanels(); useEditor.setState({ panel: 'effects', inspectorTab: 'color' }); } }, { label: 'オーディオ', active: tab === 'audio' && modal !== 'youtube', action: () => { revealPanels(); useEditor.setState({ panel: 'media', inspectorTab: 'audio' }); } }, { label: 'YouTube', active: modal === 'youtube', action: () => { useEditor.getState().stop(); setModal('youtube'); } }].map(w => <button className={w.active ? 'active' : ''} key={w.label} aria-pressed={w.active} onClick={w.action}>{w.label}</button>)}</nav><div className="header-actions"><button className="text-button guide-open" onClick={() => { useEditor.getState().stop(); setModal('guide'); }}><HelpCircle size={15}/>使い方</button><IconButton label="プロジェクトを保存 (Ctrl+S)" onClick={() => { void save(); }}><Save size={17}/></IconButton><button className="import-button" onClick={() => { void importMedia(); }} disabled={!!importLabel}><Plus size={15}/>読み込み</button><button className="primary-button export-button" onClick={showExport} disabled={!p.clips.length}><Download size={15}/>書き出し<ArrowUpRight size={14}/></button></div></header>
     {recovery ? <div className="recovery-banner"><RotateCcw size={14}/><span>前回の自動保存があります：{recovery.project.name}</span><button onClick={() => { useEditor.getState().load(recovery.project); useEditor.setState({ dirty: true }); void window.luma?.resetProjectPath(true).catch(e => useEditor.getState().notify(errorText(e))); setRecovery(null); }}>復元する</button><IconButton label="この自動保存を破棄" onClick={() => { void window.luma?.clearRecovery(recovery.savedAt).then(() => setRecovery(null)).catch(e => useEditor.getState().notify(errorText(e))); }}><X size={13}/></IconButton></div> : null}
     <WorkspaceLayout preferences={layout} onChange={setLayout}
-      library={<MediaLibrary onCollapse={() => setLayout(current => ({ ...current, libraryCollapsed: true }))} onRemove={requestRemoveAsset} onImport={() => { void importMedia(); }} onRelink={a => { void relink(a); }} importLabel={importLabel}/>}
+      library={<MediaLibrary onProxy={asset => { void changeProxy(asset); }} onCollapse={() => setLayout(current => ({ ...current, libraryCollapsed: true }))} onRemove={requestRemoveAsset} onImport={() => { void importMedia(); }} onRelink={a => { void relink(a); }} importLabel={importLabel}/>}
       inspector={<Inspector onCollapse={() => setLayout(current => ({ ...current, inspectorCollapsed: true }))} onShowEffects={() => useEditor.getState().setPanel('effects')}/>}
       preview={modal === 'youtube' ? <div className="preview-panel panel"/> : <Preview/>} timeline={<Timeline onImport={() => { void importMedia(); }}/>}/>
     <footer className="statusbar"><div><span className="green-dot"/><span>{importLabel || (rendering ? '動画を書き出し中' : '編集の準備ができています')}</span>{savedAt && dirty ? <><span className="status-divider"/><Check size={11}/><span>自動保存 {savedAt}</span></> : null}</div><div><HardDrive size={11}/><span>素材はこのPCに保存</span><span className="status-divider"/><button onClick={() => setModal('shortcuts')}><Keyboard size={12}/>ショートカット</button><span className="status-divider"/><span>LUMA STUDIO</span></div></footer>
