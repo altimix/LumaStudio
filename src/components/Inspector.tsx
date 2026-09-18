@@ -135,6 +135,7 @@ function CropMaskEffects({clip}:{clip:Clip}){
         {mask.type==='bezier'?<div className="bezier-mask-settings">
           <div className="bezier-mask-status"><span>{mask.closed?'閉じたパス':'作成中の開いたパス'}</span><span>{mask.points.length}/{MAX_BEZIER_MASK_POINTS} 点</span></div>
           <p className="field-help">{mask.closed?'点とハンドルをドラッグして形を調整できます。':'モニターをクリックして点を追加してください。閉じるまでは映像を切り抜きません。'}</p>
+          <p className="field-help">クリックで点を追加、ドラッグで曲線。Shiftで45度刻み・点の追加選択、Ctrl / ⌘で一時的にダイレクト選択、Alt / Optionで片側ハンドルを編集します。Ctrl / ⌘＋空白クリックで描画を終了できます。</p>
           <div className="mask-edit-buttons bezier-actions">
             {mask.closed?<button className="secondary-button" onClick={()=>updateBezier(current=>({...current,closed:false}))}>パスを開いて点を追加</button>:<button className="secondary-button" disabled={mask.points.length<3} onClick={()=>updateBezier(current=>({...current,closed:true}))}>パスを閉じる</button>}
           </div>

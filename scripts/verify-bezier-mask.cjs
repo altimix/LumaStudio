@@ -69,6 +69,7 @@ async function verify() {
     await page.locator('.app-titlebar').waitFor({ timeout:60000 });
     await page.locator('.loading-screen').waitFor({ state:'hidden', timeout:60000 });
     await open(projectFile);
+    await require('./verify-bezier-modifiers.cjs')({ page, save, checks, loadMask: async mask => { const current = await save(); current.clips[0].videoMask = mask; await fs.writeFile(projectFile, JSON.stringify(current)); await open(projectFile); } });
     await page.locator('#video-mask-type').selectOption('bezier');
     await page.getByRole('button', { name:'モニターでマスクを編集', exact:true }).click();
     const addTarget = page.getByRole('button', { name:'ベジェマスクの点を追加', exact:true });
