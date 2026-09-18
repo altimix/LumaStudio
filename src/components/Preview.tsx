@@ -74,6 +74,8 @@ export default function Preview({ readOnly = false }: { readOnly?: boolean }) {
     let plannedProject:typeof project|undefined;let plans:PlannedTransition[]=[];let projectRevision=0;
     const transitionBuffers=new Map<string,{a:HTMLCanvasElement;b:HTMLCanvasElement;aReady:boolean;bReady:boolean;aUsable:boolean;bUsable:boolean;aAvailable:boolean;bAvailable:boolean;renderer:TransitionPreview}>();
     let frame = 0; let lastUi = 0; let updatingClock = false;let seekRevision=0;
+    let loopFrame: { canvas: HTMLCanvasElement; time: number; project: typeof project; revision: number } | undefined;
+    const releaseLoopFrame = () => { if (loopFrame) loopFrame.canvas.width = loopFrame.canvas.height = 0; loopFrame = undefined; };
     const audio = new TimelineAudio(message => { useEditor.getState().stop(); useEditor.getState().notify(message); }, publishAudioPeaks);
     const unbindMeterReset = bindAudioMeterReset(() => audio.discardPlayedMeterSamples());
     const sync = () => { const s = useEditor.getState(); audio.setTransport(s.project, s.playhead, s.playing, s.shuttleRate); };
@@ -131,6 +133,7 @@ export default function Preview({ readOnly = false }: { readOnly?: boolean }) {
     };
     const draw = (now: number) => {
       let s = useEditor.getState(); const p = s.project;
+      if (loopFrame && (!s.playing || loopFrame.project !== p || loopFrame.revision !== s.seekRevision)) releaseLoopFrame();
       let capture = captureRequest.current;
       if (capture && (capture.project !== p || s.playing || Math.abs(s.playhead - capture.time) > 1e-7)) {
         captureRequest.current = null; capture.reject(new Error('再生位置またはプロジェクトが変更されました。もう一度保存してください。')); capture = null;
@@ -149,7 +152,16 @@ export default function Preview({ readOnly = false }: { readOnly?: boolean }) {
         // A synchronous transport listener (caption looping) can seek while the
         // clock is published. Draw that requested frame and preserve playback.
         if (s.project !== p) { frame = requestAnimationFrame(draw); return; }
-        if (s.seekRevision !== publishedSeekRevision) t = s.playhead;
+        if (s.seekRevision !== publishedSeekRevision) {
+          releaseLoopFrame();
+          const previousTime = Number(target.dataset.previewTime);
+          if (target.width && target.height && Number.isFinite(previousTime)) {
+            const held = document.createElement('canvas'); held.width = target.width; held.height = target.height;
+            held.getContext('2d', { alpha: false })!.drawImage(target, 0, 0);
+            loopFrame = { canvas: held, time: previousTime, project: p, revision: s.seekRevision };
+          }
+          t = s.playhead;
+        }
         else if (ended) { s.stop(); s = useEditor.getState(); }
       }
       const w = Math.max(2, Math.round(p.width * (capture ? 1 : s.previewQuality))); const h = Math.max(2, Math.round(p.height * (capture ? 1 : s.previewQuality)));
@@ -312,6 +324,12 @@ export default function Preview({ readOnly = false }: { readOnly?: boolean }) {
         lastUi = now; setAudioLoading(audio.loading);
       }
       if (sizesChanged) setMediaSizes(Object.fromEntries(knownSizes));
+      // A loop seek invalidates decoded video until the new source frame is
+      // ready. Keep the last in-range composite instead of presenting black.
+      if (loopFrame) {
+        if (frameReady && transitionsReady && transitionsPresented) releaseLoopFrame();
+        else { ctx.drawImage(loopFrame.canvas, 0, 0, w, h); t = loopFrame.time; }
+      }
       if (capture && frameReady && transitionsReady && transitionsPresented) {
         captureRequest.current = null;
         try { capture.resolve(target.toDataURL('image/png')); } catch { capture.reject(new Error('写真を作成できませんでした。素材の読み込み状態を確認してください。')); }
@@ -319,7 +337,7 @@ export default function Preview({ readOnly = false }: { readOnly?: boolean }) {
       target.dataset.transitionsPresented=String(transitionsPresented);target.dataset.transitionBackend=active.map(pair=>transitionBuffers.get(pair.id)?.renderer.backend||'').join(',');target.dataset.previewTime=String(t);target.dataset.transitionKind=active.map(pair=>pair.video).join(',');target.dataset.transitionsReady=String(transitionsReady);frame = requestAnimationFrame(draw);
     };
     frame = requestAnimationFrame(draw);
-    return () => { target.width=target.height=0; for(const item of titles.values()) item.canvas.width=item.canvas.height=0; titles.clear(); sampleChroma.current=()=>{throw Error('素材フレームを準備しています。少し待ってからもう一度お試しください。');};sampleCanvas.width=sampleCanvas.height=0;captureRequest.current?.reject(new Error('写真の保存を中止しました。')); captureRequest.current = null; cancelAnimationFrame(frame); unsubscribe(); unbindMeterReset(); audio.dispose();for(const buffers of transitionBuffers.values())buffers.renderer.dispose();for(const item of maskedFrames.values())disposeMaskedFrame(item);gpuPool.dispose(); for (const item of media.values()) { clearFrame(item);item.element.pause(); item.element.removeAttribute('src'); item.element.load(); item.element.remove(); } };
+    return () => { releaseLoopFrame();target.width=target.height=0; for(const item of titles.values()) item.canvas.width=item.canvas.height=0; titles.clear(); sampleChroma.current=()=>{throw Error('素材フレームを準備しています。少し待ってからもう一度お試しください。');};sampleCanvas.width=sampleCanvas.height=0;captureRequest.current?.reject(new Error('写真の保存を中止しました。')); captureRequest.current = null; cancelAnimationFrame(frame); unsubscribe(); unbindMeterReset(); audio.dispose();for(const buffers of transitionBuffers.values())buffers.renderer.dispose();for(const item of maskedFrames.values())disposeMaskedFrame(item);gpuPool.dispose(); for (const item of media.values()) { clearFrame(item);item.element.pause(); item.element.removeAttribute('src'); item.element.load(); item.element.remove(); } };
   }, []);
   const seek = useEditor(s => s.seek);
   return <section className="preview-panel panel">
