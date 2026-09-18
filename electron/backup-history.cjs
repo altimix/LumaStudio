@@ -19,20 +19,29 @@ function createBackupHistory(directory, limit = 10) {
   };
   const ids = async () => (await fs.readdir(directory).catch(error => { if (error.code === 'ENOENT') return []; throw error; })).filter(id => VALID_ID.test(id)).sort().reverse();
   return {
-    write(contents) { return enqueue(async () => {
+    write(contents, { deduplicate = false } = {}) { return enqueue(async () => {
       if (Buffer.byteLength(contents, 'utf8') > MAX_PROJECT_BYTES + 1000) throw Error('バックアップが大きすぎます。');
       const snapshot = JSON.parse(contents); validateProject(snapshot.project, { allowForeignPaths: true });
       if (typeof snapshot.savedAt !== 'string' || !Number.isFinite(Date.parse(snapshot.savedAt))) throw Error('バックアップの日時が不正です。');
       const prefix = createHash('sha256').update(snapshot.project.id).digest('hex').slice(0, 24);
+      if (deduplicate) {
+        for (const item of (await ids()).filter(item => item.startsWith(`${prefix}-`))) {
+          try {
+            const existing = await read(item);
+            if (existing.savedAt === snapshot.savedAt && JSON.stringify(existing.project) === JSON.stringify(snapshot.project)) return;
+          } catch { /* A damaged snapshot cannot stand in for the legacy recovery. */ }
+        }
+      }
       const id = `${prefix}-${Date.now()}-${randomUUID()}.luma`;
       await atomicWrite(path.join(directory, id), contents);
       const entries = [];
       for (const item of (await ids()).filter(item => item.startsWith(`${prefix}-`))) {
-        try { await read(item); entries.push(item); } catch { /* Damaged files do not consume a recoverable generation. */ }
+        try { const snapshot = await read(item); entries.push({ id: item, savedAt: snapshot.savedAt }); } catch { /* Damaged files do not consume a recoverable generation. */ }
       }
-      // Retain the newly completed snapshot even if multiple writes share a millisecond.
-      const others = entries.filter(item => item !== id);
-      await Promise.all(others.slice(limit - 1).map(item => fs.rm(path.join(directory, item), { force: true })));
+      // Imported legacy snapshots keep their original age and cannot evict newer edits.
+      // Prefer the completed write only when timestamps are identical.
+      entries.sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt) || (a.id === id ? -1 : b.id === id ? 1 : b.id.localeCompare(a.id)));
+      await Promise.all(entries.slice(limit).map(item => fs.rm(path.join(directory, item.id), { force: true })));
     }); },
     list() { return enqueue(async () => {
       const result = [];
@@ -40,7 +49,7 @@ function createBackupHistory(directory, limit = 10) {
         try { const value = await read(id); result.push({ id, projectId: value.project.id, name: value.project.name, savedAt: value.savedAt, clips: value.project.clips.length }); }
         catch { /* One damaged snapshot must not hide other recoverable versions. */ }
       }
-      return result.sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+      return result.sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt));
     }); },
     read(id) { return enqueue(() => read(id)); },
   };

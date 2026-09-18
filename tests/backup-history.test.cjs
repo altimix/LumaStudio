@@ -36,3 +36,23 @@ test('corrupt snapshots do not evict healthy generations',async()=>{
  const list=await history.list();assert.equal(list.length,10);assert.ok(list.some(entry=>entry.name==='版0'));
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
+
+test('legacy recovery imports once, preserves its date and survives singleton clearing',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-history-'));try{
+ const file=path.join(dir,'autosave.luma'),contents=JSON.stringify({savedAt:'2024-01-01T00:00:00.000Z',project:project('legacy','旧版')});await fs.writeFile(file,contents);
+ const history=createBackupHistory(path.join(dir,'backups'));
+ await Promise.all([history.write(contents,{deduplicate:true}),history.write(contents,{deduplicate:true})]);
+ assert.equal((await history.list()).length,1);assert.equal(await fs.readFile(file,'utf8'),contents);
+ await createRecoveryStore(file).clear();assert.deepEqual(await history.read((await history.list())[0].id),JSON.parse(contents));
+ await history.write(JSON.stringify({...JSON.parse(contents),project:project('legacy','同じ日時の別版')}),{deduplicate:true});assert.equal((await history.list()).length,2);
+ await assert.rejects(history.write(JSON.stringify({savedAt:'invalid',project:project()}),{deduplicate:true}),/日時/);assert.equal((await history.list()).length,2);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test('importing older recovery never evicts the ten newer saved generations',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-history-'));try{
+ const history=createBackupHistory(dir);for(let i=0;i<10;i++)await history.write(JSON.stringify({savedAt:new Date(1700000000000+i*1000).toISOString(),project:project('p',`版${i}`)}));
+ await history.write(JSON.stringify({savedAt:'2020-01-01T00:00:00.000Z',project:project('p','古い復元候補')}),{deduplicate:true});
+ const entries=await history.list();assert.equal(entries.length,10);assert.ok(entries.some(entry=>entry.name==='版0'));assert.ok(entries.every(entry=>entry.name!=='古い復元候補'));
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});

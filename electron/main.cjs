@@ -249,8 +249,10 @@ function installIPC() {
 
     let recovery = null;
     try {
-      const data = JSON.parse(await fs.readFile(autosavePath(), 'utf8'));
+      const contents = await fs.readFile(autosavePath(), 'utf8'), data = JSON.parse(contents);
       recovery = { project: await hydrate(data.project), savedAt: data.savedAt };
+      try { await backups.write(contents, { deduplicate: true }); }
+      catch (error) { startupError ||= '以前の自動保存をバックアップ履歴に追加できませんでした：' + error.message; }
     } catch {}
     return { assets, recovery, startupProject, startupError, version: app.getVersion() };
   });
