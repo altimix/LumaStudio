@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Preview from './Preview';
 import { endTime } from '../model';
+import { captionPlaybackRange } from '../youtube';
 import { useEditor } from '../store';
 import type { SubtitleCue } from '../types';
 
@@ -8,21 +9,24 @@ export default function CaptionMonitor({ cues, index, disabled, onSelect }: { cu
   const [loop, setLoop] = useState(false);
   const cue = cues[index];
   const duration = useEditor(state => endTime(state.project));
-  const playable = !!cue && cue.start < duration && cue.end > cue.start;
+  const fps = useEditor(state => state.project.fps);
+  const playable = !!captionPlaybackRange(cue, fps, duration);
   const latest = useRef({ cue, loop, disabled }); latest.current = { cue, loop, disabled: disabled || !playable };
   useEffect(() => {
     let seeking = false, alive = true;
     const unsubscribe = useEditor.subscribe((state, previous) => {
       const { cue, loop, disabled } = latest.current;
       if (seeking || disabled || !loop || !cue || cue.end <= cue.start || !previous.playing) return;
-      if (state.playhead >= Math.min(cue.end, endTime(state.project)) || state.playhead < cue.start) {
+      const range = captionPlaybackRange(cue, state.project.fps, endTime(state.project));
+      if (!range) return;
+      if (state.playhead >= range.end || state.playhead < range.start) {
         seeking = true;
         // Preview publishes the end playhead before stopping at the sequence end.
         // Resume only after that synchronous stop has finished.
         queueMicrotask(() => {
           try {
             if (!alive || !latest.current.loop || latest.current.disabled || latest.current.cue !== cue || useEditor.getState().project !== state.project) return;
-            useEditor.getState().seek(cue.start);
+            useEditor.getState().seek(range.start);
             if (!useEditor.getState().playing) useEditor.getState().togglePlay();
           } finally { seeking = false; }
         });
@@ -45,7 +49,7 @@ export default function CaptionMonitor({ cues, index, disabled, onSelect }: { cu
       <button disabled={disabled || !playable} aria-pressed={loop} onClick={() => { if (loop) { setLoop(false); useEditor.getState().stop(); } else playCue(); }}>{loop ? '反復再生を停止' : 'この字幕を反復再生'}</button>
       <button disabled={disabled || index >= cues.length - 1} onClick={() => { setLoop(false); onSelect(index + 1); }}>次の字幕</button>
     </div>
-    {cue && !playable ? <p className="yt-notice">この字幕はタイムラインの再生範囲外のため、反復再生できません。</p> : null}
+    {cue && !playable ? <p className="yt-notice">この字幕には再生できる長さの区間がありません。時刻を確認してください。</p> : null}
     <div className="caption-draft-preview"><strong>字幕原稿 {cue ? `${index + 1} / ${cues.length}` : ''}</strong><p>{cue?.text || '字幕を選ぶと、この位置の映像を確認できます。'}</p><small>映像への反映は「字幕をタイムラインに適用」で確定します。</small></div>
   </div>;
 }
