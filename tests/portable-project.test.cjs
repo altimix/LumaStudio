@@ -29,6 +29,9 @@ test('failed collection removes only its temporary folder and never replaces ori
   const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-portable-'));
   try {const p=await fixture(dir);await fs.writeFile(p.assets[0].path,'changed');await assert.rejects(collectProject(p,dir),/変更/);assert.deepEqual(await fs.readdir(dir),['日本語 &素材.png']);}finally{await fs.rm(dir,{recursive:true,force:true});}
 });
+test('malformed asset entries have a concrete Japanese error',()=>{
+ for(const asset of [null,undefined,1,'file',[]])assert.throws(()=>resolveProjectMedia({assets:[asset]},'/tmp/project.luma'),/素材の形式が不正/);
+});
 test('portable references reject traversal, nested paths and absolute paths',()=>{
   for(const relativePath of ['../secret','media/../../secret','/tmp/media/a','media/a/b','media/a\\b','media/a\0b'])assert.throws(()=>resolveProjectMedia({assets:[{relativePath}]},'/tmp/project.luma'),/相対パス/);
 });

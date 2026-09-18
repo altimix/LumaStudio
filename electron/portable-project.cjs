@@ -7,6 +7,7 @@ const { assertMediaRevision } = require('./media.cjs');
 function resolveProjectMedia(project, projectFile) {
   if (!Array.isArray(project?.assets)) return project;
   return { ...project, assets: project.assets.map(asset => {
+    if (!asset || typeof asset !== 'object' || Array.isArray(asset)) throw Error('素材の形式が不正です。');
     if (asset.relativePath === undefined) return asset;
     if (typeof asset.relativePath !== 'string' || !/^media\/[^/\\]+$/.test(asset.relativePath) || asset.relativePath.includes('..') || asset.relativePath.includes('\0')) throw Error('素材の相対パスが不正です。');
     return { ...asset, path: path.resolve(path.dirname(projectFile), asset.relativePath) };
