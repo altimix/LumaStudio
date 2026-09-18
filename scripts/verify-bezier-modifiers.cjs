@@ -34,6 +34,14 @@ module.exports = async function verifyBezierModifiers({ page, save, checks, load
     await page.keyboard.up(modifier);
     assert.equal(await pen.getAttribute('aria-pressed'), 'true');
   }
+  for (const modifier of ['Control', 'Meta']) {
+    await pen.focus(); await page.keyboard.down(modifier);
+    assert.equal(await direct.getAttribute('aria-pressed'), 'true');
+    await page.getByRole('textbox', {name:'クリップ名',exact:true}).focus(); await page.keyboard.up(modifier);
+    assert.equal(await pen.getAttribute('aria-pressed'), 'true');
+  }
+  checks.push('Ctrl and Cmd release over inspector inputs restores the pen tool');
+  await pen.focus();
   await page.keyboard.down('Control'); end = at(.9, .9); await page.mouse.click(end.x, end.y); await page.keyboard.up('Control');
   assert.equal(await direct.getAttribute('aria-pressed'), 'true');
   end = at(.9, .85); await page.mouse.click(end.x, end.y);
