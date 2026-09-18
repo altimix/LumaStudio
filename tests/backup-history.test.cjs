@@ -22,3 +22,17 @@ test('invalid snapshots do not evict valid backups and concurrent writes stay co
  for(const entry of await history.list())assert.equal((await history.read(entry.id)).project.id,'p');
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
+
+test('foreign offline projects remain valid backups after serialization removes offline flags',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-history-'));try{
+ const history=createBackupHistory(dir),p=project();p.assets=[{id:'foreign',name:'別PCの映像',path:process.platform==='win32'?'/Users/other/movie.mp4':String.raw`C:\Users\other\movie.mp4`,kind:'video',duration:5,width:1920,height:1080,fps:30,hasAudio:false,codec:'h264',waveform:[],size:100}];
+ await history.write(JSON.stringify({savedAt:new Date().toISOString(),project:p}));const list=await history.list();assert.equal(list.length,1);assert.equal((await history.read(list[0].id)).project.assets[0].path,p.assets[0].path);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+test('corrupt snapshots do not evict healthy generations',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-history-'));try{
+ const history=createBackupHistory(dir);for(let i=0;i<10;i++)await history.write(JSON.stringify({savedAt:new Date(1700000000000+i*1000).toISOString(),project:project('p',`版${i}`)}));
+ const newest=(await history.list())[0];await fs.writeFile(path.join(dir,newest.id),'broken');await history.write(JSON.stringify({savedAt:new Date().toISOString(),project:project('p','最新版')}));
+ const list=await history.list();assert.equal(list.length,10);assert.ok(list.some(entry=>entry.name==='版0'));
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
