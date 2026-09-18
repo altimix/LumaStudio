@@ -1,3 +1,4 @@
+import { shortcutLabel } from '../shortcut-label';
 import { Diamond, Plus, RotateCcw } from 'lucide-react';
 import { volumeAt } from '../../shared/volume-automation.mjs';
 import { addVolumePoint, effectiveKeys, volumeLabel } from '../volume-editing';
@@ -27,8 +28,8 @@ export default function AudioVolumeAutomation({clip}: {clip: Clip}) {
     }catch(e){state.notify((e as Error).message);}
   };
   return <section className="audio-automation"><h3><Diamond size={14}/>音量ライン</h3>
-    <p>現在：{volumeLabel(clip.volume,gain)}。波形上の線をダブルクリック（またはCtrl+クリック）で点を追加。点を上下で音量、左右で時刻を調整できます。</p>
+    <p>現在：{volumeLabel(clip.volume,gain)}。波形上の線をダブルクリック（または{shortcutLabel('Ctrl')}+クリック）で点を追加。点を上下で音量、左右で時刻を調整できます。</p>
     <div className="audio-automation-actions"><button className="secondary-button" onClick={addAtPlayhead}><Plus size={13}/>再生ヘッドに音量ポイントを追加</button><button className="text-button" disabled={!keys.length} onClick={()=>useEditor.getState().updateClip(clip.id,{volumeKeyframes:[]})}><RotateCcw size={13}/>音量ラインをリセット</button></div>
-    <p>線の区間を上下にドラッグすると、その区間の両端を一緒に調整できます。最初の追加時は両端にも点を置きます。点を選んでDeleteで削除、←／→で1フレーム、Shift＋←／→で10フレーム移動。↑／↓で1%、Shift＋↑／↓で10%調整。0〜400%（点がないときは0〜200%）で変化し、点の間はなめらかにつながります。</p>
+    <p>線の区間を上下にドラッグすると、その区間の両端を一緒に調整できます。最初の追加時は両端にも点を置きます。点を選んで{shortcutLabel('Delete')}で削除、←／→で1フレーム、Shift＋←／→で10フレーム移動。↑／↓で1%、Shift＋↑／↓で10%調整。0〜400%（点がないときは0〜200%）で変化し、点の間はなめらかにつながります。</p>
   </section>;
 }

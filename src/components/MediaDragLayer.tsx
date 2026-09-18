@@ -1,3 +1,4 @@
+import { shortcutLabel } from '../shortcut-label';
 import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useEditor } from '../store';
@@ -205,7 +206,7 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
     const size = sourceSize(clip, asset), bounds = mediaBounds(clip, size, project), chosen = selected.includes(clip.id), z = order.get(clip.id) || 1;
     return <Fragment key={clip.id}>
       <button className={'media-drag-target' + (chosen ? ' selected' : '')} data-media-clip-id={clip.id} aria-label={'素材「' + clip.name + '」を移動'} aria-pressed={chosen} aria-disabled={locked} tabIndex={chosen ? 0 : -1}
-        title={locked ? 'トラックがロックされています' : 'ドラッグして移動 · 端・中央線に触れると吸着 · Altで吸着解除 · 四隅でサイズ変更'}
+        title={locked ? 'トラックがロックされています' : shortcutLabel('ドラッグして移動 · 端・中央線に触れると吸着 · Altで吸着解除 · 四隅でサイズ変更')}
         style={{ left: bounds.x / project.width * 100 + '%', top: bounds.y / project.height * 100 + '%', width: bounds.width / project.width * 100 + '%', height: bounds.height / project.height * 100 + '%', transform: `translate(-50%,-50%) rotate(${clip.rotation}deg)`, zIndex: z }}
         onPointerDown={e => start(e, clip, size)} onClick={() => useEditor.getState().select([clip.id])}/>
       {chosen && !locked && corners.map(corner => { const point = mediaCorner(clip, size, project, corner); return <button key={corner.name} className="media-resize-handle" data-media-clip-id={clip.id} data-media-corner={corner.name}

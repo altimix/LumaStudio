@@ -1,3 +1,4 @@
+import { shortcutLabel } from '../shortcut-label';
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Film, Plus, Upload } from 'lucide-react';
 
@@ -32,7 +33,7 @@ export default function MediaAddMenu({ onImport, onBlack, disabled, blackDisable
   }}>
     <button ref={trigger} className="media-add-trigger" aria-label="素材を追加" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? 'media-add-menu' : undefined} disabled={disabled} onClick={() => setOpen(!open)} onKeyDown={event => { if (!open && event.key === 'ArrowDown') { event.preventDefault(); event.stopPropagation(); setOpen(true); } }}><Plus size={14}/>追加<ChevronDown size={12}/></button>
     {open ? <div ref={menu} id="media-add-menu" className="popup-menu media-add-menu" role="menu" aria-label="素材の追加方法">
-      <button role="menuitem" tabIndex={-1} onClick={() => { close(); onImport(); }}><Upload size={15}/><span>素材を読み込む</span><kbd>Ctrl I</kbd></button>
+      <button role="menuitem" tabIndex={-1} onClick={() => { close(); onImport(); }}><Upload size={15}/><span>素材を読み込む</span><kbd>{shortcutLabel('Ctrl I')}</kbd></button>
       <button role="menuitem" tabIndex={-1} disabled={blackDisabled} onClick={() => { close(); onBlack(); }}><Film size={15}/><span>ブラックビデオを追加</span></button>
     </div> : null}
   </div>;

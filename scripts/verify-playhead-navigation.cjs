@@ -40,7 +40,7 @@ async function verify() {
     await page.locator('.loading-screen').waitFor({ state: 'hidden', timeout: 60000 });
     await page.locator('.media-card').first().waitFor();
     await app.evaluate(({ dialog }, target) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: target }); }, file);
-    await page.getByRole('button', { name: 'プロジェクトを保存 (Ctrl+S)', exact: true }).click();
+    await page.getByRole('button', { name: /^プロジェクトを保存 \(/, exact: true }).click();
     await page.getByText('プロジェクトを保存しました', { exact: true }).waitFor();
     const demo = JSON.parse(await fs.readFile(file, 'utf8')), title = demo.clips.find(c => c.kind === 'title');
     const fixture = { ...demo, id: 'navigation-test', name: 'すべての移動で再生ヘッドに追従', width: 1280, height: 720, markers: [{ id: 'jump-marker', time: 60, label: 'ジャンプ検証' }], clips: [{ ...title, id: 'navigation-title', start: 0, in: 0, duration: 120, fadeIn: 0, fadeOut: 0, text: 'Home / End / マウス\n再生ヘッドに追従', opacityKeyframes: [{ time: 0, value: 1 }, { time: 90, value: 1 }] }], youtube: { sourceKey: '', cues: [{ start: 70, end: 72, text: '字幕から移動' }, { start: 140, end: 142, text: '素材末尾より後への移動' }], titles: [], description: '', keywords: [], chapters: [], thumbnailPrompt: '' } };
@@ -214,7 +214,7 @@ async function verify() {
       if (focusSession) { await focusSession.send('Emulation.setFocusEmulationEnabled', { enabled: true }); await focusSession.detach(); }
       await page.keyboard.press('Home'); assert.equal((await visible(`${ending} ends dragging and releases shortcuts`)).time, 0);
     }
-    assert.equal(await page.getByRole('button', { name: '元に戻す (Ctrl+Z)', exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole('button', { name: /^元に戻す \(/, exact: true }).isDisabled(), true);
     assert.equal(await page.locator('.unsaved-dot').count(), 0); checks.push('all navigation and scrubbing leave editing history and saved state intact');
 
     // The visible line crosses clips, but must never steal their editing gestures.

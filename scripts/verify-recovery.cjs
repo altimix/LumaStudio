@@ -49,7 +49,7 @@ const root=path.join(__dirname,'..');
   await page.keyboard.press('Escape');
   const savedProject=path.join(profile,'手動保存した編集.luma');
   await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},savedProject);
-  await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();
+  await page.getByRole('button',{name:/^プロジェクトを保存 \(/,exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('.toast[role="status"]')?.textContent.includes('プロジェクトを保存しました'));
   await fs.access(savedProject);await assert.rejects(fs.access(path.join(profile,'autosave.luma')));
   await app.close();app=undefined;page=await launch();

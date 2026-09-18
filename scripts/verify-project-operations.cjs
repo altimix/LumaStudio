@@ -33,7 +33,7 @@ const root = path.join(__dirname, '..');
     await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }); }, file);
     const save = async () => {
       await fs.rm(file, { force: true });
-      await page.getByRole('button', { name: 'プロジェクトを保存 (Ctrl+S)', exact: true }).click();
+      await page.getByRole('button', { name: /^プロジェクトを保存 \(/, exact: true }).click();
       for (let i = 0; i < 200; i++) { try { const value = JSON.parse(await fs.readFile(file, 'utf8')); await page.getByRole('dialog', { name: 'プロジェクトを保存しています', exact: true }).waitFor({ state: 'hidden' }); return value; } catch { await new Promise(r => setTimeout(r, 25)); } }
       throw Error('save timed out');
     };
@@ -82,7 +82,7 @@ const root = path.join(__dirname, '..');
         ipcMain.removeHandler('save-project'); ipcMain.handle('save-project', original); return original(...args);
       });
     });
-    await page.getByRole('button', { name: 'プロジェクトを保存 (Ctrl+S)', exact: true }).click();
+    await page.getByRole('button', { name: /^プロジェクトを保存 \(/, exact: true }).click();
     for (let i = 0; i < 200 && !(await app.evaluate(() => !!globalThis.releaseSave)); i++) await new Promise(r => setTimeout(r, 25));
     next = { ...next, name: '保存中に開いたプロジェクト' }; // Same persisted ID, new load generation.
     await app.evaluate(({ ipcMain }, result) => { ipcMain.removeHandler('open-project'); ipcMain.handle('open-project', () => result); }, { project: next, path: file });

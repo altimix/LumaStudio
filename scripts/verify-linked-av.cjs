@@ -26,7 +26,7 @@ async function verify() {
       return JSON.parse(await fs.readFile(file,'utf8'));
     };
     const demo=await save(),empty={...demo,name:'リンク編集の検証',width:320,height:180,clips:[],assets:[],markers:[]};
-    const open=async p=>{await fs.writeFile(file,JSON.stringify(p));await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},file);await page.keyboard.press('Control+o');await page.waitForFunction(()=>document.querySelector('button[aria-label="元に戻す (Ctrl+Z)"]').disabled);};
+    const open=async p=>{await fs.writeFile(file,JSON.stringify(p));await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},file);await page.keyboard.press('Control+o');await page.waitForFunction(()=>document.querySelector('button[aria-label^="元に戻す ("]').disabled);};
     await open(empty);await app.evaluate(({dialog},source)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[source]});},source);
     await page.getByRole('button',{name:'読み込み',exact:true}).click();await page.getByRole('button',{name:'分離する映像.mp4 を追加',exact:true}).waitFor({timeout:60000});await page.getByRole('button',{name:'分離する映像.mp4 を追加',exact:true}).click();
     let p=await save();validateClipLinks(p);assert.equal(p.clips.length,2);assert.equal(await page.locator('.timeline-clip.video .clip-waveform').count(),0);assert.equal(await page.locator('.timeline-clip.audio .waveform').count(),1);assert.equal(await page.locator('.clip-link-icon').count(),2);

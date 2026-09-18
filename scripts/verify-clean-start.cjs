@@ -37,7 +37,7 @@ const root = path.join(__dirname, '..');
     }
     await empty(page);
     await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }); }, saveFile);
-    await page.getByRole('button', { name: 'プロジェクトを保存 (Ctrl+S)', exact: true }).click();
+    await page.getByRole('button', { name: /^プロジェクトを保存 \(/, exact: true }).click();
     await page.getByText('プロジェクトを保存しました', { exact: true }).waitFor();
     const saved = JSON.parse(await fs.readFile(saveFile, 'utf8'));
     assert.deepEqual(saved.assets, []); assert.deepEqual(saved.clips, []); assert.deepEqual(saved.markers, []);

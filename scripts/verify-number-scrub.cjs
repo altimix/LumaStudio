@@ -36,13 +36,13 @@ const root = path.join(__dirname, '..');
     await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},file);await page.keyboard.press('Control+o');await page.getByRole('button',{name:fixture.name,exact:true}).waitFor({timeout:60000});
     let project=JSON.parse(await fs.readFile(file,'utf8')),clip=project.clips.find(item=>item.kind==='video');assert.ok(clip,'video clip');
     await page.locator(`.media-drag-target[data-media-clip-id="${clip.id}"]`).click();const rotation=page.locator('#prop-rotation');await rotation.waitFor();
-    const initial=value(project,clip.id,'rotation');assert.equal(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),true);
-    await scrub(rotation,2);project=await save();assert.equal(value(project,clip.id,'rotation'),initial);assert.equal(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),true);
+    const initial=value(project,clip.id,'rotation');assert.equal(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),true);
+    await scrub(rotation,2);project=await save();assert.equal(value(project,clip.id,'rotation'),initial);assert.equal(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),true);
     await rotation.click();await rotation.press('Control+a');await rotation.fill('7');await rotation.press('Enter');project=await save();assert.equal(value(project,clip.id,'rotation'),7);
     await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),initial);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),7);
     checks.push('a click remains a normal number edit and sub-threshold movement creates no history');
 
-    await rotation.click();await scrub(rotation,20);project=await save();assert.equal(value(project,clip.id,'rotation'),7);assert.equal(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),false);
+    await rotation.click();await scrub(rotation,20);project=await save();assert.equal(value(project,clip.id,'rotation'),7);assert.equal(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),false);
     checks.push('dragging an already focused input remains native text selection instead of scrubbing');
 
     await scrub(rotation,20);project=await save();assert.equal(value(project,clip.id,'rotation'),17);await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),7);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),17);

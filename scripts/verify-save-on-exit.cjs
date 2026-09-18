@@ -23,7 +23,7 @@ const root=path.join(__dirname,'..'),results=path.join(root,'test-results');
   const requestClose=async choice=>{await app.evaluate(({BrowserWindow},choice)=>{globalThis.__exitChoice=choice;setImmediate(()=>BrowserWindow.getAllWindows()[0].close());},choice);};
   const remain=async choice=>{const count=await app.evaluate(()=>globalThis.__exitDialogs.length);await requestClose(choice);await poll(async()=>await app.evaluate(()=>globalThis.__exitDialogs.length)>count);assert.ok(!page.isClosed());return app.evaluate(()=>globalThis.__exitDialogs.at(-1));};
   const finish=async choice=>{await page.getByRole('dialog',{name:'プロジェクトを保存しています',exact:true}).waitFor({state:'hidden'});const closed=app.waitForEvent('close',{timeout:30000});await requestClose(choice);await closed;app=null;};
-  const open=async()=>{const p=JSON.parse(await fs.readFile(file,'utf8'));await page.keyboard.press('Control+o');await page.locator(`.timeline-clip[data-clip-id="${p.clips[0].id}"]`).waitFor();await page.waitForFunction(()=>document.querySelector('button[aria-label="元に戻す (Ctrl+Z)"]')?.disabled===true);};
+  const open=async()=>{const p=JSON.parse(await fs.readFile(file,'utf8'));await page.keyboard.press('Control+o');await page.locator(`.timeline-clip[data-clip-id="${p.clips[0].id}"]`).waitFor();await page.waitForFunction(()=>document.querySelector('button[aria-label^="元に戻す ("]')?.disabled===true);};
   const saved=async()=>JSON.parse(await fs.readFile(file,'utf8'));
   try{
     await launch();

@@ -28,7 +28,7 @@ async function verify() {
     const clip = id => page.locator(`[data-clip-id="${id}"]`), nodes = () => clip('voice').locator('.volume-node');
     const save = async () => {
       const before=(await fs.stat(file)).mtimeMs;
-      await page.getByRole('button', { name: 'プロジェクトを保存 (Ctrl+S)', exact: true }).click(); await page.waitForFunction(() => !document.querySelector('.unsaved-dot'));
+      await page.getByRole('button', { name: /^プロジェクトを保存 \(/, exact: true }).click(); await page.waitForFunction(() => !document.querySelector('.unsaved-dot'));
       const deadline=Date.now()+10000;while((await fs.stat(file)).mtimeMs===before){assert.ok(Date.now()<deadline);await new Promise(r=>setTimeout(r,20));}
       return JSON.parse(await fs.readFile(file, 'utf8'));
     };
@@ -157,7 +157,7 @@ async function verify() {
     checks.push('arrow keys fine-adjust gain, Delete removes a focused point only, point selection persists on blur, and edge dragging preserves the slope and supports Undo');
     await page.getByRole('button', { name: 'メイン音声 ロック', exact: true }).click(); await dragNode(2, 0, -8); assert.deepEqual(await keys(), fine); await page.getByRole('button', { name: 'メイン音声 ロック解除', exact: true }).click();
     await clip('voice').click({ button: 'right', position: { x: 25, y: 10 } }); await page.locator('[data-action="bgm-volume-20"]').click(); assert.equal((await save()).clips[0].volume, .1); assert.deepEqual(await keys(), fine);
-    await clip('voice').focus(); await page.keyboard.press('Control+z'); await save(); await page.keyboard.press('Control+o'); await page.waitForFunction(() => document.querySelector('button[aria-label="元に戻す (Ctrl+Z)"]')?.disabled); await clip('voice').click({ position: { x: 25, y: 10 } }); assert.deepEqual(await keys(), fine); checks.push('track locks protect points, BGM presets preserve the curve, and native save/reload preserves all keys');
+    await clip('voice').focus(); await page.keyboard.press('Control+z'); await save(); await page.keyboard.press('Control+o'); await page.waitForFunction(() => document.querySelector('button[aria-label^="元に戻す ("]')?.disabled); await clip('voice').click({ position: { x: 25, y: 10 } }); assert.deepEqual(await keys(), fine); checks.push('track locks protect points, BGM presets preserve the curve, and native save/reload preserves all keys');
     // Set a repeatable dip using the real keyboard controls for playback checks.
     await nodes().nth(2).focus(); for (let i = 0; i < 20; i++) await page.keyboard.press('Shift+ArrowDown'); for (let i = 0; i < 2; i++) await page.keyboard.press('Shift+ArrowUp');
     await nodes().nth(3).focus(); for (let i = 0; i < 8; i++) await page.keyboard.press('Shift+ArrowDown');

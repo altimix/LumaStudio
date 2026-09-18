@@ -29,7 +29,7 @@ const root = path.join(__dirname, '..');
   };
   const save = async () => {
     const before = (await fs.stat(file).catch(() => null))?.mtimeMs;
-    await button('プロジェクトを保存 (Ctrl+S)').click();
+    await button(/^プロジェクトを保存 \(/).click();
     const deadline = Date.now() + 10000;
     while ((await fs.stat(file).catch(() => null))?.mtimeMs === before) { assert.ok(Date.now() < deadline, 'project saved'); await new Promise(resolve => setTimeout(resolve, 25)); }
     await page.getByRole('dialog', { name: 'プロジェクトを保存しています', exact: true }).waitFor({ state: 'hidden' }); await settle();
@@ -86,7 +86,7 @@ const root = path.join(__dirname, '..');
     await button('音声').click(); assert.equal(await page.locator('.transition-list button').count(), 2);
     await button('色調').click(); assert.equal(await page.locator('.look-card').count(), 6);
     await button('シネマ 深い陰影、映画のように').click(); assert.equal((await save()).clips[1].saturation, .78);
-    await button('元に戻す (Ctrl+Z)').click(); await button('切り替え').click();
+    await button(/^元に戻す \(/).click(); await button('切り替え').click();
     await button('クロスディゾルブ 2つの映像をなめらかに重ねる').click();
     await band().waitFor(); const baseline = await save(); assert.equal(baseline.transitions[0].duration, .5);
     checks.push('effect categories show all five transitions and six looks; look application is undoable');
@@ -94,12 +94,12 @@ const root = path.join(__dirname, '..');
     await band().locator('.timeline-transition').click(); assert.equal(Number(await duration().inputValue()), .5);
     await drag('end', .6); let resized = await save(); assert.equal(resized.transitions[0].duration, 1.1);
     assert.deepEqual(resized.clips, baseline.clips); assert.equal(resized.transitions[0].id, baseline.transitions[0].id);
-    await button('元に戻す (Ctrl+Z)').click(); assert.deepEqual(await save(), baseline);
-    await button('やり直す (Ctrl+Shift+Z)').click(); assert.deepEqual(await save(), resized);
+    await button(/^元に戻す \(/).click(); assert.deepEqual(await save(), baseline);
+    await button(/^やり直す \(/).click(); assert.deepEqual(await save(), resized);
     await drag('start', .4); resized = await save(); assert.equal(resized.transitions[0].duration, 1.5);
     await drag('end', .3, 'return'); assert.deepEqual(await save(), resized);
-    await button('元に戻す (Ctrl+Z)').click(); assert.equal((await save()).transitions[0].duration, 1.1);
-    await button('やり直す (Ctrl+Shift+Z)').click(); assert.deepEqual(await save(), resized);
+    await button(/^元に戻す \(/).click(); assert.equal((await save()).transitions[0].duration, 1.1);
+    await button(/^やり直す \(/).click(); assert.deepEqual(await save(), resized);
     for (const cancel of ['escape', 'pointer', 'blur']) { await drag('end', .4, cancel); assert.deepEqual(await save(), resized); }
     checks.push('both edges resize around the unchanged cut; live numeric feedback, one Undo/Redo, Escape, pointer cancellation and blur');
 
@@ -118,10 +118,10 @@ const root = path.join(__dirname, '..');
     await button('音声').click(); await button('効果を解除').click();
     const videoOnly = await save(); assert.equal(videoOnly.transitions[0].video, 'dissolve'); assert.equal(videoOnly.transitions[0].audio, undefined);
     assert.deepEqual(videoOnly.clips, baseline.clips); assert.equal(videoOnly.transitions[0].id, baseline.transitions[0].id);
-    await button('元に戻す (Ctrl+Z)').click(); assert.deepEqual((await save()).transitions, baseline.transitions);
+    await button(/^元に戻す \(/).click(); assert.deepEqual((await save()).transitions, baseline.transitions);
     await button('切り替え').click(); await button('効果を解除').click();
     const audioOnly = await save(); assert.equal(audioOnly.transitions[0].video, undefined); assert.equal(audioOnly.transitions[0].audio, 'constantPower');
-    await button('元に戻す (Ctrl+Z)').click(); await button('やり直す (Ctrl+Shift+Z)').click(); assert.deepEqual((await save()).transitions, audioOnly.transitions);
+    await button(/^元に戻す \(/).click(); await button(/^やり直す \(/).click(); assert.deepEqual((await save()).transitions, audioOnly.transitions);
     await button('音声').click(); await button('効果を解除').click(); assert.deepEqual((await save()).transitions, []);
     checks.push('category removal preserves the other half of a combined effect, its identity and clip placement with Undo/Redo');
 
@@ -152,12 +152,12 @@ const root = path.join(__dirname, '..');
     await band().locator('.timeline-transition').click(); await tab('テキスト'); assert.equal(await page.locator('.title-template').count(), 3);
     await button('シネマタイトルを追加').click(); const title = await save(); assert.equal(title.clips.filter(c => c.kind === 'title').length, 1);
     await unrelatedSelection(title);
-    await button('元に戻す (Ctrl+Z)').click();
+    await button(/^元に戻す \(/).click();
     await band().locator('.timeline-transition').click();
     await tab('図形'); assert.equal(await page.locator('.drawing-sound').getAttribute('open'), null);
     await page.locator('.drawing-sound summary').click(); await page.getByLabel('図形と同時に追加', { exact: true }).selectOption('none'); await page.locator('.drawing-sound summary').click();
     await button('四角で囲む').click(); await button('選択した図形を中央に追加').click();
-    const drawing = await save(); assert.equal(drawing.clips.filter(c => c.graphic).length, 1); await unrelatedSelection(drawing); await button('元に戻す (Ctrl+Z)').click();
+    const drawing = await save(); assert.equal(drawing.clips.filter(c => c.graphic).length, 1); await unrelatedSelection(drawing); await button(/^元に戻す \(/).click();
     checks.push('compact title cards add at the playhead; collapsed sound options and centered drawing retain their actions');
 
     await band().locator('.timeline-transition').click(); await tab('BGM'); await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, music);
@@ -179,7 +179,7 @@ const root = path.join(__dirname, '..');
     await button('BGMをタイムラインに追加').click(); await page.getByText(/BGMを追加しました/).waitFor();
     const withMusic = await save(); assert.ok(withMusic.clips.some(c => c.name === '曲 1.wav'));
     await unrelatedSelection(withMusic);
-    await button('元に戻す (Ctrl+Z)').click();
+    await button(/^元に戻す \(/).click();
     checks.push('per-song buttons directly audition and switch songs; search, length and insertion remain usable');
 
     await page.getByRole('separator', { name: '素材パネルの幅を変更', exact: true }).focus(); await page.keyboard.press('Home'); await windowSize(1100, 720);

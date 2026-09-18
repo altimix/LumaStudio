@@ -1,7 +1,8 @@
+import { shortcutLabel } from '../shortcut-label';
 import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 export function IconButton({ label, active, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; active?: boolean }) {
-  return <button className={`icon-button ${active ? 'active' : ''} ${props.className || ''}`} title={label} aria-label={label} aria-pressed={active === undefined ? undefined : active} {...props}>{children}</button>;
+  return <button className={`icon-button ${active ? 'active' : ''} ${props.className || ''}`} title={shortcutLabel(label)} aria-label={shortcutLabel(label)} aria-pressed={active === undefined ? undefined : active} {...props}>{children}</button>;
 }
 export function Modal({ title, children, onClose, wide, blockEditorShortcuts }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean; blockEditorShortcuts?: boolean }) {
   const dialog = useRef<HTMLElement>(null);

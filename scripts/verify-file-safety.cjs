@@ -20,14 +20,14 @@ const digest = data => createHash('sha256').update(data).digest('hex');
     const before = digest(await fs.readFile(original));
     // Native save dialogs permit explicitly typed extensions; filters do not protect source files.
     await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }); }, original);
-    await page.getByRole('button', { name: 'プロジェクトを保存 (Ctrl+S)', exact: true }).click();
+    await page.getByRole('button', { name: /^プロジェクトを保存 \(/, exact: true }).click();
     await page.locator('.toast[role="status"]').waitFor();
     assert.equal(digest(await fs.readFile(original)), before, 'Saving a project must never overwrite source media');
     assert.match(await page.locator('.toast[role="status"]').textContent(), /素材|拡張子/);
     const previousProject = path.join(profile, '以前の編集.luma');
     const newProject = path.join(profile, '新規の編集.luma');
     await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }); }, previousProject);
-    await page.getByRole('button', { name: 'プロジェクトを保存 (Ctrl+S)', exact: true }).click();
+    await page.getByRole('button', { name: /^プロジェクトを保存 \(/, exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.toast[role="status"]')?.textContent.includes('プロジェクトを保存しました'));
     const previousDigest = digest(await fs.readFile(previousProject));
     const forgedPath = path.join(profile, '未登録の映像.mp4'); await fs.copyFile(original, forgedPath);
@@ -103,7 +103,7 @@ const digest = data => createHash('sha256').update(data).digest('hex');
       };
     }, previousProject);
     try {
-      await page.getByRole('button', { name: 'プロジェクトを保存 (Ctrl+S)', exact: true }).click();
+      await page.getByRole('button', { name: /^プロジェクトを保存 \(/, exact: true }).click();
       let probe;
       for (let attempt = 0; attempt < 60; attempt++) {
         probe = await app.evaluate(() => globalThis.__lumaRenameProbe);
@@ -126,7 +126,7 @@ const digest = data => createHash('sha256').update(data).digest('hex');
     await page.getByRole('button', { name: /^新規プロジェクト/ }).click();
     await page.getByRole('button', { name: /YouTube 横動画/ }).click();
     await page.getByRole('button', { name: '新しいプロジェクト', exact: true }).waitFor();
-    await page.getByRole('button', { name: 'プロジェクトを保存 (Ctrl+S)', exact: true }).click();
+    await page.getByRole('button', { name: /^プロジェクトを保存 \(/, exact: true }).click();
     let created = false;
     for (let attempt = 0; attempt < 30; attempt++) {
       try { await fs.access(newProject); created = true; break; } catch { await new Promise(resolve => setTimeout(resolve, 100)); }

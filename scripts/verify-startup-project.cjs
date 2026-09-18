@@ -21,12 +21,12 @@ async function verify(){
   try{
     await page.getByRole('button',{name:project.name,exact:true}).waitFor({timeout:60000});assert.equal(await page.locator('.media-card').count(),2);assert.equal(await page.locator('.media-card.offline').count(),0);
     await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},template);
-    await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();
+    await page.getByRole('button',{name:/^プロジェクトを保存 \(/,exact:true}).click();
     await page.getByText('元の素材を保存先に指定することはできません。',{exact:false}).first().waitFor();
     assert.equal(await hash(template),before,'Save cannot overwrite the template');
     const initialSave=path.join(profile,'初回保存.luma');
     await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},initialSave);
-    await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();
+    await page.getByRole('button',{name:/^プロジェクトを保存 \(/,exact:true}).click();
     await page.waitForFunction(()=>document.querySelector('.project-subtitle')?.textContent?.includes('初回保存')||!document.querySelector('.unsaved-dot'));
     let initial;for(let i=0;i<100;i++){try{initial=JSON.parse(await fs.readFile(initialSave,'utf8'));break;}catch{await new Promise(r=>setTimeout(r,50));}}
     assert.ok(initial);assert.equal(initial.youtube.thumbnailAssetId,initial.assets[0].id);assert.notEqual(initial.youtube.sourceKey,timelineKey(initial));assert.deepEqual(initial.youtube.titles,project.youtube.titles);
