@@ -34,7 +34,23 @@ const root=path.resolve(__dirname,'..');
    assert.equal(frames.filter(f=>f.pixel[i]<200||f.pixel[(i+1)%3]>30||f.pixel[(i+2)%3]>30).length,0,'loop must display the selected video color without black or next-cue flashes');
    checks.push({cue:i+1,samples:frames.length,wraps:frames.filter((v,j)=>j>0&&v.time<frames[j-1].time-.1).length});
   }
-  await page.screenshot({path:path.join(root,'test-results','caption-real-video.png')});assert.deepEqual(errors,[]);
+  await page.screenshot({path:path.join(root,'test-results','caption-real-video.png')});
+  await page.getByRole('button',{name:'編集に戻る',exact:true}).click();
+  const missing={...asset,id:'missing-video',path:path.join(profile,'見つからない.mp4'),offline:true};
+  const offline={...project,id:'caption-offline',name:'オフライン素材を含む字幕確認',assets:[asset,missing],tracks:[{id:'missing',name:'Missing',kind:'video'},...project.tracks],clips:[...project.clips,{...project.clips[0],id:'offline-clip',assetId:missing.id,trackId:'missing'}]};
+  offline.youtube={...project.youtube,sourceKey:timelineKey(offline)};
+  const offlineFile=path.join(profile,'offline.luma');await fs.writeFile(offlineFile,JSON.stringify(offline));
+  await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},offlineFile);
+  await page.keyboard.press('Control+o');await page.getByRole('button',{name:offline.name,exact:true}).waitFor();await page.locator('.media-card.offline').waitFor();
+  await page.getByRole('button',{name:'YouTube',exact:true}).click();
+  await page.getByRole('button',{name:'字幕1の映像を確認',exact:true}).click();
+  await page.evaluate(()=>{window.offlineTimes=[];const c=document.querySelector('.caption-monitor canvas');window.offlineObserver=new MutationObserver(()=>window.offlineTimes.push(Number(c.dataset.previewTime)));window.offlineObserver.observe(c,{attributes:true,attributeFilter:['data-preview-time']});});
+  await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).click();
+  await page.waitForFunction(()=>window.offlineTimes.filter((t,j)=>j>0&&t<window.offlineTimes[j-1]-.1).length>=2,undefined,{timeout:10000});
+  await page.getByRole('button',{name:'反復再生を停止',exact:true}).click();
+  const offlineFrames=await page.evaluate(()=>{window.offlineObserver.disconnect();return window.offlineTimes;});
+  checks.push({offline:true,samples:offlineFrames.length,wraps:offlineFrames.filter((t,j)=>j>0&&t<offlineFrames[j-1]-.1).length});
+  assert.deepEqual(errors,[]);
   await fs.writeFile(path.join(root,'test-results','caption-real-video.json'),JSON.stringify({passed:true,packaged:!!executablePath,checks,errors},null,2));
   console.log(JSON.stringify({passed:true,checks}));
  }finally{await app.close();}

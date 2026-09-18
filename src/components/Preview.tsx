@@ -200,11 +200,13 @@ export default function Preview({ readOnly = false }: { readOnly?: boolean }) {
       }
       for(const [id,buffers]of transitionBuffers)if(!active.some(pair=>pair.id===id)){buffers.renderer.dispose();for(const buffer of [buffers.a,buffers.b])buffer.width=buffer.height=0;transitionBuffers.delete(id);}
       for(const pair of active){let buffers=transitionBuffers.get(pair.id);if(!buffers){buffers={a:document.createElement('canvas'),b:document.createElement('canvas'),aReady:false,bReady:false,aUsable:false,bUsable:false,aAvailable:false,bAvailable:false,renderer:new TransitionPreview(message=>{useEditor.getState().stop();useEditor.getState().notify(message);},gpuPool)};transitionBuffers.set(pair.id,buffers);}buffers.aReady=buffers.bReady=buffers.aUsable=buffers.bUsable=buffers.aAvailable=buffers.bAvailable=false;for(const buffer of [buffers.a,buffers.b]){if(buffer.width!==w||buffer.height!==h){buffer.width=w;buffer.height=h;}buffer.getContext('2d')!.clearRect(0,0,w,h);}}
-      let frameReady=true; let transitionsReady=true,transitionsPresented=true;const tracks = [...p.tracks].reverse();
+      let frameReady=true, frameUnavailable=false; let transitionsReady=true,transitionsPresented=true;const tracks = [...p.tracks].reverse();
       for (const track of tracks) for (const clip of p.clips.filter(c => c.trackId === track.id).sort((a,b) => a.start - b.start)) {
         if(diagnosticMatteId&&clip.id!==diagnosticMatteId)continue;
         if ((t < clip.start || t >= clip.start + clip.duration) && !pairs.has(clip.id)) continue;
         const asset = p.assets.find(a => a.id === clip.assetId);
+        if (!track.hidden && clip.kind !== 'audio' &&
+          (clip.kind === 'title' ? !isFontReady(clip) : !asset || asset.offline)) frameUnavailable = true;
         const fade = fadeAt(clip, t); let source: CanvasImageSource | null = null; let sourceKey:string|undefined;let sourceReady=true,sourceUsable=true; let sw = p.width; let sh = p.height;
         if (clip.kind === 'title') {
           activeTitles.add(clip.id); if (isFontReady(clip)) {
@@ -217,9 +219,11 @@ export default function Preview({ readOnly = false }: { readOnly?: boolean }) {
             let img = pictures.get(asset.id);
             if (!img || img.src !== new URL(asset.url,location.href).href) { img = new Image(); img.crossOrigin = 'anonymous'; img.src = asset.url; pictures.set(asset.id, img); }
             if (img.complete && img.naturalWidth) { source = img; sw = img.naturalWidth; sh = img.naturalHeight; sourceKey=mediaSourceKey(p,asset); }
+            if (!track.hidden && img.complete && !img.naturalWidth) frameUnavailable = true;
           } else if (clip.kind === 'video') {
             const item = prepareVideo(clip, asset);
             const el = item.element; alive.add(clip.id);
+            if (!track.hidden && el.error) frameUnavailable = true;
             const desired = visualSourceTime(clip,asset,t),unclamped=clip.in+(t-clip.start)*clip.speed;
             const nativePlayback = s.playing && !audio.loading && s.shuttleRate > 0 && clip.speed * s.shuttleRate <= 4 && Math.abs(desired-unclamped)<1e-6;
             const enteringNative = nativePlayback && !item.nativePlayback;
@@ -327,7 +331,9 @@ export default function Preview({ readOnly = false }: { readOnly?: boolean }) {
       // A loop seek invalidates decoded video until the new source frame is
       // ready. Keep the last in-range composite instead of presenting black.
       if (loopFrame) {
-        if (frameReady && transitionsReady && transitionsPresented) releaseLoopFrame();
+        // Offline/error sources and unavailable fonts use the normal fallback;
+        // waiting for them here would freeze the whole monitor indefinitely.
+        if (frameUnavailable || (frameReady && transitionsReady && transitionsPresented)) releaseLoopFrame();
         else { ctx.drawImage(loopFrame.canvas, 0, 0, w, h); t = loopFrame.time; }
       }
       if (capture && frameReady && transitionsReady && transitionsPresented) {
