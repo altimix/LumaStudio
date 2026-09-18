@@ -88,6 +88,17 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
     await page.getByRole('button', { name:'反復再生を停止', exact:true }).click();
     await page.screenshot({path:path.join(results,'youtube-caption-workspace.png')});
     checks.push('one preview remains visible with captions; cue navigation keeps the dialog open and selected interval loops');
+    await page.getByRole('button',{name:'字幕4の映像を確認',exact:true}).click();
+    const finalEnd=page.getByRole('spinbutton',{name:'字幕4の終了秒',exact:true});await finalEnd.fill('35');await finalEnd.press('Tab');
+    await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).click();
+    for(let repeat=0;repeat<2;repeat++){
+      await page.waitForFunction(()=>document.querySelector('.caption-monitor .timecode.accent')?.textContent.startsWith('00:00:34'),undefined,{timeout:15000});
+      await page.waitForFunction(()=>document.querySelector('.caption-monitor .timecode.accent')?.textContent.startsWith('00:00:32'),undefined,{timeout:5000});
+      await page.getByRole('button',{name:'一時停止 (Space)',exact:true}).waitFor();
+    }
+    await page.getByRole('button',{name:'反復再生を停止',exact:true}).click();
+    await finalEnd.fill('34');await finalEnd.press('Tab');await page.getByRole('button',{name:'字幕1の映像を確認',exact:true}).click();
+    checks.push('a cue ending at the sequence end repeats twice without being stopped by Preview');
     const firstCue=await page.getByRole('textbox',{name:'字幕1の本文',exact:true}).inputValue();
     assert.equal(firstCue.replace(/\s/g,''),'日本語の字幕を自然な区切りで読みやすく作成します。');
     assert.ok([...firstCue.replace(/\s/g,'')].length>=20&&[...firstCue.replace(/\s/g,'')].length<=30);
