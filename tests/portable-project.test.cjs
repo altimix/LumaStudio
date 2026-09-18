@@ -45,3 +45,13 @@ test('batch relink preserves IDs and returns incompatible or missing assets as u
     await fs.rm(original.path);result=await relinkFolder(p,dir,async()=>{throw Error('unexpected');});assert.equal(result.unresolved.length,1);assert.equal(p.assets[0].offline,true);
   }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
+
+test('POSIX relinking preserves backslashes inside media filenames', {skip:process.platform==='win32'}, async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-portable-'));
+ try {
+  const p=await fixture(dir), original={...p.assets[0]}, filename='take\\final.png';
+  await fs.rename(original.path,path.join(dir,filename));p.assets[0].offline=true;p.assets[0].path='/old/'+filename;
+  const result=await relinkFolder(p,dir,async file=>{assert.equal(path.basename(file),filename);return {...original,id:'fresh',path:file};});
+  assert.equal(result.assets.length,1);assert.deepEqual(result.unresolved,[]);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});

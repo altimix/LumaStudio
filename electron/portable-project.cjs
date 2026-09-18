@@ -55,7 +55,8 @@ async function relinkFolder(project, folder, inspect) {
   const entries = await fs.readdir(folder, { withFileTypes: true });
   const assets = [], unresolved = [];
   for (const saved of project.assets.filter(asset => asset.offline)) {
-    const basename = path.win32.basename(saved.path.replace(/\//g, '\\')).toLowerCase();
+    const windowsPath = /^[a-z]:[\\/]/i.test(saved.path) || saved.path.startsWith('\\\\');
+    const basename = (windowsPath ? path.win32 : path.posix).basename(saved.path).toLowerCase();
     const candidates = entries.filter(entry => entry.isFile() && entry.name.toLowerCase() === basename);
     if (candidates.length !== 1) { unresolved.push(`${saved.name}：${candidates.length ? '同名の候補が複数あります' : '同名のファイルがありません'}`); continue; }
     try {
