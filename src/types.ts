@@ -85,6 +85,8 @@ export interface DesktopAPI {
   importDroppedFiles(files: File[]): Promise<{ assets: Asset[]; errors: string[]; cancelled?: boolean }>;
   cancelImport(): Promise<void>;
   relink(asset: Asset): Promise<Asset | null>;
+  collectProject(project: Project): Promise<string | null>;
+  relinkFolder(project: Project): Promise<{ assets: Asset[]; unresolved: string[] } | null>;
   saveProject(project: Project, saveAs?: boolean): Promise<string | null>;
   openProject(): Promise<{ project: Project; path: string } | null>;
   autosave(project: Project): Promise<void>;
