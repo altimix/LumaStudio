@@ -23,7 +23,7 @@ import type { Clip, Asset, Project } from '../types';
 import { disposeMaskedFrame, evictInactiveMaskedFrames, maskedCompositeSize, maskedVideoFrame, type MaskedFrame } from '../video-mask';
 import { sampleSourceColor } from '../chroma-preview';
 
-export default function Preview() {
+export default function Preview({ readOnly = false }: { readOnly?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null); const stage = useRef<HTMLDivElement>(null); const mediaBin = useRef<HTMLDivElement>(null);
   const sampleChroma = useRef<(clipId:string,point:{x:number;y:number})=>string>(()=>{throw Error('素材フレームを準備しています。少し待ってからもう一度お試しください。');});
   const captureRequest = useRef<{ project: Project; time: number; resolve: (png: string) => void; reject: (error: Error) => void } | null>(null);
@@ -55,7 +55,7 @@ export default function Preview() {
     const clearFrame=(item:VideoItem)=>{if(item.frame)item.frame.width=item.frame.height=0;item.frame=undefined;item.frameTime=undefined;item.frameRevision=undefined;};
     const media = new Map<string, VideoItem>();
     const pictures = new Map<string, HTMLImageElement>(); const titles = new Map<string, { key: string; canvas: HTMLCanvasElement }>();
-    const sampleCanvas=document.createElement('canvas');
+    const sampleCanvas=document.createElement('canvas'); sampleCanvas.width=sampleCanvas.height=0;
     sampleChroma.current=(clipId,point)=>{
       const state=useEditor.getState(),clip=state.project.clips.find(item=>item.id===clipId),asset=state.project.assets.find(item=>item.id===clip?.assetId);
       if(!clip||!asset||state.playing)throw Error('停止中の選択素材から背景色を取得してください。');
@@ -312,13 +312,13 @@ export default function Preview() {
       target.dataset.transitionsPresented=String(transitionsPresented);target.dataset.transitionBackend=active.map(pair=>transitionBuffers.get(pair.id)?.renderer.backend||'').join(',');target.dataset.previewTime=String(t);target.dataset.transitionKind=active.map(pair=>pair.video).join(',');target.dataset.transitionsReady=String(transitionsReady);frame = requestAnimationFrame(draw);
     };
     frame = requestAnimationFrame(draw);
-    return () => { sampleChroma.current=()=>{throw Error('素材フレームを準備しています。少し待ってからもう一度お試しください。');};sampleCanvas.width=sampleCanvas.height=0;captureRequest.current?.reject(new Error('写真の保存を中止しました。')); captureRequest.current = null; cancelAnimationFrame(frame); unsubscribe(); unbindMeterReset(); audio.dispose();for(const buffers of transitionBuffers.values())buffers.renderer.dispose();for(const item of maskedFrames.values())disposeMaskedFrame(item);gpuPool.dispose(); for (const item of media.values()) { clearFrame(item);item.element.pause(); item.element.removeAttribute('src'); item.element.load(); item.element.remove(); } };
+    return () => { target.width=target.height=0; for(const item of titles.values()) item.canvas.width=item.canvas.height=0; titles.clear(); sampleChroma.current=()=>{throw Error('素材フレームを準備しています。少し待ってからもう一度お試しください。');};sampleCanvas.width=sampleCanvas.height=0;captureRequest.current?.reject(new Error('写真の保存を中止しました。')); captureRequest.current = null; cancelAnimationFrame(frame); unsubscribe(); unbindMeterReset(); audio.dispose();for(const buffers of transitionBuffers.values())buffers.renderer.dispose();for(const item of maskedFrames.values())disposeMaskedFrame(item);gpuPool.dispose(); for (const item of media.values()) { clearFrame(item);item.element.pause(); item.element.removeAttribute('src'); item.element.load(); item.element.remove(); } };
   }, []);
   const seek = useEditor(s => s.seek);
   return <section className="preview-panel panel">
     <div className="panel-heading"><div className="panel-title"><Monitor size={15}/><span>プログラムモニター</span></div><div className="preview-transform-actions" ref={setTransformActions}/><span className="subtle tiny">{project.width} × {project.height} <span className="dot-separator">·</span> {project.fps} fps</span></div>
       <div className="media-elements" aria-hidden="true" ref={mediaBin}/><div className="preview-stage" ref={stage}>
-      <div className="canvas-wrap" style={{ aspectRatio: `${project.width}/${project.height}`, '--preview-ratio':project.width/project.height } as CSSProperties}><canvas ref={canvas} aria-label="動画プレビュー"/><MediaDragLayer sizes={mediaSizes} actions={transformActions} onSampleChroma={(clipId,point)=>sampleChroma.current(clipId,point)}/><TitleDragLayer fontVersion={fontVersion}/><DrawLayer/>{fontStatus ? <div className="preview-font-status" role="status">{fontStatus}<button className="text-button" onClick={() => setFontRetry(value => value + 1)}>再試行</button></div> : null}{safeGuides ? <div className="safe-guides"><div/></div> : null}{project.clips.length === 0 ? <div className="preview-empty"><Monitor size={36}/><strong>あなたの物語を、タイムラインへ。</strong><span>素材をドラッグして編集をはじめましょう</span></div> : null}</div>
+      <div className="canvas-wrap" style={{ aspectRatio: `${project.width}/${project.height}`, '--preview-ratio':project.width/project.height } as CSSProperties}><canvas ref={canvas} aria-label="動画プレビュー"/>{!readOnly ? <><MediaDragLayer sizes={mediaSizes} actions={transformActions} onSampleChroma={(clipId,point)=>sampleChroma.current(clipId,point)}/><TitleDragLayer fontVersion={fontVersion}/><DrawLayer/></> : null}{fontStatus ? <div className="preview-font-status" role="status">{fontStatus}<button className="text-button" onClick={() => setFontRetry(value => value + 1)}>再試行</button></div> : null}{safeGuides ? <div className="safe-guides"><div/></div> : null}{project.clips.length === 0 ? <div className="preview-empty"><Monitor size={36}/><strong>あなたの物語を、タイムラインへ。</strong><span>素材をドラッグして編集をはじめましょう</span></div> : null}</div>
       <div className="monitor-badge"><span/> PROGRAM</div>
     </div>
     <div className="preview-bottom"><div className="preview-meta"><span className="timecode accent">{timecode(playhead, project.fps)}</span><span className="shuttle-status" role="status" aria-label="シャトル状態">{playing ? `${shuttleRate < 0 ? '逆再生' : '再生'} ${Math.abs(shuttleRate)}×${audioLoading ? '・音声準備中' : ''}` : '停止'}</span><div className="preview-options"><select aria-label="プレビュー画質" value={quality} onChange={e => useEditor.setState({ previewQuality: Number(e.target.value) })}><option value={1}>フル画質</option><option value={0.5}>1/2 画質</option><option value={0.25}>1/4 画質</option></select><span>フィット</span><ChevronDown size={12}/></div><span className="timecode subtle">{timecode(total, project.fps)}</span></div>
