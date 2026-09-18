@@ -13,7 +13,7 @@ const root = path.join(__dirname, '..');
     const verifyOperationLayout = async (dialog, name) => {
       for (const factor of [1, 1.25, 1.5]) {
         await app.evaluate(({ BrowserWindow }, size) => { const window=BrowserWindow.getAllWindows()[0];window.setSize(size.width,size.height);window.center(); }, { width:Math.round(1600/factor), height:Math.round(1000/factor) });
-        await page.waitForTimeout(220);
+        await dialog.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished.catch(() => {}))));
         const layout = await dialog.evaluate(element => {
           const box = node => { const rect = node.getBoundingClientRect(); return { x:rect.x, y:rect.y, width:rect.width, height:rect.height, right:rect.right, bottom:rect.bottom, center:rect.x+rect.width/2 }; };
           const heading = element.querySelector('.modal-heading'), title = heading.querySelector('h2'), status = element.querySelector('.project-operation-status'), spinner = element.querySelector('.project-operation-spinner'), message = status.querySelector('span:last-child'), style = getComputedStyle(status);
@@ -63,9 +63,16 @@ const root = path.join(__dirname, '..');
     });
     await page.getByRole('button', { name: '読み込み', exact: true }).click();
     await page.getByRole('dialog', { name: '素材を読み込んでいます', exact: true }).waitFor();
-    await page.keyboard.press('Control+n'); await page.keyboard.press('Control+o'); await page.keyboard.press('Escape');
+    await page.keyboard.press('Control+n'); await page.keyboard.press('Control+o');
     assert.equal(await page.getByRole('dialog', { name: '素材を読み込んでいます', exact: true }).count(), 1);
-    await app.evaluate(() => globalThis.releaseImport());
+    await app.evaluate(({ BrowserWindow, ipcMain }) => {
+      BrowserWindow.getAllWindows()[0].webContents.send('import-progress', { index:2, total:5, completed:1, name:'長い日本語素材.mp4', stage:'音声波形を作成しています' });
+      ipcMain.removeHandler('cancel-import'); ipcMain.handle('cancel-import', () => { globalThis.releaseImport(); });
+    });
+    await page.getByText('音声波形を作成しています', { exact:true }).waitFor();
+    await page.getByText('2 / 5 件：長い日本語素材.mp4', { exact:true }).waitFor();
+    await page.getByRole('button', { name:'読み込みを中止', exact:true }).focus();
+    await page.keyboard.press('Enter');
     await page.getByRole('dialog', { name: '素材を読み込んでいます', exact: true }).waitFor({ state: 'hidden' });
     assert.equal((await save()).id, next.id);
     await app.evaluate(({ ipcMain }) => {

@@ -28,3 +28,4 @@
 
 /* Proxy badges are informational and must not cover the list add control. */
 .proxy-tag{pointer-events:none}.list-view .media-card-info>.proxy-tag{position:static;display:inline-block;max-width:100%;margin-top:3px;font:7px Consolas,monospace;color:#c4dd93}
+.project-operation-status strong{font-size:12px;overflow-wrap:anywhere;max-width:100%}.project-operation-status progress{width:100%;accent-color:#b9d993}.project-operation-status small{font-size:11px;color:#b7c4ad}
