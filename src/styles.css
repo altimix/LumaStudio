@@ -33,3 +33,5 @@
 .backup-list{max-height:45vh;overflow:auto;margin-top:16px}.backup-list article{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}.backup-list article div{display:grid;gap:5px;min-width:0}.backup-list strong{overflow-wrap:anywhere}.backup-list span{color:var(--muted);font-size:11px}.backup-list button{flex-shrink:0}
 
 .media-proxy-action{display:grid;gap:6px;padding:8px 12px}.media-proxy-action small{font-size:10px;color:var(--muted)}
+
+.media-card-info .proxy-warning{white-space:normal;color:#e5c880;line-height:1.5}

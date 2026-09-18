@@ -4,7 +4,7 @@ const { validateProject } = require('./export.cjs');
 const MAX_PROJECT_BYTES = 15 * 1024 * 1024;
 function serializeProject(p) {
   validateProject(p);
-  const contents = JSON.stringify({ ...p, assets: p.assets.map(({ url, thumbnail, offline, playbackPath, thumbnailPath, ...a }) => a) }, null, 2);
+  const contents = JSON.stringify({ ...p, assets: p.assets.map(({ url, thumbnail, offline, playbackPath, thumbnailPath, proxyWarning, ...a }) => a) }, null, 2);
   if (Buffer.byteLength(contents, 'utf8') > MAX_PROJECT_BYTES) throw new Error('プロジェクトファイルが大きすぎます。15 MiB以内にしてください。');
   return contents;
 }
@@ -37,7 +37,12 @@ async function hydrateProject(project, inspect, present) {
   for (const saved of project.assets) {
     try {
       if (!isLocalProjectPath(saved.path)) throw new Error('別のOSの素材は再リンクしてください。');
-      const fresh = await inspect(saved.path, { previewProxy: saved.previewProxy === true });
+      let fresh;
+      try { fresh = await inspect(saved.path, { previewProxy: saved.previewProxy === true }); }
+      catch (error) {
+        if (!saved.previewProxy) throw error;
+        fresh = { ...await inspect(saved.path, { previewProxy: false, skipCache: true }), proxyWarning: '軽量プロキシを準備できなかったため原本を使用しています。再作成するには「軽量プロキシを作成」を選んでください。' };
+      }
       assertReplacement(saved, fresh);
       const candidate = { ...fresh, id: saved.id, name: saved.name, revision: fresh.id };
       // Validate refreshed metadata and every source interval before exposing it.
