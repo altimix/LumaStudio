@@ -121,7 +121,7 @@ function CropMaskEffects({clip}:{clip:Clip}){
     return {...current,points};
   });
   return <>
-    <Section title="クロップ" icon={Scan} open={!!clip.crop} onReset={()=>{const state=useEditor.getState();state.updateClip(clip.id,{crop:undefined});if(state.mediaEditMode==='crop')state.setMediaEditMode('transform');}}>
+    <Section title="クロップ" icon={Scan} open={!!clip.crop || mode==='crop'} onReset={()=>{const state=useEditor.getState();state.updateClip(clip.id,{crop:undefined});if(state.mediaEditMode==='crop')state.setMediaEditMode('transform');}}>
       <div className="mask-edit-buttons"><button className={'secondary-button '+(mode==='crop'?'active':'')} onClick={()=>useEditor.getState().setMediaEditMode(mode==='crop'?'transform':'crop')}>モニターでクロップ</button></div>
       <EffectField clip={clip} label="上" value={crop.top*100} min={0} max={(0.99-crop.bottom)*100} step={.1} suffix="%" patch={cropPatch('top')}/>
       <EffectField clip={clip} label="右" value={crop.right*100} min={0} max={(0.99-crop.left)*100} step={.1} suffix="%" patch={cropPatch('right')}/>
