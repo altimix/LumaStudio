@@ -142,8 +142,15 @@ export default function Preview({ readOnly = false }: { readOnly?: boolean }) {
         t = audio.position;
         const ended = s.shuttleRate > 0 ? t >= endTime(p) - 1e-7 : t <= 1e-7;
         if (ended) t = s.shuttleRate > 0 ? endTime(p) : 0;
-        updatingClock = true; useEditor.setState({ playhead: t }); updatingClock = false;
-        if (ended) { s.stop(); s = useEditor.getState(); }
+        const publishedSeekRevision = s.seekRevision;
+        updatingClock = true;
+        try { useEditor.setState({ playhead: t }); } finally { updatingClock = false; }
+        s = useEditor.getState();
+        // A synchronous transport listener (caption looping) can seek while the
+        // clock is published. Draw that requested frame and preserve playback.
+        if (s.project !== p) { frame = requestAnimationFrame(draw); return; }
+        if (s.seekRevision !== publishedSeekRevision) t = s.playhead;
+        else if (ended) { s.stop(); s = useEditor.getState(); }
       }
       const w = Math.max(2, Math.round(p.width * (capture ? 1 : s.previewQuality))); const h = Math.max(2, Math.round(p.height * (capture ? 1 : s.previewQuality)));
       if (target.width !== w || target.height !== h) { target.width = w; target.height = h; }

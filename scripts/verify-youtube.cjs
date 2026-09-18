@@ -82,10 +82,25 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
     await page.locator('.preview-meta > .timecode.accent').filter({hasText:'00:00:12:00'}).waitFor();
     await page.getByRole('button', { name:'前の字幕', exact:true }).click();
     await page.locator('.preview-meta > .timecode.accent').filter({hasText:'00:00:00:09'}).waitFor();
+    const startLoopCapture=async()=>page.evaluate(()=>{
+      window.captionLoopFrames=[];window.captionLoopObserver?.disconnect();
+      const canvas=document.querySelector('.caption-monitor canvas');
+      window.captionLoopObserver=new MutationObserver(()=>{
+        if(document.querySelector('.caption-monitor-controls button[aria-pressed="true"]'))window.captionLoopFrames.push(Number(canvas.dataset.previewTime));
+      });window.captionLoopObserver.observe(canvas,{attributes:true,attributeFilter:['data-preview-time']});
+    });
+    const assertLoopFrames=async(start,end)=>{
+      const frames=await page.evaluate(()=>{window.captionLoopObserver.disconnect();return window.captionLoopFrames;});
+      assert.ok(frames.length>10,'sampled composited loop frames');
+      assert.deepEqual(frames.filter(time=>time<start-1e-6||time>=end),[],`composited frames remain in [${start},${end})`);
+      assert.ok(frames.some((time,index)=>index>0&&time<frames[index-1]-.1),'a rendered loop restart was observed');
+    };
+    await startLoopCapture();
     await page.getByRole('button', { name:'この字幕を反復再生', exact:true }).click();
     await page.waitForFunction(() => document.querySelector('.preview-meta > .timecode.accent').textContent >= '00:00:02:00');
     await page.waitForFunction(() => document.querySelector('.preview-meta > .timecode.accent').textContent < '00:00:01:00');
     await page.getByRole('button', { name:'反復再生を停止', exact:true }).click();
+    await assertLoopFrames(.3,2.5);
     await page.screenshot({path:path.join(results,'youtube-caption-workspace.png')});
     checks.push('one preview remains visible with captions; cue navigation keeps the dialog open and selected interval loops');
     await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).click();
@@ -93,6 +108,7 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
     await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).waitFor();
     await page.getByRole('button',{name:'字幕4の映像を確認',exact:true}).click();
     const finalEnd=page.getByRole('spinbutton',{name:'字幕4の終了秒',exact:true});await finalEnd.fill('35');await finalEnd.press('Tab');
+    await startLoopCapture();
     await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).click();
     for(let repeat=0;repeat<2;repeat++){
       await page.waitForFunction(()=>document.querySelector('.caption-monitor .timecode.accent')?.textContent.startsWith('00:00:34'),undefined,{timeout:15000});
@@ -100,6 +116,7 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
       await page.getByRole('button',{name:'一時停止 (Space)',exact:true}).waitFor();
     }
     await page.getByRole('button',{name:'反復再生を停止',exact:true}).click();
+    await assertLoopFrames(32,35);
     const finalStart=page.getByRole('spinbutton',{name:'字幕4の開始秒',exact:true});
     await finalStart.fill('32.01');await finalStart.press('Tab');
     await finalEnd.fill('37');await finalEnd.press('Tab');

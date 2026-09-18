@@ -13,28 +13,20 @@ export default function CaptionMonitor({ cues, index, disabled, onSelect }: { cu
   const playable = !!captionPlaybackRange(cue, fps, duration);
   const latest = useRef({ cue, loop, disabled }); latest.current = { cue, loop, disabled: disabled || !playable };
   useEffect(() => {
-    let seeking = false, alive = true;
-    const unsubscribe = useEditor.subscribe((state, previous) => {
+    let seeking = false;
+    return useEditor.subscribe((state, previous) => {
       const { cue, loop, disabled } = latest.current;
-      if (seeking || disabled || !loop || !cue || cue.end <= cue.start || !previous.playing) return;
+      if (seeking || disabled || !loop || !cue) return;
+      if (!state.playing) { latest.current.loop = false; setLoop(false); return; }
+      if (!previous.playing) return;
       const range = captionPlaybackRange(cue, state.project.fps, endTime(state.project));
       if (!range) return;
       if (state.playhead >= range.end || state.playhead < range.start) {
         seeking = true;
-        // Preview publishes the end playhead before stopping at the sequence end.
-        // Resume only after that synchronous stop has finished.
-        queueMicrotask(() => {
-          try {
-            if (!alive || !latest.current.loop || latest.current.disabled || latest.current.cue !== cue || useEditor.getState().project !== state.project) return;
-            useEditor.getState().seek(range.start);
-            if (!useEditor.getState().playing) useEditor.getState().togglePlay();
-          } finally { seeking = false; }
-        });
-      } else if (!state.playing) {
-        latest.current.loop = false; setLoop(false);
+        // Preview observes this seek before drawing or applying its sequence-end stop.
+        try { state.seek(range.start); } finally { seeking = false; }
       }
     });
-    return () => { alive = false; unsubscribe(); };
   }, []);
   useEffect(() => { setLoop(false); useEditor.getState().stop(); }, [disabled, index, playable]);
   useEffect(() => () => useEditor.getState().stop(), []);
