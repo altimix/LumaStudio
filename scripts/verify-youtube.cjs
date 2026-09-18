@@ -88,6 +88,9 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
     await page.getByRole('button', { name:'反復再生を停止', exact:true }).click();
     await page.screenshot({path:path.join(results,'youtube-caption-workspace.png')});
     checks.push('one preview remains visible with captions; cue navigation keeps the dialog open and selected interval loops');
+    await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).click();
+    await page.getByRole('button',{name:'一時停止 (Space)',exact:true}).click();
+    await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).waitFor();
     await page.getByRole('button',{name:'字幕4の映像を確認',exact:true}).click();
     const finalEnd=page.getByRole('spinbutton',{name:'字幕4の終了秒',exact:true});await finalEnd.fill('35');await finalEnd.press('Tab');
     await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).click();

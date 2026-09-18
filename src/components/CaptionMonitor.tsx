@@ -23,6 +23,8 @@ export default function CaptionMonitor({ cues, index, disabled, onSelect }: { cu
             if (!useEditor.getState().playing) useEditor.getState().togglePlay();
           } finally { seeking = false; }
         });
+      } else if (!state.playing) {
+        latest.current.loop = false; setLoop(false);
       }
     });
     return () => { alive = false; unsubscribe(); };
