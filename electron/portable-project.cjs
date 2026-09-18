@@ -59,6 +59,7 @@ async function relinkFolder(project, folder, inspect) {
     try {
       const fresh = await inspect(path.join(folder, candidates[0].name));
       assertReplacement(saved, fresh);
+      if (Math.abs(saved.duration - fresh.duration) > 1e-6 || saved.hasAudio !== fresh.hasAudio) throw Error('長さまたは音声の有無が一致しません');
       if (saved.size !== fresh.size || (saved.width && (saved.width !== fresh.width || saved.height !== fresh.height))) throw Error('サイズまたは解像度が一致しません');
       assets.push({ ...fresh, id: saved.id, name: saved.name, revision: fresh.id });
     } catch (error) { unresolved.push(`${saved.name}：${error.message}`); }

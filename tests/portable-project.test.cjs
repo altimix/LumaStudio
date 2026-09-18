@@ -38,6 +38,7 @@ test('batch relink preserves IDs and returns incompatible or missing assets as u
     const p=await fixture(dir), original={...p.assets[0]};p.assets[0].offline=true;p.assets[0].path='C:\\old\\日本語 &素材.png';
     let result=await relinkFolder(p,dir,async()=>({...original,id:'fresh'}));assert.equal(result.assets[0].id,original.id);assert.equal(result.assets[0].name,original.name);assert.equal(result.unresolved.length,0);
     result=await relinkFolder(p,dir,async()=>({...original,id:'fresh',width:101}));assert.equal(result.assets.length,0);assert.match(result.unresolved[0],/一致/);
+    for (const patch of [{duration:6},{hasAudio:true}]) { result=await relinkFolder(p,dir,async()=>({...original,id:'fresh',...patch}));assert.equal(result.assets.length,0);assert.match(result.unresolved[0],/長さまたは音声/); }
     await fs.rm(original.path);result=await relinkFolder(p,dir,async()=>{throw Error('unexpected');});assert.equal(result.unresolved.length,1);assert.equal(p.assets[0].offline,true);
   }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
