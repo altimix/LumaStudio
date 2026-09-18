@@ -4,12 +4,13 @@ const { randomUUID } = require('node:crypto');
 const { serializeProject, assertReplacement } = require('./project.cjs');
 const { assertMediaRevision } = require('./media.cjs');
 
+const isMediaRelative = value => typeof value === 'string' && /^media\/[^/\\\0]+$/.test(value) && !['.', '..'].includes(value.slice(6));
 function resolveProjectMedia(project, projectFile) {
   if (!Array.isArray(project?.assets)) return project;
   return { ...project, assets: project.assets.map(asset => {
     if (!asset || typeof asset !== 'object' || Array.isArray(asset)) throw Error('素材の形式が不正です。');
     if (asset.relativePath === undefined) return asset;
-    if (typeof asset.relativePath !== 'string' || !/^media\/[^/\\]+$/.test(asset.relativePath) || asset.relativePath.includes('..') || asset.relativePath.includes('\0')) throw Error('素材の相対パスが不正です。');
+    if (!isMediaRelative(asset.relativePath)) throw Error('素材の相対パスが不正です。');
     return { ...asset, path: path.resolve(path.dirname(projectFile), asset.relativePath) };
   }) };
 }
@@ -18,7 +19,7 @@ function serializeAt(project, projectFile) {
   return serializeProject({ ...project, assets: project.assets.map(asset => {
     const { relativePath: old, ...rest } = asset;
     const relative = path.relative(directory, asset.path).split(path.sep).join('/');
-    return { ...rest, ...(/^media\/[^/\\]+$/.test(relative) && !relative.includes('..') ? { relativePath: relative } : {}) };
+    return { ...rest, ...(isMediaRelative(relative) ? { relativePath: relative } : {}) };
   }) });
 }
 async function collectProject(project, directory) {
