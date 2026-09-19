@@ -2,16 +2,17 @@ import { useId, useState, type ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
 import './property-number-field.css';
 
-export default function PropertyNumberField({ inputId, label, suffix, input, slider }: {
+export default function PropertyNumberField({ inputId, label, suffix, input, slider, onFocus }: {
   inputId: string;
   label: string;
   suffix: string;
   input: ReactNode;
   slider?: ReactNode;
+  onFocus?:()=>void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const sliderId = useId();
-  return <div className={`property-field ${slider && expanded ? '' : 'no-slider'}`}>
+  return <div className={`property-field ${slider && expanded ? '' : 'no-slider'}`} onFocusCapture={onFocus}>
     <div className="property-label">
       <label htmlFor={inputId}>{label}</label>
       <div className="number-field-controls">

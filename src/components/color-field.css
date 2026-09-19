@@ -1,0 +1,4 @@
+.property-color-field{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:9px 0;min-width:0}
+.property-color-field label{min-width:0;line-height:1.5}
+.property-color-field input[type=color]{width:48px;height:27px;padding:3px;flex-shrink:0;cursor:pointer}
+.property-color-field input:disabled{cursor:default;opacity:.5}
