@@ -43,14 +43,15 @@ async function inspectMedia(file, cacheDir, { signal, onStage = () => {}, previe
   let playbackPath = file;
   const compatible = (kind === 'audio' && /\.(mp3|wav|m4a|ogg|aac|flac)$/i.test(file)) || (kind === 'video' && ['h264', 'vp8', 'vp9', 'av1'].includes(video.codec_name) && /\.(mp4|m4v|webm|mov)$/i.test(file) && (!sound || ['aac', 'mp3', 'opus', 'vorbis'].includes(sound.codec_name)));
   if (skipCache && !compatible) throw Error('原本の再生に互換プロキシが必要です。');
-  const useProxy = !compatible || (kind === 'video' && previewProxy);
+  const optionalProxy = kind === 'video' && compatible && previewProxy;
+  const useProxy = !compatible || optionalProxy;
   if (useProxy) {
-    playbackPath = path.join(cacheDir, `${id}-proxy${kind === 'video' && compatible && previewProxy ? '-v2' : ''}.${kind === 'image' ? 'png' : kind === 'audio' ? 'm4a' : 'mp4'}`);
+    playbackPath = path.join(cacheDir, `${id}-proxy${optionalProxy ? '-v2' : ''}.${kind === 'image' ? 'png' : kind === 'audio' ? 'm4a' : 'mp4'}`);
     try { await fs.access(playbackPath); } catch {
       onStage('再生用の軽量ファイルを作成しています');
       const temp = playbackPath.replace(/(\.[^.]+)$/, '.tmp$1');
       const args = ['-y', '-i', file];
-      if (kind === 'video') args.push('-vf', "scale=w='min(1280,iw)':h='min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2", '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p');
+      if (kind === 'video') args.push('-vf', optionalProxy ? "scale=w='min(1280,iw)':h='min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2" : 'scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p');
       if (kind === 'image') args.push('-frames:v', '1', temp);
       else args.push('-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', temp);
       try { await run(ffmpeg, args, { signal }); signal?.throwIfAborted(); await fs.rename(temp, playbackPath); } finally { await fs.rm(temp, { force: true }).catch(() => {}); }
