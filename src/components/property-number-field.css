@@ -1,0 +1,6 @@
+.number-field-controls{display:flex;align-items:center;justify-content:flex-end;gap:4px;min-width:0}
+.number-slider-toggle{display:flex;align-items:center;justify-content:center;width:22px;height:23px;padding:0;flex-shrink:0;border-radius:4px;color:#8994a2}
+.number-slider-toggle:hover:not(:disabled){background:#30343b}
+.number-slider-toggle svg{transform:rotate(-90deg)}
+.number-slider-toggle[aria-expanded=true] svg{transform:rotate(0)}
+.number-slider-panel{padding:0 0 3px}
