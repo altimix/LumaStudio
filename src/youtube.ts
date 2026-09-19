@@ -1,9 +1,14 @@
 import { separateOverlappingClips } from './track-placement';
 import { captionStyle } from './caption-style';
 import { endTime, makeClip, makeTrack, roundFrame } from './model';
-import type { Project, YoutubeData } from './types';
+import type { Project, SubtitleCue, YoutubeData } from './types';
 import { timelineKey, validateCues } from '../shared/youtube.mjs';
 export const emptyYoutube = (p: Project): YoutubeData => ({ sourceKey: timelineKey(p), cues: [], titles: [], description: '', chapters: [], keywords: [], thumbnailPrompt: '' });
+export function captionPlaybackRange(cue: SubtitleCue | undefined, fps: number, duration: number) {
+  if (!cue) return null;
+  const start = roundFrame(cue.start, fps), end = Math.min(duration, roundFrame(cue.end, fps));
+  return end - start >= 1 / fps - 0.000001 ? { start, end } : null;
+}
 export function applySubtitles(p: Project): Project {
   const y = p.youtube; if (!y?.cues.length) throw new Error('先に文字起こしを実行してください。');
   if (y.sourceKey !== timelineKey(p)) throw new Error('音声の編集後に文字起こしを再実行してください。');
@@ -20,8 +25,9 @@ export function applySubtitles(p: Project): Project {
   if (!track) { if (p.tracks.length >= 24) throw new Error('字幕用のトラックを追加するには、不要なトラックを減らしてください。'); track = makeTrack('video'); }
   const limit = endTime(p);
   let clips = y.cues.map(c => {
-    const start = roundFrame(c.start, p.fps), end = Math.min(limit, roundFrame(c.end, p.fps));
-    if (end - start < 1 / p.fps - 0.000001) throw new Error('1フレーム未満の字幕があります。時刻を修正してください。');
+    const range = captionPlaybackRange(c, p.fps, limit);
+    if (!range) throw new Error('1フレーム未満の字幕があります。時刻を修正してください。');
+    const { start, end } = range;
     return { ...makeClip(track.id, start), name: c.text.replace(/\n/g, ' ').slice(0, 60), subtitle: true, duration: end - start, ...captionStyle(p,c.text), textStyle: 'subtitle' as const };
   });
   if (prior.length === clips.length && clips.every((c,i) => c.start === prior[i].start && c.duration === prior[i].duration)) {

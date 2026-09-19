@@ -271,7 +271,7 @@ export default function App() {
     <WorkspaceLayout preferences={layout} onChange={setLayout}
       library={<MediaLibrary onProxy={asset => { void changeProxy(asset); }} onCollapse={() => setLayout(current => ({ ...current, libraryCollapsed: true }))} onRemove={requestRemoveAsset} onImport={() => { void importMedia(); }} onRelink={a => { void relink(a); }} importLabel={importLabel}/>}
       inspector={<Inspector onCollapse={() => setLayout(current => ({ ...current, inspectorCollapsed: true }))} onShowEffects={() => useEditor.getState().setPanel('effects')}/>}
-      preview={<Preview/>} timeline={<Timeline onImport={() => { void importMedia(); }}/>}/>
+      preview={modal === 'youtube' ? <div className="preview-panel panel"/> : <Preview/>} timeline={<Timeline onImport={() => { void importMedia(); }}/>}/>
     <footer className="statusbar"><div><span className="green-dot"/><span>{importLabel || (rendering ? '動画を書き出し中' : '編集の準備ができています')}</span>{savedAt && dirty ? <><span className="status-divider"/><Check size={11}/><span>自動保存 {savedAt}</span></> : null}</div><div><HardDrive size={11}/><span>素材はこのPCに保存</span><span className="status-divider"/><button onClick={() => setModal('shortcuts')}><Keyboard size={12}/>ショートカット</button><span className="status-divider"/><span>LUMA STUDIO</span></div></footer>
     {!ready ? <div className="loading-screen"><div className="loading-brand">Luma Studio</div><LoaderCircle className="spin"/><span>編集ワークスペースを準備しています…</span></div> : null}
     {toast ? <Toast message={toast} onClose={()=>useEditor.setState({toast:''})}/> : null}
