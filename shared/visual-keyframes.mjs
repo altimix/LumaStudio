@@ -96,7 +96,11 @@ export function windowVisualKeys(clip, offset, duration) {
   if (!clip.visualKeyframes?.length) return clip.visualKeyframes;
   const end = offset + duration, inside = clip.visualKeyframes.filter(key => key.time > offset && key.time < end).map(key => ({ ...key, time: key.time - offset }));
   const result = [{ time: 0, values: visualValuesAt(clip, offset) }, ...inside, { time: duration, values: visualValuesAt(clip, end) }];
-  const same = (a, b) => visualFields(clip).every(field => JSON.stringify(a.values[field]) === JSON.stringify(b.values[field]));
+  const base=visualSnapshot(clip);
+  const same = (a, b) => {
+    const left={...base,...a.values},right={...base,...b.values};
+    return visualFields(clip).every(field => JSON.stringify(left[field]) === JSON.stringify(right[field]));
+  };
   if (result.length > 1 && same(result[0], result[1])) result.shift();
   if (result.length > 1 && same(result.at(-1), result.at(-2))) result.pop();
   return result.length === 1 ? [{ ...result[0], time: 0 }] : result;

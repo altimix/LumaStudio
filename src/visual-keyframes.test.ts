@@ -72,6 +72,15 @@ describe('visual keyframes', () => {
     expect(visualKeys(stretched).map(key => key.time)).toEqual([0, 8]);
     expect(visualClipAt(stretched, 4).x).toBe(20);
   });
+  it('deduplicates effective boundary values when trimming or splitting 63 partial keys',()=>{
+    const clip:Clip=JSON.parse(JSON.stringify({...title(),duration:8,visualKeyframes:Array.from({length:63},(_,index)=>({time:(index+1)/10,values:{x:index}}))}));
+    expect(()=>validateVisualKeys(clip)).not.toThrow();
+    const project={...emptyProject(),clips:[clip]},trimmed=trimClip(clip,'right',-1,project),parts=splitClip(clip,7,30)!;
+    for(const edited of [trimmed,...parts]){expect(edited.visualKeyframes!.length).toBeLessThanOrEqual(64);expect(()=>validateVisualKeys(edited)).not.toThrow();}
+    expect(trimmed.visualKeyframes).toHaveLength(63);
+    for(const at of [0,.5,2,6.5]){sameAppearance(visualValuesAt(trimmed,at),visualValuesAt(clip,at));sameAppearance(visualValuesAt(parts[0],at),visualValuesAt(clip,at));}
+    sameAppearance(visualValuesAt(parts[1],.5),visualValuesAt(clip,7.5));
+  });
   it('retimes points when speed changes in properties or the rate command',()=>{
     for(const command of ['property','rate']){
       const p=emptyProject(),clip=setVisualKey(setVisualKey({...title(),kind:'video',trackId:p.tracks[0].id},0),4,{x:40});
