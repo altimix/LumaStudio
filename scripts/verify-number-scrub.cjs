@@ -101,6 +101,16 @@ const root = path.join(__dirname, '..');
     await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'videoMask').x,.5);await page.keyboard.press('Control+Shift+z');await save();
     checks.push('crop and mask fields use the same persisted scrub gesture');
 
+    await page.getByRole('button',{name:'再生ヘッドにキーフレームを追加',exact:true}).click();
+    await page.locator('.inspector-section').filter({has:page.locator('summary').filter({hasText:'クロマキー'})}).locator('summary').click();
+    await page.getByRole('button',{name:'クロマキーを有効にする',exact:true}).click();const beforeFocus=await save();
+    const channels=[['上','crop.top'],['右','crop.right'],['下','crop.bottom'],['左','crop.left'],['位置 X','videoMask.x'],['位置 Y','videoMask.y'],['幅','videoMask.width'],['高さ','videoMask.height'],['境界のぼかし','videoMask.feather'],['色の許容範囲','chromaKey.tolerance'],['境界のなめらかさ','chromaKey.softness'],['緑の色かぶり除去','chromaKey.greenSpill'],['青の色かぶり除去','chromaKey.blueSpill']];
+    for(const [label,channel] of channels){
+      const field=page.locator(`input[id^="effect-"][id$="-${label.replace(/\s/g,'-')}"]`);await field.focus();
+      assert.equal(await page.locator('select[aria-label="キーフレームの表示項目"]').inputValue(),channel);
+    }
+    assert.deepEqual(await save(),beforeFocus);checks.push('all 13 crop, mask and chroma number fields select their own keyframe graph without changing project data');
+
     await rotation.click();await rotation.press('Tab');assert.notEqual(await page.evaluate(()=>document.activeElement?.id),'prop-rotation');
     const track=project.tracks.find(item=>item.id===clip.trackId);await page.getByRole('button',{name:`${track.name} ロック`,exact:true}).click();await save();assert.equal(await rotation.isDisabled(),true);
     checks.push('Tab navigation remains available and locked tracks disable scrubbing');

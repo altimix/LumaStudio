@@ -50,10 +50,10 @@ function CropMaskEffects({clip}:{clip:Clip}){
   return <>
     <Section title="クロップ" icon={Scan} open={!!clip.crop || mode==='crop'} onReset={()=>{const state=useEditor.getState();state.updateClip(clip.id,{crop:undefined});if(state.mediaEditMode==='crop')state.setMediaEditMode('transform');}}>
       <div className="mask-edit-buttons"><button className={'secondary-button '+(mode==='crop'?'active':'')} onClick={()=>useEditor.getState().setMediaEditMode(mode==='crop'?'transform':'crop')}>モニターでクロップ</button></div>
-      <EffectField clip={clip} label="上" value={crop.top*100} min={0} max={(0.99-crop.bottom)*100} step={.1} suffix="%" patch={cropPatch('top')}/>
-      <EffectField clip={clip} label="右" value={crop.right*100} min={0} max={(0.99-crop.left)*100} step={.1} suffix="%" patch={cropPatch('right')}/>
-      <EffectField clip={clip} label="下" value={crop.bottom*100} min={0} max={(0.99-crop.top)*100} step={.1} suffix="%" patch={cropPatch('bottom')}/>
-      <EffectField clip={clip} label="左" value={crop.left*100} min={0} max={(0.99-crop.right)*100} step={.1} suffix="%" patch={cropPatch('left')}/>
+      <EffectField clip={clip} label="上" value={crop.top*100} min={0} max={(0.99-crop.bottom)*100} step={.1} suffix="%" channel="crop.top" patch={cropPatch('top')}/>
+      <EffectField clip={clip} label="右" value={crop.right*100} min={0} max={(0.99-crop.left)*100} step={.1} suffix="%" channel="crop.right" patch={cropPatch('right')}/>
+      <EffectField clip={clip} label="下" value={crop.bottom*100} min={0} max={(0.99-crop.top)*100} step={.1} suffix="%" channel="crop.bottom" patch={cropPatch('bottom')}/>
+      <EffectField clip={clip} label="左" value={crop.left*100} min={0} max={(0.99-crop.right)*100} step={.1} suffix="%" channel="crop.left" patch={cropPatch('left')}/>
     </Section>
     <Section title="マスク" icon={Scan} open={!!mask} onReset={()=>{const state=useEditor.getState();state.updateClip(clip.id,{videoMask:undefined});if(state.mediaEditMode==='mask')state.setMediaEditMode('transform');}}>
       <div className="property-label"><label htmlFor="video-mask-type">形</label><select id="video-mask-type" value={mask?.type||'none'} onChange={e=>changeMaskType(e.target.value)}><option value="none">なし</option><option value="rectangle">長方形</option><option value="ellipse">楕円</option><option value="bezier">ベジェペン</option></select></div>
@@ -72,10 +72,10 @@ function CropMaskEffects({clip}:{clip:Clip}){
             <button type="button" className="secondary-button" aria-label={`点 ${index+1}を削除`} onClick={()=>updateBezier(current=>{const points=current.points.filter((_,pointIndex)=>pointIndex!==index);return {...current,points,closed:current.closed&&points.length>=3};})}>削除</button>
           </div>)}
         </div>:<>
-          <EffectField clip={clip} label="位置 X" value={mask.x*100} min={0} max={100} step={.1} suffix="%" patch={basicMaskPatch('x')}/><EffectField clip={clip} label="位置 Y" value={mask.y*100} min={0} max={100} step={.1} suffix="%" patch={basicMaskPatch('y')}/>
-          <EffectField clip={clip} label="幅" value={mask.width*100} min={1} max={100} step={.1} suffix="%" patch={basicMaskPatch('width')}/><EffectField clip={clip} label="高さ" value={mask.height*100} min={1} max={100} step={.1} suffix="%" patch={basicMaskPatch('height')}/>
+          <EffectField clip={clip} label="位置 X" value={mask.x*100} min={0} max={100} step={.1} suffix="%" channel="videoMask.x" patch={basicMaskPatch('x')}/><EffectField clip={clip} label="位置 Y" value={mask.y*100} min={0} max={100} step={.1} suffix="%" channel="videoMask.y" patch={basicMaskPatch('y')}/>
+          <EffectField clip={clip} label="幅" value={mask.width*100} min={1} max={100} step={.1} suffix="%" channel="videoMask.width" patch={basicMaskPatch('width')}/><EffectField clip={clip} label="高さ" value={mask.height*100} min={1} max={100} step={.1} suffix="%" channel="videoMask.height" patch={basicMaskPatch('height')}/>
         </>}
-        <EffectField clip={clip} label="境界のぼかし" value={mask.feather*100} min={0} max={50} step={.1} suffix="%" patch={commonMaskPatch('feather')}/>
+        <EffectField clip={clip} label="境界のぼかし" value={mask.feather*100} min={0} max={50} step={.1} suffix="%" channel="videoMask.feather" patch={commonMaskPatch('feather')}/>
         <label className="mask-checkbox"><input type="checkbox" checked={mask.inverted} onChange={e=>useEditor.getState().updateClip(clip.id,{videoMask:{...mask,inverted:e.target.checked}})}/>内側と外側を反転</label>
       </>:<p className="field-help">長方形、楕円、ベジェペンを選ぶと、外側を透明にできます。</p>}
     </Section>
@@ -91,10 +91,10 @@ function ChromaKeyEffects({clip}:{clip:Clip}){
       <ColorField id={`chroma-color-${clip.id}`} label="背景色" value={key.color} onChange={color=>update({color})}/>
       <button type="button" aria-pressed={mode==='chroma'} className={'secondary-button chroma-eyedropper '+(mode==='chroma'?'active':'')} onClick={()=>{const state=useEditor.getState();state.stop();state.setMediaEditMode(state.mediaEditMode==='chroma'?'transform':'chroma');}}><Pipette size={13}/>{mode==='chroma'?'スポイトを終了':'モニターから背景色を採る'}</button>
       <p className="field-help">{mode==='chroma'?'プログラムモニターの背景をクリックしてください。':'キー処理前の素材を5×5画素で平均して採色します。'}</p>
-      <EffectField clip={clip} label="色の許容範囲" value={key.tolerance*100} min={0} max={50} step={.1} suffix="%" patch={change('tolerance')}/>
-      <EffectField clip={clip} label="境界のなめらかさ" value={key.softness*100} min={0} max={50} step={.1} suffix="%" patch={change('softness')}/>
-      <EffectField clip={clip} label="緑の色かぶり除去" value={key.greenSpill*100} min={0} max={100} step={1} suffix="%" patch={change('greenSpill')}/>
-      <EffectField clip={clip} label="青の色かぶり除去" value={key.blueSpill*100} min={0} max={100} step={1} suffix="%" patch={change('blueSpill')}/>
+      <EffectField clip={clip} label="色の許容範囲" value={key.tolerance*100} min={0} max={50} step={.1} suffix="%" channel="chromaKey.tolerance" patch={change('tolerance')}/>
+      <EffectField clip={clip} label="境界のなめらかさ" value={key.softness*100} min={0} max={50} step={.1} suffix="%" channel="chromaKey.softness" patch={change('softness')}/>
+      <EffectField clip={clip} label="緑の色かぶり除去" value={key.greenSpill*100} min={0} max={100} step={1} suffix="%" channel="chromaKey.greenSpill" patch={change('greenSpill')}/>
+      <EffectField clip={clip} label="青の色かぶり除去" value={key.blueSpill*100} min={0} max={100} step={1} suffix="%" channel="chromaKey.blueSpill" patch={change('blueSpill')}/>
       <label className="mask-checkbox"><input type="checkbox" checked={key.matte} onChange={event=>update({matte:event.target.checked})}/>キーマットを表示（プレビューのみ）</label>
     </>}
   </Section>;
