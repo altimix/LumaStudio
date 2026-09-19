@@ -27,7 +27,7 @@ async function assertMediaRevision(asset) {
   const stat = await fs.stat(asset.path).catch(() => null);
   if (!stat?.isFile() || mediaRevision(asset.path, stat) !== (asset.revision || asset.id)) throw new Error('素材が変更または削除されています。素材を再リンクしてください。');
 }
-async function inspectMedia(file, cacheDir, { signal, onStage = () => {} } = {}) {
+async function inspectMedia(file, cacheDir, { signal, onStage = () => {}, previewProxy = false, skipCache = false } = {}) {
   signal?.throwIfAborted(); onStage('素材を解析しています');
   const stat = await fs.stat(file);
   if (!stat.isFile()) throw new Error('ファイルを選択してください。');
@@ -37,25 +37,28 @@ async function inspectMedia(file, cacheDir, { signal, onStage = () => {} } = {})
   const sound = info.streams.find(s => s.codec_type === 'audio');
   const kind = /\.(png|jpe?g|webp|bmp|gif|tiff?)$/i.test(file) ? 'image' : video ? 'video' : sound ? 'audio' : null;
   if (!kind) throw new Error('この素材には読み込める映像・音声がありません。');
-  await fs.mkdir(cacheDir, { recursive: true });
+  if (!skipCache) await fs.mkdir(cacheDir, { recursive: true });
   const duration = kind === 'image' ? 5 : Number(info.format.duration || video?.duration || sound?.duration);
   if (!Number.isFinite(duration) || duration <= 0) throw new Error('素材の長さを取得できません。');
   let playbackPath = file;
   const compatible = (kind === 'audio' && /\.(mp3|wav|m4a|ogg|aac|flac)$/i.test(file)) || (kind === 'video' && ['h264', 'vp8', 'vp9', 'av1'].includes(video.codec_name) && /\.(mp4|m4v|webm|mov)$/i.test(file) && (!sound || ['aac', 'mp3', 'opus', 'vorbis'].includes(sound.codec_name)));
-  if (!compatible) {
-    playbackPath = path.join(cacheDir, `${id}-proxy.${kind === 'image' ? 'png' : kind === 'audio' ? 'm4a' : 'mp4'}`);
+  if (skipCache && !compatible) throw Error('原本の再生に互換プロキシが必要です。');
+  const optionalProxy = kind === 'video' && compatible && previewProxy;
+  const useProxy = !compatible || optionalProxy;
+  if (useProxy) {
+    playbackPath = path.join(cacheDir, `${id}-proxy${optionalProxy ? '-v2' : ''}.${kind === 'image' ? 'png' : kind === 'audio' ? 'm4a' : 'mp4'}`);
     try { await fs.access(playbackPath); } catch {
       onStage('再生用の軽量ファイルを作成しています');
       const temp = playbackPath.replace(/(\.[^.]+)$/, '.tmp$1');
       const args = ['-y', '-i', file];
-      if (kind === 'video') args.push('-vf', 'scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p');
+      if (kind === 'video') args.push('-vf', optionalProxy ? "scale=w='min(1280,iw)':h='min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2" : 'scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p');
       if (kind === 'image') args.push('-frames:v', '1', temp);
       else args.push('-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', temp);
       try { await run(ffmpeg, args, { signal }); signal?.throwIfAborted(); await fs.rename(temp, playbackPath); } finally { await fs.rm(temp, { force: true }).catch(() => {}); }
     }
   }
   let thumbnailPath; let waveform = [];
-  if (kind !== 'audio') {
+  if (kind !== 'audio' && !skipCache) {
     thumbnailPath = path.join(cacheDir, `${id}.jpg`);
     try { if (!(await fs.stat(thumbnailPath)).size) throw new Error('Empty thumbnail'); } catch {
       onStage('サムネイルを作成しています');
@@ -69,13 +72,20 @@ async function inspectMedia(file, cacheDir, { signal, onStage = () => {} } = {})
       if (!(await fs.stat(thumbnailPath)).size) throw new Error('素材の縮小画像を作成できませんでした。');
     }
   }
-  if (sound) {
+  if (kind !== 'audio' && skipCache) {
+    // A failed proxy encoder must not hide a readable thumbnail. Do not write
+    // or regenerate cache entries when falling back to the original source.
+    const cachedThumbnail = path.join(cacheDir, `${id}.jpg`);
+    const cachedStat = await fs.stat(cachedThumbnail).catch(() => null);
+    if (cachedStat?.isFile() && cachedStat.size > 0) thumbnailPath = cachedThumbnail;
+  }
+  if (sound && !skipCache) {
     onStage('音声波形を作成しています');
     const meta = await ensureWaveform(file, cacheDir, id, duration, sound.channels, signal);
     waveform = await overview(cacheDir, id, meta, duration);
   }
   signal?.throwIfAborted();
   const fpsParts = String(video?.avg_frame_rate || '0/1').split('/').map(Number);
-  return { id, name: path.basename(file), path: file, playbackPath, thumbnailPath, kind, duration, width: video?.width || 0, height: video?.height || 0, fps: fpsParts[1] ? fpsParts[0] / fpsParts[1] : 0, hasAudio: !!sound, waveform, size: stat.size, codec: video?.codec_name || sound?.codec_name, proxy: !compatible };
+  return { id, name: path.basename(file), path: file, playbackPath, thumbnailPath, kind, duration, width: video?.width || 0, height: video?.height || 0, fps: fpsParts[1] ? fpsParts[0] / fpsParts[1] : 0, hasAudio: !!sound, waveform, size: stat.size, codec: video?.codec_name || sound?.codec_name, proxy: useProxy, ...(kind === 'video' && previewProxy ? { previewProxy: true } : {}) };
 }
 module.exports = { ffmpeg, ffprobe, run, probe, inspectMedia, assertMediaRevision };
