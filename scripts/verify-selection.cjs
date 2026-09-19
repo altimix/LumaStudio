@@ -48,11 +48,11 @@ async function verify() {
     const landing=await clip('v1').evaluate(el=>parseFloat(el.style.left)+parseFloat(el.style.width));
     assert.ok(Math.abs(guide-landing)<.01,`snap guide equals the actual dragged trailing edge (${guide}, ${landing})`);
     assert.ok(Math.abs(guide/snapZoom-Math.round(10.017*30)/30)<.01/snapZoom,'off-grid target uses the sequence frame grid');
-    await page.mouse.up();await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
+    await page.mouse.up();await page.getByRole('button',{name:/^プロジェクトを保存 \(/,exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
     const snapped=JSON.parse(await fs.readFile(file,'utf8')).clips.find(c=>c.id==='v1');assert.ok(Math.abs(snapped.start+snapped.duration-guide/snapZoom)<.01/snapZoom);
     checks.push('off-grid snap targets show the same guide position as the saved clip edge');await open(baseline);
     const trackFixture={...baseline,clips:baseline.clips.map(c=>['v1','a1'].includes(c.id)?{...c,start:2.017}:c.id==='title'?{...c,start:12}:c)};
-    const saveTrackMove=async()=>{const before=(await fs.stat(file)).mtimeMs;await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));const deadline=Date.now()+10000;while((await fs.stat(file)).mtimeMs===before){assert.ok(Date.now()<deadline);await new Promise(r=>setTimeout(r,20));}return JSON.parse(await fs.readFile(file,'utf8'));};
+    const saveTrackMove=async()=>{const before=(await fs.stat(file)).mtimeMs;await page.getByRole('button',{name:/^プロジェクトを保存 \(/,exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));const deadline=Date.now()+10000;while((await fs.stat(file)).mtimeMs===before){assert.ok(Date.now()<deadline);await new Promise(r=>setTimeout(r,20));}return JSON.parse(await fs.readFile(file,'utf8'));};
     const crossTrack=async(dx,target,copy=false,cancel=false,grabX=25)=>{
       await clip('v1').click({position:{x:25,y:10}});
       const from=await clip('v1').boundingBox(),to=await page.locator(`.track-lane[data-track-id="${target}"]`).boundingBox();
@@ -77,7 +77,7 @@ async function verify() {
     assert.ok(acrossCopies.every(c=>c.start===2.017));assert.equal(acrossCopies.find(c=>c.kind==='video').trackId,'titles');
     assert.deepEqual(trackMoved.clips.filter(c=>trackFixture.clips.some(b=>b.id===c.id)),trackFixture.clips,'Alt-copy preserves originals');
     await open(trackFixture);await crossTrack(10,'titles',false,true);
-    assert.ok(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),'Escape restores history');
+    assert.ok(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),'Escape restores history');
     assert.equal(await clip('v1').evaluate(el=>el.closest('.track-lane').dataset.trackId),'video');
     await open({...trackFixture,clips:trackFixture.clips.map(c=>['v1','a1'].includes(c.id)?{...c,start:.017}:c)});await crossTrack(-40,'titles',false,false,70);trackMoved=await saveTrackMove();assert.equal(trackMoved.clips.find(c=>c.id==='v1').start,0);assert.equal(trackMoved.clips.find(c=>c.id==='v1').trackId,'titles');
     await open(trackFixture);await crossTrack(0,'locked');trackMoved=await saveTrackMove();assert.equal(trackMoved.clips.find(c=>c.id==='v1').trackId,'video');
@@ -86,14 +86,14 @@ async function verify() {
     await crossTrack(0,'titles');let separated=await saveTrackMove();
     const movedVideo=separated.clips.find(c=>c.id==='v1');assert.equal(movedVideo.start,2);assert.notEqual(movedVideo.trackId,'titles');assert.equal(separated.tracks.length,7);
     assert.equal(separated.clips.find(c=>c.id==='title').trackId,'titles');assert.equal(separated.clips.find(c=>c.id==='a1').start,2);
-    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();assert.equal(await page.locator('.track-lane').count(),6);
-    await page.getByRole('button',{name:'やり直す (Ctrl+Shift+Z)',exact:true}).click();assert.equal(await page.locator('.track-lane').count(),7);
+    await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).click();assert.equal(await page.locator('.track-lane').count(),6);
+    await page.getByRole('button',{name:/^やり直す \(/,exact:true}).click();assert.equal(await page.locator('.track-lane').count(),7);
     await saveTrackMove();await open(baseline);await crossTrack(6,'video',true);separated=await saveTrackMove();
     assert.equal(separated.tracks.length,8);assert.equal(separated.clips.length,9);assert.deepEqual(separated.clips.slice(0,7),baseline.clips);
     const overlapCopies=separated.clips.slice(7);assert.ok(overlapCopies.every(c=>c.start===2));assert.notEqual(overlapCopies[0].trackId,'video');assert.notEqual(overlapCopies[1].trackId,'voice');
     await open(baseline);await crossTrack(0,'titles',false,true);assert.equal(await page.locator('.track-lane').count(),6);assert.equal(await clip('v1').evaluate(el=>el.closest('.track-lane').dataset.trackId),'video');
     const fullTracks={...baseline,tracks:[...baseline.tracks,...Array.from({length:18},(_,i)=>({...baseline.tracks[0],id:`extra-${i}`,name:`extra-${i}`,locked:false}))]};
-    await open(fullTracks);await crossTrack(0,'titles');assert.equal(await page.locator('.track-lane').count(),24);assert.equal(await clip('v1').evaluate(el=>el.closest('.track-lane').dataset.trackId),'video');assert.ok(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled());
+    await open(fullTracks);await crossTrack(0,'titles');assert.equal(await page.locator('.track-lane').count(),24);assert.equal(await clip('v1').evaluate(el=>el.closest('.track-lane').dataset.trackId),'video');assert.ok(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled());
     await saveTrackMove();await open(baseline);
     checks.push('overlap auto-tracks preserve timing and stationary clips; linked Alt copies, Undo/Redo, Escape and atomic track-limit rollback');
     await open({...baseline,tracks:baseline.tracks.map(t=>t.id==='music'?{...t,locked:true}:t),clips:baseline.clips.map(c=>c.id==='music'?{...c,start:4}:c),transitions:[{id:'cross-track-audio',fromId:'a1',toId:'music',mode:'fixed',duration:1,audio:'constantPower'}]});
@@ -101,7 +101,7 @@ async function verify() {
     await page.getByRole('button',{name:'empty トラックを削除',exact:true}).click();
     assert.equal(await page.locator('.track-lane[data-track-id="empty"]').count(),0);
     let deletedTrack=await saveTrackMove();assert.equal(deletedTrack.tracks.length,5);
-    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();assert.equal(await page.locator('.track-lane[data-track-id="empty"]').count(),1);
+    await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).click();assert.equal(await page.locator('.track-lane[data-track-id="empty"]').count(),1);
     await saveTrackMove();await open(baseline);
     await page.getByRole('button',{name:'voice トラックを削除',exact:true}).click();
     const trackDialog=page.getByRole('dialog',{name:'トラックを削除しますか？',exact:true});await trackDialog.waitFor();
@@ -110,8 +110,8 @@ async function verify() {
     await page.getByRole('button',{name:'voice トラックを削除',exact:true}).click();await trackDialog.getByRole('button',{name:'トラックと素材を削除',exact:true}).click();
     deletedTrack=await saveTrackMove();assert.equal(deletedTrack.tracks.length,5);assert.equal(deletedTrack.clips.length,5);assert.equal(deletedTrack.assets.length,1);
     for(const id of ['v1','v2']){const survivor=deletedTrack.clips.find(c=>c.id===id);assert.ok(survivor.audioDetached);assert.ok(!survivor.linkId);}
-    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();assert.equal(await page.locator('.timeline-clip').count(),7);
-    await page.getByRole('button',{name:'やり直す (Ctrl+Shift+Z)',exact:true}).click();assert.equal(await page.locator('.timeline-clip').count(),5);
+    await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).click();assert.equal(await page.locator('.timeline-clip').count(),7);
+    await page.getByRole('button',{name:/^やり直す \(/,exact:true}).click();assert.equal(await page.locator('.timeline-clip').count(),5);
     await saveTrackMove();await open(deletedTrack);assert.equal(await page.locator('.track-lane').count(),5);
     assert.ok(await page.getByRole('button',{name:/^locked トラックを削除/}).isDisabled());
     checks.push('track deletion: empty, confirmation keyboard isolation/cancel, linked survivors, assets, Undo/Redo, save/reload and lock');
@@ -122,7 +122,7 @@ async function verify() {
       const node=clip('a1').locator('.volume-node').nth(index);await node.focus();const value=await node.getAttribute('aria-valuetext');
       for(let i=0;i<15;i++)await node.press(i%2?`Shift+${key}`:key);
       assert.equal(await node.getAttribute('aria-valuetext'),value);
-      assert.ok(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),`clamped ${key} does not create Undo history`);
+      assert.ok(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),`clamped ${key} does not create Undo history`);
       assert.equal(await page.locator('.unsaved-dot').count(),0);
     }
     checks.push('repeated volume arrows at gain, clip and neighboring-point limits do not dirty the project or fill Undo');await open(baseline);
@@ -134,14 +134,14 @@ async function verify() {
         await movePointer(node,-20,0);await movePointer(last,20,0);
         if(envelope)await movePointer(node,0,gain? -20:20);
         await movePointer(clip('a1').locator('.volume-line-hit'),0,gain?-20:20);
-        assert.ok(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),'clamped pointer does not add Undo');
+        assert.ok(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),'clamped pointer does not add Undo');
         assert.equal(await page.locator('.unsaved-dot').count(),0);
       }
       const b=await node.boundingBox(),px=b.x+b.width/2,py=b.y+b.height/2;
       await page.mouse.move(px,py);await page.mouse.down();await page.mouse.move(px,py+(gain?20:-20),{steps:4});
       assert.equal(await page.locator('.unsaved-dot').count(),1,'real pointer change is dirty');
       await page.mouse.move(px,py,{steps:4});await page.mouse.up();
-      assert.ok(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),'return-to-origin pointer restores Undo');
+      assert.ok(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),'return-to-origin pointer restores Undo');
       assert.equal(await page.locator('.unsaved-dot').count(),0);
     }
     checks.push('clamped point/line drags and returning to the original envelope preserve clean history');await open(baseline);
@@ -154,7 +154,7 @@ async function verify() {
     await page.locator('#prop-volume').fill('50');assert.equal(await page.locator('#prop-volume').inputValue(),'50');await page.locator('#prop-volume').press('Enter');
     assert.equal(await clip('a1').locator('.volume-node').nth(1).getAttribute('aria-valuenow'),'20');
     assert.equal(await clip('a1').locator('.volume-node').nth(2).getAttribute('aria-valuenow'),'50');
-    const savedBefore=(await fs.stat(file)).mtimeMs;await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
+    const savedBefore=(await fs.stat(file)).mtimeMs;await page.getByRole('button',{name:/^プロジェクトを保存 \(/,exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
     const savedDeadline=Date.now()+10000;while((await fs.stat(file)).mtimeMs===savedBefore){assert.ok(Date.now()<savedDeadline);await new Promise(r=>setTimeout(r,20));}
     const savedNeighbor=JSON.parse(await fs.readFile(file,'utf8')).clips.find(c=>c.id==='a1');assert.equal(savedNeighbor.volumeKeyframes[1].value,.2);assert.equal(savedNeighbor.volumeKeyframes[2].value,.5);
     for(const mode of ['return','cancel','interpolated','capture-loss']){
@@ -172,7 +172,7 @@ async function verify() {
       if(mode==='interpolated')assert.equal(await clip('a1').locator('.volume-node').count(),3,'drag between keys inserts an actual middle point');
       if(cancel)await page.keyboard.press('Escape');else if(mode==='capture-loss')await slider.dispatchEvent('lostpointercapture',{pointerId:1});else await page.mouse.move(x,y,{steps:5});await page.mouse.up();
       assert.equal(Number(await slider.inputValue()),100);assert.equal(await clip('a1').locator('.volume-node').count(),2,'return removes any redundant interpolated point');
-      assert.ok(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled());assert.equal(await page.locator('.unsaved-dot').count(),0);
+      assert.ok(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled());assert.equal(await page.locator('.unsaved-dot').count(),0);
       await page.locator('.inspector-panel .panel-heading').click();
     }
     checks.push('inspector edits the exact neighboring point and restores clean history on return-to-origin or Escape');await open(baseline);
@@ -186,31 +186,31 @@ async function verify() {
     await page.keyboard.press('Escape');await page.mouse.up();await page.keyboard.up('Alt');
     assert.equal(await page.locator('.timeline-clip').count(),baseline.clips.length);await expectSelected(['a1']);
     assert.equal(await clip('a1').locator('.volume-node.active').getAttribute('aria-valuetext'),pointLabel);
-    assert.ok(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled());
+    assert.ok(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled());
     checks.push('cancelled Alt-copy restores the original active volume point, selection and history');
     // Alt-drag must preserve originals, make a fresh linked pair, and undo once.
     await clip('v1').click({position:{x:25,y:10}});
     await page.keyboard.down('Alt');const cb=await clip('v1').boundingBox();await page.mouse.move(cb.x+25,cb.y+10);await page.mouse.down();await page.mouse.move(cb.x+105,cb.y+10,{steps:6});await page.mouse.up();await page.keyboard.up('Alt');
     assert.equal(await page.locator('.timeline-clip').count(),baseline.clips.length+2);
-    await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
+    await page.getByRole('button',{name:/^プロジェクトを保存 \(/,exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
     const copied=JSON.parse(await fs.readFile(file,'utf8')),newClips=copied.clips.filter(c=>!baseline.clips.some(b=>b.id===c.id));
     assert.equal(newClips.length,2);assert.equal(newClips[0].linkId,newClips[1].linkId);assert.notEqual(newClips[0].linkId,baseline.clips[0].linkId);assert.equal(copied.clips.find(c=>c.id==='v1').start,2);
     await clip('v1').focus();await page.keyboard.press('Control+z');assert.equal(await page.locator('.timeline-clip').count(),baseline.clips.length);
-    await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
+    await page.getByRole('button',{name:/^プロジェクトを保存 \(/,exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
     await open(baseline);
     for(let i=0;i<10;i++)await page.getByRole('button',{name:'トラックの高さ（末尾の丸）',exact:true}).press('ArrowDown');
     await page.locator('.timeline-scroll').evaluate(el=>{el.scrollTop=0;el.scrollLeft=0;});
     const point=async(track,time,bottom=false)=>{const lane=await page.locator(`.track-lane[data-track-id="${track}"]`).boundingBox();return{x:lane.x+time*Number(await zoom.inputValue()),y:lane.y+(bottom?lane.height-2:2)};};
     const begin=async(a,b,shift=false)=>{if(shift)await page.keyboard.down('Shift');await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:5});await page.locator('.timeline-selection-rect').waitFor();};
     const drag=async(a,b,shift=false)=>{await begin(a,b,shift);await page.mouse.up();if(shift)await page.keyboard.up('Shift');await page.locator('.timeline-selection-rect').waitFor({state:'hidden'});};
-    const save=async()=>{const before=(await fs.stat(file)).mtimeMs;await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();const deadline=Date.now()+10000;while((await fs.stat(file)).mtimeMs===before){assert.ok(Date.now()<deadline);await new Promise(r=>setTimeout(r,25));}return JSON.parse(await fs.readFile(file,'utf8'));};
+    const save=async()=>{const before=(await fs.stat(file)).mtimeMs;await page.getByRole('button',{name:/^プロジェクトを保存 \(/,exact:true}).click();const deadline=Date.now()+10000;while((await fs.stat(file)).mtimeMs===before){assert.ok(Date.now()<deadline);await new Promise(r=>setTimeout(r,25));}return JSON.parse(await fs.readFile(file,'utf8'));};
     await page.keyboard.press('c');assert.equal(await page.getByRole('button',{name:'レーザーツール (C)',exact:true}).getAttribute('aria-pressed'),'true');
     await page.keyboard.press('v');assert.equal(await page.getByRole('button',{name:'選択ツール (V)',exact:true}).getAttribute('aria-pressed'),'true');
     const beforeHead=await head(), beforeBytes=await fs.readFile(file,'utf8');
     await begin(await point('video',1),await point('voice',4.5,true));await expectSelected(['v1','a1']);
     await page.screenshot({path:path.join(results,'timeline-selection.png')});await page.mouse.up();
     assert.equal(await head(),beforeHead);assert.equal(await page.locator('.unsaved-dot').count(),0);assert.equal(await fs.readFile(file,'utf8'),beforeBytes);
-    assert.ok(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled());
+    assert.ok(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled());
     await drag(await point('voice',4.5,true),await point('video',1));await expectSelected(['v1','a1']);
     await clip('v2').click();await drag(await point('video',1),await point('voice',4.5,true),true);await expectSelected(['v1','a1','v2']);
     checks.push('V activates selection; forward/reverse marquee across tracks and Shift-add preserve playhead, file and history');

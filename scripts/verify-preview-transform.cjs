@@ -83,7 +83,7 @@ async function verify() {
     assert.ok(audio && video.linkId === audio.linkId, 'fixture is a real linked AV pair');
     project = await open({ ...project, clips: project.clips.map(c => c.id === video.id ? { ...c, x: 0, y: 0, scale: .55, fadeIn: 0, fadeOut: 0 } : c) });
     await target(video.id).waitFor(); await target(video.id).click();
-    assert.equal(await page.getByRole('button', { name: '元に戻す (Ctrl+Z)', exact: true }).isDisabled(), true); assert.equal(await page.locator('.unsaved-dot').count(), 0);
+    assert.equal(await page.getByRole('button', { name: /^元に戻す \(/, exact: true }).isDisabled(), true); assert.equal(await page.locator('.unsaved-dot').count(), 0);
     await page.locator(`.media-card[data-asset-id="${video.assetId}"] .media-card-info`).click();
     assert.equal(await page.evaluate(() => !!document.activeElement.closest('.library-panel')), true);
     await target(video.id).click();

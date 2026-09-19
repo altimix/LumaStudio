@@ -23,7 +23,7 @@ async function verify() {
       await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
       return JSON.parse(await fs.readFile(projectFile,'utf8'));
     };
-    const demo=await readSaved(()=>page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click());
+    const demo=await readSaved(()=>page.getByRole('button',{name:/^プロジェクトを保存 \(/,exact:true}).click());
     const video = demo.clips.find(c => c.kind === 'video'); const audio = demo.clips.find(c => c.kind === 'audio'); const title = demo.clips.find(c => c.kind === 'title');
     const original = { ...demo, name: '左手ショートカット検証', width: 1280, height: 720, markers: [], clips: [
       { ...video, start: 0, duration: 8, in: 0, speed: 1, fadeIn: 0, fadeOut: 0 },
@@ -108,7 +108,7 @@ async function verify() {
     // Modal search uses the user's search terms; typed shortcut keys leave the timeline intact.
     await page.getByRole('button', { name: 'ショートカット', exact: true }).click(); const search = page.getByRole('searchbox', { name: 'ショートカットを検索', exact: true });
     await search.fill('前の編集'); assert.equal(await page.locator('.shortcut-list>div').count(), 1); await page.keyboard.press('z'); await count(5); await search.fill('複数フレーム'); assert.equal(await page.locator('.shortcut-list>div').count(), 2); await search.fill(''); await page.screenshot({ animations: 'disabled', path: path.join(results, 'editing-shortcuts.png') }); await page.keyboard.press('Escape');
-    await page.keyboard.press('Control+o'); await count(5); await page.waitForFunction(() => document.querySelector('button[aria-label="元に戻す (Ctrl+Z)"]').disabled);
+    await page.keyboard.press('Control+o'); await count(5); await page.waitForFunction(() => document.querySelector('button[aria-label^="元に戻す ("]').disabled);
     const output = path.join(results, 'ショートカット検証.mp4');
     await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }); }, output);
     await page.getByRole('button', { name: '書き出し', exact: true }).click(); await page.getByLabel('品質', { exact: true }).selectOption('draft'); await page.getByRole('button', { name: '保存先を選んで書き出す', exact: true }).click(); await page.getByText('書き出しが完了しました', { exact: true }).waitFor({ timeout: 120000 });

@@ -1,3 +1,4 @@
+import { shortcutLabel } from '../shortcut-label';
 import { useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useEditor } from '../store';
@@ -31,7 +32,7 @@ export default function ClipContextMenu({ anchor, onClose }: { anchor: ClipMenuA
   const video = selected.find(c => c.kind === 'video'), sound = selected.find(c => c.kind === 'audio');
   const canLink = selected.length === 2 && video && sound && !video.linkId && !sound.linkId && video.assetId === sound.assetId && sameTiming(video, sound);
   const run = (action: () => void) => { onClose(); useEditor.getState().select(ids); action(); };
-  const item = (id: string, label: string, action: () => void, disabled = false, hint?: string) => <button key={id} data-action={id} type="button" role="menuitem" tabIndex={-1} disabled={disabled} title={disabled ? hint || '対象クリップとトラックのロックを確認してください。' : undefined} onClick={() => run(action)}><span>{label}</span></button>;
+  const item = (id: string, label: string, action: () => void, disabled = false, hint?: string) => <button key={id} data-action={id} type="button" role="menuitem" tabIndex={-1} disabled={disabled} title={disabled ? hint || '対象クリップとトラックのロックを確認してください。' : undefined} onClick={() => run(action)}><span>{shortcutLabel(label)}</span></button>;
   return createPortal(<div ref={menu} className="clip-context-menu" role="menu" aria-label="クリップの編集" style={{ left: anchor.x, top: anchor.y }} onContextMenu={e => e.preventDefault()} onKeyDown={e => {
     e.stopPropagation();
     const buttons = [...menu.current!.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];

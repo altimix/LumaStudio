@@ -1,3 +1,4 @@
+import { shortcutLabel } from '../shortcut-label';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Captions, Copy, Download, ImagePlus, KeyRound, LoaderCircle, Sparkles, Youtube } from 'lucide-react';
 import { useEditor } from '../store';
@@ -72,7 +73,7 @@ export default function YouTubeStudio({ onClose }: { onClose: () => void }) {
       if (!text.trim()) throw new Error('コピーするテキストを入力してください。');
       if (window.luma) await window.luma.copyText(text);
       else await navigator.clipboard.writeText(text);
-      if (alive.current) setCopied(`${label}をコピーしました。Ctrl+Vで貼り付けできます。`);
+      if (alive.current) setCopied(`${label}をコピーしました。${shortcutLabel('Ctrl+V')}で貼り付けできます。`);
     } catch {
       if (alive.current) setError('コピーできませんでした。もう一度コピーするか、「テキスト保存」を利用してください。');
     } finally { copying.current = false; }

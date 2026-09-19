@@ -60,7 +60,7 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
     };
     await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},voice);
     await page.locator('.import-button').click(); await page.locator('.media-card').first().waitFor();
-    await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click(); await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
+    await page.getByRole('button',{name:/^プロジェクトを保存 \(/,exact:true}).click(); await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
     const initial = JSON.parse(await fs.readFile(path.join(results,'新しいプロジェクト.luma'),'utf8'));
     assert.equal(initial.width,1920); assert.equal(initial.height,1080); checks.push('new landscape sequence before editing');
     const p = {...initial,name:'日本語字幕の制作検証',clips:[{...base,id:'voice-clip',assetId:initial.assets[0].id,trackId:initial.tracks[2].id,kind:'audio',name:'音声',start:0,duration:35}]};

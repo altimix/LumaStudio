@@ -25,7 +25,7 @@ async function verify() {
     return JSON.parse(await fs.readFile(projectFile, 'utf8'));
   };
   const visibleHead = () => page.waitForFunction(() => { const v=document.querySelector('.timeline-scroll'),h=document.querySelector('.playhead'),x=h.getBoundingClientRect().left-v.getBoundingClientRect().left;return x>=-1&&x<=v.clientWidth+1; });
-  const reloaded = () => page.waitForFunction(() => document.querySelector('button[aria-label="元に戻す (Ctrl+Z)"]')?.disabled);
+  const reloaded = () => page.waitForFunction(() => document.querySelector('button[aria-label^="元に戻す ("]')?.disabled);
   try {
     await page.locator('.loading-screen').waitFor({ state: 'hidden', timeout: 60000 });
     await page.locator('.media-card').first().waitFor();
@@ -86,7 +86,7 @@ async function verify() {
     await page.getByRole('button', { name: '長い素材 75秒.mp4 を選択', exact: true }).click();
     await search.fill('長い'); await search.press('Home'); await search.press('Delete'); await search.fill(''); await search.blur();
     assert.equal(await page.locator('.media-card').count(), 1); assert.equal(await page.locator('.timeline-clip').count(), 6); checks.push('Delete in search edits text without deleting media or clips');
-    await page.getByRole('button', { name: '選択素材をプロジェクトから削除 (Delete)', exact: true }).click();
+    await page.getByRole('button', { name: /^選択素材をプロジェクトから削除 \(/, exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '使用中の素材を削除', exact: true }); await dialog.waitFor();
     assert.match(await dialog.textContent(), /6個のクリップ/); await page.keyboard.press('Delete'); assert.equal(await page.locator('.timeline-clip').count(), 6);
     await page.getByRole('button', { name: 'キャンセル', exact: true }).click(); checks.push('used-media review and cancel preserve the project');

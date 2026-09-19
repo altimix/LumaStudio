@@ -40,7 +40,7 @@ module.exports=async function verifyBgmVolume({app,page,save,projectFile,results
   await clip(first.id).click({position:{x:22,y:22}});await clip(second.id).click({position:{x:22,y:22},modifiers:['Shift']});await openMenu(second.id);await action('bgm-volume-20').click();assert.equal(await volume(first.id),.1);assert.equal(await volume(second.id),.1);await page.keyboard.press('Control+z');assert.equal(await volume(second.id),second.volume);assert.ok(Math.abs(await volume(first.id)-10**(-15/20))<1e-12);
   checks.push('multi-selected BGM clips change together and a single Undo restores both prior volumes');
   const track=before.tracks.find(t=>t.id===first.trackId);await page.getByRole('button',{name:track.name+' ロック',exact:true}).click();await openMenu();assert.ok(await action('bgm-volume-20').isDisabled());assert.ok(await action('bgm-volume-15').isDisabled());await page.keyboard.press('Escape');await page.getByRole('button',{name:track.name+' ロック解除',exact:true}).click();
-  const persisted=await save();await page.keyboard.press('Control+o');await page.waitForFunction(()=>document.querySelector('button[aria-label="元に戻す (Ctrl+Z)"]')?.disabled);assert.deepEqual((await save()).clips,persisted.clips);
+  const persisted=await save();await page.keyboard.press('Control+o');await page.waitForFunction(()=>document.querySelector('button[aria-label^="元に戻す ("]')?.disabled);assert.deepEqual((await save()).clips,persisted.clips);
   checks.push('locked BGM tracks disable both presets and the exact gain survives saving and reopening');
 
   const settings={width:320,height:180,fps:30,quality:'high',encoder:'cpu'},rms=async file=>{const pcm=await run(ffmpeg,['-v','error','-ss','2','-t','0.5','-i',file,'-vn','-ac','1','-ar','48000','-f','f32le','pipe:1']);let sum=0;for(let i=0;i<pcm.length;i+=4)sum+=pcm.readFloatLE(i)**2;return Math.sqrt(sum/(pcm.length/4));};
@@ -49,6 +49,6 @@ module.exports=async function verifyBgmVolume({app,page,save,projectFile,results
   const exported={reference:await exportGain(reference,'BGM音量100パーセント.mp4'),minus20:await exportGain(minus20,'BGM音量マイナス20dB.mp4'),minus15:await exportGain(minus15,'BGM音量マイナス15dB.mp4')};
   const db={minus20:20*Math.log10(exported.minus20/exported.reference),minus15:20*Math.log10(exported.minus15/exported.reference)};assert.ok(Math.abs(db.minus20+20)<.25,JSON.stringify(db));assert.ok(Math.abs(db.minus15+15)<.25,JSON.stringify(db));
   checks.push('real MP4 output measures -20 dB and -15 dB against a unity-gain export of the same song');
-  await fs.writeFile(projectFile,JSON.stringify(before));await page.keyboard.press('Control+o');await page.waitForFunction(()=>document.querySelector('button[aria-label="元に戻す (Ctrl+Z)"]')?.disabled);
+  await fs.writeFile(projectFile,JSON.stringify(before));await page.keyboard.press('Control+o');await page.waitForFunction(()=>document.querySelector('button[aria-label^="元に戻す ("]')?.disabled);
   return {previewDb:levels,exportRms:exported,exportDb:db};
 };

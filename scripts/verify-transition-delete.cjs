@@ -27,7 +27,7 @@ module.exports = async function verifyTransitionDelete({ app, page, save, file, 
     const fixture = { ...baseline, id: 'remove-' + kind, name: '効果だけ削除 ' + kind, transitions: [{ ...baseline.transitions[0], video: undefined, audio: undefined, ...options }] };
     await save(); await fs.writeFile(file, JSON.stringify(fixture)); await page.keyboard.press('Control+o'); await page.getByRole('button', { name: fixture.name, exact: true }).waitFor();
     await transition().focus(); await page.keyboard.press('Shift+F10'); await menu().waitFor(); await page.keyboard.press('End'); await page.keyboard.press('Enter'); await transition().waitFor({ state: 'hidden' }); saved = await save(); assert.deepEqual(saved.clips, fixture.clips); assert.equal(saved.transitions.length, 0);
-    await page.keyboard.press('Control+o'); await page.waitForFunction(() => document.querySelector('button[aria-label="元に戻す (Ctrl+Z)"]')?.disabled); assert.equal((await save()).transitions.length, 0);
+    await page.keyboard.press('Control+o'); await page.waitForFunction(() => document.querySelector('button[aria-label^="元に戻す ("]')?.disabled); assert.equal((await save()).transitions.length, 0);
   }
   checks.push('keyboard menus remove video, audio and combined effects, and the unchanged clip layout survives save/reload');
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1600, 1000)); await save(); await fs.writeFile(file, JSON.stringify(baseline)); await page.keyboard.press('Control+o'); await page.getByRole('button', { name: baseline.name, exact: true }).waitFor();

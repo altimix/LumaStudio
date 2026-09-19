@@ -32,7 +32,7 @@ const root = path.join(__dirname, '..');
     const setSave=async(file,cancel=false)=>app.evaluate(({dialog},{file,cancel})=>{dialog.showSaveDialog=async(_window,options)=>{globalThis.lastFrameDialog=options;return {canceled:cancel,filePath:file};};},{file,cancel});
     const saveProject=async()=>{
       await setSave(projectFile);const before=(await fs.stat(projectFile)).mtimeMs;
-      await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();
+      await page.getByRole('button',{name:/^プロジェクトを保存 \(/,exact:true}).click();
       const deadline=Date.now()+10000;
       while((await fs.stat(projectFile)).mtimeMs===before){assert.ok(Date.now()<deadline,'native save completed before restart');await new Promise(resolve=>setTimeout(resolve,25));}
       await page.getByRole('dialog',{name:'プロジェクトを保存しています',exact:true}).waitFor({state:'hidden'});
@@ -51,8 +51,8 @@ const root = path.join(__dirname, '..');
     assert.equal(await count(),initial+1);assert.match((await app.evaluate(()=>globalThis.lastFrameDialog)).defaultPath,/写真保存の検証_00-00-00-00\.png$/);
     assert.ok(await page.getByRole('tab',{name:'メディア',exact:true}).isVisible());
     let px=await pixels(png);assert.ok(px(10,10)[0]>240&&px(10,10)[2]<10);assert.deepEqual(px(640,360),[0,255,0]);await close();assert.equal(await page.getByLabel('プレビュー画質').inputValue(),'0.25');
-    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();assert.equal(await count(),initial);await fs.access(png);
-    await page.getByRole('button',{name:'やり直す (Ctrl+Shift+Z)',exact:true}).click();assert.equal(await count(),initial+1);
+    await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).click();assert.equal(await count(),initial);await fs.access(png);
+    await page.getByRole('button',{name:/^やり直す \(/,exact:true}).click();assert.equal(await count(),initial+1);
     const saved=await saveProject();assert.deepEqual(saved.clips,JSON.parse(JSON.stringify(project.clips)));assert.equal(saved.assets.length,2);
     checks.push('PNG full resolution from quarter preview, red frame and green overlay pixels, default checked, imported photo reveals the already selected media panel, modal blocks timeline shortcuts, undo/redo retains file and locked timeline');
     const jpg=path.join(folder,'青いコマ.jpg');await setSave(jpg);

@@ -17,7 +17,7 @@ async function verify() {
     await page.locator('.loading-screen').waitFor({ state: 'hidden', timeout: 60000 });
     await page.locator('.media-card').first().waitFor();
     await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }); }, projectFile);
-    await page.getByRole('button', { name: 'プロジェクトを保存 (Ctrl+S)', exact: true }).click();
+    await page.getByRole('button', { name: /^プロジェクトを保存 \(/, exact: true }).click();
     await page.getByText('プロジェクトを保存しました', { exact: true }).waitFor();
     const demo = JSON.parse(await fs.readFile(projectFile, 'utf8')), title = demo.clips.find(c => c.kind === 'title'); assert.ok(title);
     const fixture = { ...demo, id: 'timeline-follow-test', name: '再生位置を見失わない', width: 1280, height: 720, assets: [], markers: [], clips: [{ ...title, start: 0, in: 0, duration: 120, fadeIn: 0, fadeOut: 0, text: 'J / K / L\n再生ヘッドに自動追従', opacityKeyframes: undefined }] };
@@ -117,7 +117,7 @@ async function verify() {
     await page.mouse.move(box.x + beforeScrub.width / 2 + 8, box.y + 10);
     await sample(100); assert.equal((await viewport()).left, scrubLeft); await page.mouse.up();
     assert.equal(await page.locator('.shuttle-status').textContent(), '停止');
-    assert.equal(await page.getByRole('button', { name: '元に戻す (Ctrl+Z)', exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole('button', { name: /^元に戻す \(/, exact: true }).isDisabled(), true);
     assert.equal(await page.locator('.unsaved-dot').count(), 0);
     checks.push('ruler scrubbing retains viewport; following does not create edits or undo history');
     await reveal.click(); await page.screenshot({ path: path.join(results, 'timeline-follow.png'), animations: 'disabled' });
