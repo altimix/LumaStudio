@@ -34,3 +34,6 @@
 
 .media-card-info .proxy-warning{white-space:normal;color:#e5c880;line-height:1.5}
 .basic-settings>.section-properties{display:grid;grid-template-columns:1fr 1fr;gap:8px}.basic-settings .property-field{margin:0}.basic-settings .property-label{display:flex;flex-direction:column;align-items:stretch;gap:5px}.basic-settings .number-wrap{width:100%}.basic-settings .number-wrap input{width:100%}.basic-settings select{width:100%;max-width:none}
+.backup-list{max-height:45vh;overflow:auto;margin-top:16px}.backup-list article{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}.backup-list article div{display:grid;gap:5px;min-width:0}.backup-list strong{overflow-wrap:anywhere}.backup-list span{color:var(--muted);font-size:11px}.backup-list button{flex-shrink:0}
+
+.backup-history-body{padding:0 23px 23px}.backup-history-body>label{display:flex;align-items:center;gap:12px}.backup-history-body>label select{flex:1}.backup-history-body>p{margin-top:12px}
