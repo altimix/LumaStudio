@@ -71,7 +71,9 @@ const root = path.join(__dirname, '..');
     const roundTripBefore={video:project.clips.find(item=>item.id===clip.id),audio:project.clips.find(item=>item.id==='audio'),transitions:project.transitions};await scrubRoundTrip(duration,-200);project=await save();assert.deepEqual(project.clips.find(item=>item.id===clip.id),roundTripBefore.video);assert.deepEqual(project.clips.find(item=>item.id==='audio'),roundTripBefore.audio);assert.deepEqual(project.transitions,roundTripBefore.transitions);
     checks.push('a duration round trip restores fades, volume automation, linked timing and transitions from the gesture snapshot');
 
+    await page.locator('.inspector-section').filter({ has: page.locator('summary').filter({hasText:'クロップ'}) }).locator('summary').click();
     const cropBottom=page.locator('input[id^="effect-"][id$="-下"]');await scrub(cropBottom,20);project=await save();assert.ok(Math.abs(project.clips.find(item=>item.id===clip.id).crop.bottom-.01)<1e-9);
+    await page.locator('.inspector-section').filter({ has: page.locator('#video-mask-type') }).locator('summary').click();
     await page.locator('#video-mask-type').selectOption('ellipse');const maskX=page.locator('input[id^="effect-"][id$="-位置-X"]');await scrub(maskX,20);project=await save();assert.ok(Math.abs(project.clips.find(item=>item.id===clip.id).videoMask.x-.51)<1e-9);
     await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'videoMask').x,.5);await page.keyboard.press('Control+Shift+z');await save();
     checks.push('crop and mask fields use the same persisted scrub gesture');

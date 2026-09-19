@@ -39,16 +39,19 @@ async function verify() {
   const drag = async (locator,dx,dy,cancel=false) => { const p=await center(locator),view=await page.locator('.canvas-wrap').boundingBox();assert.ok(view);await page.mouse.move(p.x,p.y);await page.mouse.down();await page.mouse.move(p.x+dx/project.width*view.width,p.y+dy/project.height*view.height,{steps:8});if(cancel)await page.keyboard.press('Escape');await page.mouse.up(); };
   try {
     await page.locator('.app-titlebar').waitFor({ timeout:60000 }); await page.locator('.loading-screen').waitFor({ state:'hidden',timeout:60000 }); await open(projectFile);
-    await page.getByRole('button',{name:'モニターでクロップ',exact:true}).click();
+    await page.locator('.inspector-section').filter({ has: page.locator('summary').filter({hasText:'クロップ'}) }).locator('summary').click();await page.getByRole('button',{name:'モニターでクロップ',exact:true}).click();
     const left=page.locator('[data-crop-edge="left"]');await left.waitFor();assert.equal(await page.locator('.media-effect-handle.edge').count(),4);
     await drag(left,64,0);let saved=await save();assert.ok(Math.abs(saved.clips[0].crop.left-.1)<.015,`left crop ${saved.clips[0].crop.left}`);
-    await page.keyboard.press('Control+z');let undone=await save();assert.ok(!undone.clips[0].crop||undone.clips[0].crop.left===0);await page.keyboard.press('Control+Shift+z');saved=await save();assert.ok(saved.clips[0].crop.left>.08);
+    await page.keyboard.press('Control+z');let undone=await save();assert.ok(!undone.clips[0].crop||undone.clips[0].crop.left===0);assert.equal(await page.getByRole('button',{name:'モニターでクロップ',exact:true}).isVisible(),true);await page.keyboard.press('Control+Shift+z');saved=await save();assert.ok(saved.clips[0].crop.left>.08);
     checks.push('monitor crop edge is one Undo/Redo edit and persists');
     const bottomInput=page.getByLabel('下',{exact:true});await bottomInput.fill('0.1');await bottomInput.press('Enter');
     const topSlider=page.getByRole('slider',{name:'上スライダー',exact:true}),sliderBox=await topSlider.boundingBox();assert.ok(sliderBox);await page.mouse.move(sliderBox.x+2,sliderBox.y+sliderBox.height/2);await page.mouse.down();await page.mouse.move(sliderBox.x+sliderBox.width-2,sliderBox.y+sliderBox.height/2,{steps:12});await page.mouse.up();await topSlider.dispatchEvent('pointerup',{button:0});await topSlider.evaluate(element=>element.blur());
     saved=await save();assert.ok(saved.clips[0].crop.top+saved.clips[0].crop.bottom<=.99,`crop total ${saved.clips[0].crop.top+saved.clips[0].crop.bottom}`);await page.keyboard.press('Control+z');saved=await save();assert.equal(saved.clips[0].crop.top,0);
     checks.push('fractional opposite crop keeps the slider endpoint within the persisted limit');
+    await page.getByRole('button',{name:'クロップをリセット',exact:true}).click();await page.locator('.media-drag-target[data-media-clip-id="clip"]').waitFor();assert.equal(await page.locator('[data-crop-edge]').count(),0);assert.equal((await save()).clips[0].crop,undefined);
+    await page.keyboard.press('Control+z');saved=await save();assert.ok(saved.clips[0].crop.left>.08);checks.push('crop reset exits monitor editing and remains undoable');
 
+    await page.locator('.inspector-section').filter({ has: page.locator('#video-mask-type') }).locator('summary').click();
     await page.locator('#video-mask-type').selectOption('ellipse');await page.getByRole('button',{name:'モニターでマスクを編集',exact:true}).click();
     const body=page.getByRole('button',{name:'マスクを移動',exact:true});await body.waitFor();assert.equal(await page.locator('.media-effect-handle:not(.edge)').count(),4);
     await drag(body,32,-18);saved=await save();assert.ok(Math.hypot(saved.clips[0].videoMask.x-.5,saved.clips[0].videoMask.y-.5)>.04);assert.ok(saved.clips[0].videoMask.x>=0&&saved.clips[0].videoMask.x<=1&&saved.clips[0].videoMask.y>=0&&saved.clips[0].videoMask.y<=1);

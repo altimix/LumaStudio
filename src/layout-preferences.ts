@@ -20,6 +20,7 @@ export const DEFAULT_LAYOUT: LayoutPreferences = {
   version: 1, libraryWidth: 288, inspectorWidth: 286, timelineHeight: 354,
   libraryCollapsed: false, inspectorCollapsed: false, lastResizedPanel: null,
 };
+export const PREVIEW_LAYOUT: Pick<LayoutPreferences, 'libraryCollapsed' | 'inspectorCollapsed' | 'timelineHeight'> = { libraryCollapsed: true, inspectorCollapsed: true, timelineHeight: LAYOUT_LIMITS.timeline.min };
 export const clampSize = (value: number, min: number, max: number) => Math.round(Math.max(min, Math.min(max, value)));
 
 export function parseLayout(raw: string | null): LayoutPreferences {

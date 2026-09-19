@@ -34,3 +34,15 @@ describe('workspace layout preferences', () => {
     expect(parseLayout(JSON.stringify(opposite))).toEqual(opposite);
   });
 });
+
+it('preview preset expands the monitor and survives storage without changing defaults', async () => {
+  const { PREVIEW_LAYOUT } = await import('./layout-preferences');
+  const custom = { ...DEFAULT_LAYOUT, libraryWidth: 410, inspectorWidth: 380, lastResizedPanel: 'library' as const };
+  const preset = { ...custom, ...PREVIEW_LAYOUT };
+  expect(parseLayout(JSON.stringify(preset))).toEqual(preset);
+  expect(preset.libraryWidth).toBe(410); expect(preset.inspectorWidth).toBe(380);
+  expect(preset.lastResizedPanel).toBe('library');
+  const view = fitLayout(preset, 1280, 587);
+  expect(view.libraryWidth).toBe(36); expect(view.inspectorWidth).toBe(36);
+  expect(view.timelineHeight).toBe(238); expect(DEFAULT_LAYOUT.libraryCollapsed).toBe(false);
+});

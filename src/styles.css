@@ -33,3 +33,4 @@
 .media-proxy-action{display:grid;gap:6px;padding:8px 12px}.media-proxy-action small{font-size:10px;color:var(--muted)}
 
 .media-card-info .proxy-warning{white-space:normal;color:#e5c880;line-height:1.5}
+.basic-settings>.section-properties{display:grid;grid-template-columns:1fr 1fr;gap:8px}.basic-settings .property-field{margin:0}.basic-settings .property-label{display:flex;flex-direction:column;align-items:stretch;gap:5px}.basic-settings .number-wrap{width:100%}.basic-settings .number-wrap input{width:100%}.basic-settings select{width:100%;max-width:none}
