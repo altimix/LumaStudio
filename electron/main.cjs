@@ -23,6 +23,7 @@ const { exportEncoders, validateEncoder } = require('./encoders.cjs');
 const { validateTreatment } = require('../shared/audio-treatment.mjs');
 const { validateProject, exportProject, exportAssets } = require('./export.cjs');
 const { assertDestination, atomicWrite } = require('./persistence.cjs');
+const { resolveProjectMedia, serializeAt, collectProject, relinkFolder } = require('./portable-project.cjs');
 const { assertReplacement, hydrateProject, parseProjectJson, serializeProject, MAX_PROJECT_BYTES } = require('./project.cjs');
 const { createRecoveryStore } = require('./recovery.cjs');
 const { createCredentials, createOpenAI } = require('./openai.cjs');
@@ -287,8 +288,24 @@ function installIPC() {
     assertReplacement(asset, fresh);
     return present({ ...fresh, id: asset.id, revision: fresh.id });
   });
+  handle('collect-project', async p => {
+    serialize(p);
+    const result = await dialog.showOpenDialog(window, { title: '素材をまとめて保存する親フォルダ', properties: ['openDirectory', 'createDirectory'] });
+    if (result.canceled) return null;
+    return collectProject(p, result.filePaths[0]);
+  });
+  handle('relink-folder', async p => {
+    serialize(p);
+    const result = await dialog.showOpenDialog(window, { title: '移動した素材のフォルダを選択', properties: ['openDirectory'] });
+    if (result.canceled) return null;
+    const found = await relinkFolder(p, result.filePaths[0], file => inspectMedia(file, cacheDir()));
+    // Validate all referenced source intervals before registering paths with the renderer.
+    const merged = { ...p, assets: p.assets.map(saved => found.assets.find(asset => asset.id === saved.id) || saved) };
+    serialize(merged);
+    return { assets: found.assets.map(present), unresolved: found.unresolved };
+  });
   handle('save-project', async (p, saveAs = false) => {
-    const contents = serialize(p);
+    serialize(p);
     const pathGeneration = projectPathGeneration;
     let target = projectPath;
     if (!target || saveAs) {
@@ -296,7 +313,7 @@ function installIPC() {
       if (result.canceled) return null; target = result.filePath;
     }
     await assertDestination(target, '.luma', [...p.assets.map(a => a.path),...startupProtectedPaths,...protectedSourcePaths]);
-    await atomicWrite(target, contents); if (pathGeneration === projectPathGeneration) projectPath = target;
+    await atomicWrite(target, serializeAt(p, target)); if (pathGeneration === projectPathGeneration) projectPath = target;
     return target;
   });
   handle('open-project', async () => {
@@ -304,7 +321,7 @@ function installIPC() {
     if (result.canceled) return null;
     const target = result.filePaths[0];
     if ((await fs.stat(target)).size > MAX_PROJECT_BYTES) throw new Error('プロジェクトファイルが大きすぎます。');
-    const p = await hydrate(parseProjectJson(await fs.readFile(target, 'utf8')));
+    const p = await hydrate(resolveProjectMedia(parseProjectJson(await fs.readFile(target, 'utf8')), target));
     await recoveryFiles.clear(); projectPathGeneration++; projectPath = target; dirty = false;
     return { project: p, path: target };
   });

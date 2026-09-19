@@ -86,6 +86,8 @@ export interface DesktopAPI {
   previewProxy(asset: Asset, enabled: boolean): Promise<Asset | null>;
   cancelImport(): Promise<void>;
   relink(asset: Asset): Promise<Asset | null>;
+  collectProject(project: Project): Promise<string | null>;
+  relinkFolder(project: Project): Promise<{ assets: Asset[]; unresolved: string[] } | null>;
   saveProject(project: Project, saveAs?: boolean): Promise<string | null>;
   openProject(): Promise<{ project: Project; path: string } | null>;
   autosave(project: Project): Promise<void>;
