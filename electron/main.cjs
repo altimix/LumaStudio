@@ -26,6 +26,7 @@ const { assertDestination, atomicWrite } = require('./persistence.cjs');
 const { resolveProjectMedia, serializeAt, collectProject, relinkFolder } = require('./portable-project.cjs');
 const { assertReplacement, hydrateProject, parseProjectJson, serializeProject, MAX_PROJECT_BYTES } = require('./project.cjs');
 const { createRecoveryStore } = require('./recovery.cjs');
+const { createBackupHistory } = require('./backup-history.cjs');
 const { createCredentials, createOpenAI } = require('./openai.cjs');
 const { audioClips, totalTime, transcribeTimeline, generateMetadata, generateThumbnail } = require('./youtube.cjs');
 const { subtitleFile, youtubeText } = require('../shared/youtube.mjs');
@@ -138,6 +139,7 @@ function installIPC() {
   });
   handle('bgm-load', id => bgm.load(id));
   const recoveryFiles = createRecoveryStore(autosavePath());
+  const backups = createBackupHistory(path.join(app.getPath('userData'), 'backups'));
   const credentials = createCredentials(path.join(app.getPath('userData'), 'openai-key.bin'), safeStorage,
     [process.env.LUMA_ENV_FILE, path.join(process.env.PORTABLE_EXECUTABLE_DIR || root, '.env'), path.join(process.cwd(), '.env')].filter(Boolean), process.env.OPENAI_API_KEY);
   const ai = createOpenAI(() => credentials.get());
@@ -247,8 +249,10 @@ function installIPC() {
 
     let recovery = null;
     try {
-      const data = JSON.parse(await fs.readFile(autosavePath(), 'utf8'));
+      const contents = await fs.readFile(autosavePath(), 'utf8'), data = JSON.parse(contents);
       recovery = { project: await hydrate(data.project), savedAt: data.savedAt };
+      try { await backups.write(contents, { deduplicate: true }); }
+      catch (error) { startupError ||= '以前の自動保存をバックアップ履歴に追加できませんでした：' + error.message; }
     } catch {}
     return { assets, recovery, startupProject, startupError, version: app.getVersion() };
   });
@@ -325,9 +329,11 @@ function installIPC() {
     await recoveryFiles.clear(); projectPathGeneration++; projectPath = target; dirty = false;
     return { project: p, path: target };
   });
+  handle('list-backups', () => backups.list());
+  handle('read-backup', async id => { const snapshot = await backups.read(id); return { ...snapshot, project: await hydrate(snapshot.project) }; });
   handle('autosave', (p) => {
     const contents = JSON.stringify({ savedAt: new Date().toISOString(), project: JSON.parse(serialize(p)) });
-    return recoveryFiles.write(contents);
+    return recoveryFiles.write(contents).then(() => backups.write(contents));
   });
   handle('clear-recovery', expectedSavedAt => {
     if (expectedSavedAt !== undefined && typeof expectedSavedAt !== 'string') throw new Error('自動保存の識別子が不正です。');

@@ -92,6 +92,8 @@ export interface DesktopAPI {
   openProject(): Promise<{ project: Project; path: string } | null>;
   autosave(project: Project): Promise<void>;
   resetProjectPath(keepRecovery?: boolean): Promise<void>;
+  listBackups(): Promise<{ id: string; projectId: string; name: string; savedAt: string; clips: number }[]>;
+  readBackup(id: string): Promise<{ project: Project; savedAt: string }>;
   clearRecovery(expectedSavedAt?: string): Promise<void>;
   setDirty(dirty: boolean): Promise<void>;
   onPrepareClose(cb: (requestId: number) => void): () => void;
