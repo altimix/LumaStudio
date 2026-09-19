@@ -2,7 +2,7 @@ import { numberTracks } from './track-names';
 import { trackDeletionReason } from './track-editing';
 import { separateOverlappingClips } from './track-placement';
 import { resetAudioMeter } from './meter-store';
-import { captionStyle, captionBottomY, reflowEditedCaptions } from './caption-style';
+import { captionStyle, positionAutomaticCaption, reflowEditedCaptions } from './caption-style';
 import type { SoundId } from '../shared/sounds.mjs';
 import { create } from 'zustand';
 import type { Asset, Clip, Project, Track, Graphic, TransitionOptions } from './types';
@@ -162,8 +162,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     let next: Clip;
     try { next = patchVisualClip(clip, patch, Math.max(0, Math.min(clip.duration, roundFrame(s.playhead - clip.start, s.project.fps)))); }
     catch (error) { s.notify((error as Error).message); return; }
-    if (next.captionAutoPosition && (['x','y','scale','rotation','textBox'].some(key=>Object.hasOwn(patch,key)) || next.textStyle!=='subtitle')) next.captionAutoPosition=false;
-    if (next.captionAutoPosition) next.y=captionBottomY(s.project,next.text,next.fontSize);
+    next=positionAutomaticCaption(s.project,next,clip);
     if (patch.speed !== undefined && patch.speed !== clip.speed) {const ratio=clip.speed/patch.speed;next.duration=clip.duration*ratio;next.fadeIn=patch.fadeIn??clip.fadeIn*ratio;next.fadeOut=patch.fadeOut??clip.fadeOut*ratio;if(clip.visualKeyframes)next.visualKeyframes=clip.visualKeyframes.map(key=>({...key,time:key.time*ratio}));}
     const normalized = normalizeClip(next, s.project);
     if (patch.volumeKeyframes === undefined && clip.volumeKeyframes) normalized.volumeKeyframes = retimeVolume(clip, normalized);

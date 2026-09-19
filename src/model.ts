@@ -4,7 +4,7 @@ import { windowOpacity } from '../shared/opacity.mjs';
 import { windowVisualKeys } from '../shared/visual-keyframes.mjs';
 import { retimeVolume, windowVolume } from '../shared/volume-automation.mjs';
 import { MAX_MEDIA_SECONDS } from '../shared/time.mjs';
-import { captionBottomY } from './caption-style';
+import { positionAutomaticCaption } from './caption-style';
 import { maxTransitionDuration, validateTransitions } from '../shared/transitions.mjs';
 export const uid = () => crypto.randomUUID();
 export const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
@@ -99,7 +99,7 @@ export function applySequenceSettings(p: Project, settings: Pick<Project, 'name'
     try{validateTransitions({...next,clips});}catch{throw new Error('このFPSではつなぎ目の接続を保持できません。クリップの長さを調整するか、別のFPSを選んでください。');}
   }
   const reposition=(settings.width!==p.width||settings.height!==p.height)&&clips.some(c=>c.captionAutoPosition&&!p.tracks.find(t=>t.id===c.trackId)?.locked);
-  return { ...next, clips: reposition ? clips.map(c=>c.captionAutoPosition&&!p.tracks.find(t=>t.id===c.trackId)?.locked?{...c,y:captionBottomY(next,c.text,c.fontSize)}:c) : clips };
+  return { ...next, clips: reposition ? clips.map(c=>c.captionAutoPosition&&!p.tracks.find(t=>t.id===c.trackId)?.locked?positionAutomaticCaption(next,c):c) : clips };
 }
 export function splitClip(c: Clip, at: number, fps: number): [Clip, Clip] | null {
   const left = roundFrame(at - c.start, fps); const right = c.duration - left;

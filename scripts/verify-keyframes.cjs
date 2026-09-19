@@ -34,7 +34,7 @@ async function verify(){
     await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},output);
     await page.getByRole('button',{name:'書き出し',exact:true}).click();await page.getByLabel('品質',{exact:true}).selectOption('high');await page.getByLabel('書き出し方式',{exact:true}).selectOption('cpu');await page.getByRole('button',{name:'保存先を選んで書き出す',exact:true}).click();
     await page.waitForFunction(()=>document.querySelector('.export-success')||document.querySelector('.export-error'),undefined,{timeout:180000});
-    assert.ok(await page.getByText('書き出しが完了しました',{exact:true}).isVisible(),await page.locator('.export-error').textContent().catch(()=>''));
+    assert.ok(await page.getByText('書き出しが完了しました',{exact:true}).isVisible(),await page.locator('.export-error').allTextContents());
     const differences=[];
     for(let index=0;index<samples.length;index++){
       const actual=await run(ffmpeg,['-v','error','-ss',String(samples[index]),'-i',output,'-frames:v','1','-vf','scale=640:360','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);assert.equal(actual.length,reference[index].length);
