@@ -63,7 +63,12 @@ async function verify() {
     assert.equal(await page.getByRole('spinbutton',{name:'位置 X',exact:true}).inputValue(),'540');assert.equal(await page.getByRole('spinbutton',{name:'位置 Y',exact:true}).inputValue(),'960');await page.screenshot({path:path.join(results,'text-portrait.png')});checks.push('portrait minimal text starts at 540/960');
     if(process.platform==='darwin')await app.evaluate(({BrowserWindow})=>{globalThis.__textFullscreenReady=new Promise(resolve=>BrowserWindow.getAllWindows()[0].once('enter-full-screen',resolve));});
     await page.getByRole('button',{name:'プレビューを全画面表示',exact:true}).click();await page.waitForFunction(()=>!!document.fullscreenElement);
-    if(process.platform==='darwin')await app.evaluate(()=>globalThis.__textFullscreenReady);
+    if(process.platform==='darwin'){
+      await app.evaluate(()=>globalThis.__textFullscreenReady);
+      // macOS can release pointer capture once more while its Space animation
+      // finishes, after enter-full-screen. Begin the drag after that transition.
+      await page.waitForTimeout(800);
+    }
     const full=await page.locator('.canvas-wrap').boundingBox(),fullTarget=await page.locator('.title-drag-target').boundingBox();assert.ok(Math.abs(full.width/full.height-1080/1920)<.002);assert.ok(Math.abs(fullTarget.x+fullTarget.width/2-full.x-full.width/2)<3);
     await page.mouse.move(fullTarget.x+fullTarget.width/2,fullTarget.y+fullTarget.height/2);await page.mouse.down();await page.mouse.move(fullTarget.x+fullTarget.width/2+full.width*.1,fullTarget.y+fullTarget.height/2+full.height*.1,{steps:5});await page.mouse.up();await page.evaluate(()=>document.exitFullscreen());await page.waitForFunction(()=>!document.fullscreenElement);const fullSaved=await save();assert.ok(Math.abs(fullSaved.clips[0].x-10)<.7&&Math.abs(fullSaved.clips[0].y-10)<.7);checks.push('fullscreen portrait target follows the contained canvas and maps pointer movement accurately');
     const slow=require('../electron/font-sources.json').fonts.find(f=>!['Noto Sans JP','Zen Kaku Gothic New','Aoboshi One'].includes(f.family));
