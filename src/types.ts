@@ -13,7 +13,7 @@ export interface Graphic { shape: 'arrow' | 'rectangle' | 'ellipse'; width:numbe
 export interface Asset {
   id: string; name: string; path: string; url: string; thumbnail: string; kind: MediaKind;
   duration: number; width: number; height: number; fps: number; hasAudio: boolean;
-  waveform: number[]; size: number; codec: string; proxy?: boolean; offline?: boolean; revision?: string;
+  waveform: number[]; size: number; codec: string; proxy?: boolean; previewProxy?: boolean; proxyWarning?: string; offline?: boolean; revision?: string;
 }
 export interface Track { id: string; name: string; autoName?: boolean; audioSourceTrackId?: string; kind: 'video' | 'audio'; muted: boolean; hidden: boolean; locked: boolean; solo: boolean }
 export interface Clip {
@@ -50,7 +50,7 @@ export type ExportEncoder = 'auto' | 'cpu' | 'videotoolbox' | 'nvenc' | 'qsv' | 
 export interface EncoderCapabilities { recommended: ExportEncoder; encoders: { id: Exclude<ExportEncoder, 'auto'>; label: string; available: boolean; reason?: string }[] }
 export interface ExportSettings { width: number; height: number; fps: number; quality: 'draft' | 'standard' | 'high'; target?: 'youtube' | 'shorts'; encoder?: ExportEncoder }
 export interface ExportProgress { status: 'preparing' | 'rendering' | 'complete'; progress: number; output: string; encoder?: ExportEncoder; encoderLabel?: string; warning?: string }
-export interface ImportProgress { index: number; total: number; name: string }
+export interface ImportProgress { index: number; total: number; name: string; completed?: number; stage?: string }
 export interface Bootstrap { startupProject?:Project|null; startupError?:string; assets: Asset[]; recovery: { project: Project; savedAt: string } | null; version: string }
 export interface BgmTrack { id:string; name:string; relativePath:string; duration:number }
 export interface BgmLibrary { folder:string|null; tracks:BgmTrack[]; errors:string[]; truncated:boolean }
@@ -81,8 +81,10 @@ export interface DesktopAPI {
   readAudioChunk(url: string, index: number, treatment?: Clip['audioTreatment']): Promise<Float32Array>;
   readWaveform(url: string, start: number, end: number, bins: number, options?:{absolute?:boolean;treatment?:'speech'|'normalize'}, requestId?:string): Promise<Float32Array>;
   cancelWaveform(requestId:string):Promise<void>;
-  importMedia(): Promise<{ assets: Asset[]; errors: string[] }>;
-  importDroppedFiles(files: File[]): Promise<{ assets: Asset[]; errors: string[] }>;
+  importMedia(): Promise<{ assets: Asset[]; errors: string[]; cancelled?: boolean }>;
+  importDroppedFiles(files: File[]): Promise<{ assets: Asset[]; errors: string[]; cancelled?: boolean }>;
+  previewProxy(asset: Asset, enabled: boolean): Promise<Asset | null>;
+  cancelImport(): Promise<void>;
   relink(asset: Asset): Promise<Asset | null>;
   saveProject(project: Project, saveAs?: boolean): Promise<string | null>;
   openProject(): Promise<{ project: Project; path: string } | null>;
