@@ -11,6 +11,11 @@ test('optional video proxies preserve original metadata, persist preferences and
  const fallback=await hydrateProject(saved,async(file,options)=>{if(options.previewProxy)throw Error('disk full');return inspectMedia(file,path.join(dir,'cannot-write'),options);},a=>a);
  assert.ok(saved.assets[0].waveform.length>0);assert.deepEqual(fallback.assets[0].waveform,saved.assets[0].waveform);assert.equal(fallback.assets[0].offline,undefined);assert.equal(fallback.assets[0].playbackPath,file);assert.equal(fallback.assets[0].previewProxy,undefined);assert.match(fallback.assets[0].proxyWarning,/原本/);assert.equal(JSON.parse(serializeProject(fallback)).assets[0].proxyWarning,undefined);
  await assert.rejects(fs.access(path.join(dir,'cannot-write')));
+ const thumbnailBefore=await fs.readFile(original.thumbnailPath),statBefore=await fs.stat(original.thumbnailPath),filesBefore=(await fs.readdir(cache)).sort();
+ const cachedFallback=await hydrateProject(saved,async(file,options)=>{if(options.previewProxy)throw Error('encoder failed');return inspectMedia(file,cache,options);},a=>a);
+ assert.equal(saved.assets[0].thumbnailPath,undefined);assert.equal(cachedFallback.assets[0].thumbnailPath,original.thumbnailPath);assert.equal(cachedFallback.assets[0].playbackPath,file);
+ assert.deepEqual(await fs.readFile(original.thumbnailPath),thumbnailBefore);assert.equal((await fs.stat(original.thumbnailPath)).mtimeMs,statBefore.mtimeMs);assert.deepEqual((await fs.readdir(cache)).sort(),filesBefore);
+
  const disabled=await inspectMedia(file,cache);assert.equal(disabled.previewProxy,undefined);assert.equal(disabled.playbackPath,file);
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });

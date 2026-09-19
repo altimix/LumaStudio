@@ -71,6 +71,13 @@ async function inspectMedia(file, cacheDir, { signal, onStage = () => {}, previe
       if (!(await fs.stat(thumbnailPath)).size) throw new Error('素材の縮小画像を作成できませんでした。');
     }
   }
+  if (kind !== 'audio' && skipCache) {
+    // A failed proxy encoder must not hide a readable thumbnail. Do not write
+    // or regenerate cache entries when falling back to the original source.
+    const cachedThumbnail = path.join(cacheDir, `${id}.jpg`);
+    const cachedStat = await fs.stat(cachedThumbnail).catch(() => null);
+    if (cachedStat?.isFile() && cachedStat.size > 0) thumbnailPath = cachedThumbnail;
+  }
   if (sound && !skipCache) {
     onStage('音声波形を作成しています');
     const meta = await ensureWaveform(file, cacheDir, id, duration, sound.channels, signal);
