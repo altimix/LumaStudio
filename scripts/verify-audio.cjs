@@ -153,16 +153,25 @@ async function verify() {
     // Drain the test tap's queued input after a stop before comparing a NEW source interval.
     async function drainStop() { await captureStart(); const data = await captured(false, 12000); assert.ok(rms(data[0].slice(-4096)) < 1e-7, 'stopped output settles to silence'); }
     const rapid = keys => page.evaluate(keys => { for (const key of keys) window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })); }, keys);
-    const seek = async frames => { await page.keyboard.press('Home'); await page.evaluate(frames => {
+    const expectFrame = frames => page.waitForFunction(({ frames, fps }) => {
+      const parts = document.querySelector('.ruler-label .timecode')?.textContent.split(':').map(Number);
+      return parts?.length === 4 && ((parts[0] * 60 + parts[1]) * 60 + parts[2]) * fps + parts[3] === frames;
+    }, { frames, fps: fixture.fps });
+    // Home/End belong to the focused panel. Audio controls leave a tab focused,
+    // so return to the timeline before navigating to an interval for PCM capture.
+    const boundary = async (key, frames) => {
+      await page.locator('.timeline-content').focus(); await page.keyboard.press(key); await expectFrame(frames);
+    };
+    const seek = async frames => { await boundary('Home', 0); await page.evaluate(frames => {
       for (let i = 0; i < Math.floor(frames / 10); i++) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true, cancelable: true }));
       for (let i = 0; i < frames % 10; i++) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
-    }, frames); };
+    }, frames); await expectFrame(frames); };
     await rapid(['l', 'k']); await drainStop();
-    await page.keyboard.press('Home'); await captureStart(); await page.keyboard.press('l'); const forward = await captured(); await page.keyboard.press('k');
+    await boundary('Home', 0); await captureStart(); await page.keyboard.press('l'); const forward = await captured(); await page.keyboard.press('k');
     for (const ch of [0, 1]) { const match = correlation(forward[ch], original, 0, 1, ch); metrics.push({ name: `forward-channel-${ch}`, ...match }); assert.ok(match.score > 0.98, JSON.stringify(match)); }
     checks.push('forward stereo output matches original PCM');
     await drainStop();
-    await page.keyboard.press('End'); await captureStart(); await page.keyboard.press('j'); const reverse = await captured(); await page.keyboard.press('k');
+    await boundary('End', 64 * fixture.fps); await captureStart(); await page.keyboard.press('j'); const reverse = await captured(); await page.keyboard.press('k');
     for (const ch of [0, 1]) { const match = correlation(reverse[ch], original, RATE * 64 - 1, -1, ch); metrics.push({ name: `reverse-channel-${ch}`, ...match }); assert.ok(match.score > 0.98, JSON.stringify(match)); }
     checks.push('J renders reversed stereo PCM from the exact source tail');
     // Every K/L pair is dispatched within ONE JS task, so RAF cannot see the stop.
