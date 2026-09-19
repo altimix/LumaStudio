@@ -1,10 +1,11 @@
+import { shortcutLabel } from '../shortcut-label';
 import { useState } from 'react';
 import { shortcutList } from '../shortcuts';
 import KeyboardDiagram from './KeyboardDiagram';
 import { Modal } from './UI';
 export default function ShortcutHelp({ onClose }: { onClose(): void }) {
   const [mac,setMac] = useState(/Mac/i.test(navigator.platform));
-  const displayKey = (key:string) => mac ? key.replaceAll('Ctrl','⌘ Command').replaceAll('Delete / Backspace','delete').replaceAll('Delete','delete') : key;
+  const displayKey = (key:string) => shortcutLabel(key, mac);
   const [query, setQuery] = useState('');
   const terms = query.trim().toLowerCase().split(/\s+/);
   const matches = shortcutList.filter(row => terms.every(term => `${row.join(' ')} ${displayKey(row[0])}`.toLowerCase().includes(term)));

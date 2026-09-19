@@ -28,10 +28,10 @@ async function verify(){
     await page.getByRole('button',{name:'素材を追加',exact:true}).click();await page.getByRole('menuitem',{name:'ブラックビデオを追加',exact:true}).click();await page.locator('.media-card').waitFor();
     await page.getByRole('button',{name:'選択素材をタイムラインに追加',exact:true}).click();await page.locator('.timeline-clip.image').waitFor();
     await page.locator('#prop-duration').fill('75');await page.locator('#prop-duration').press('Enter');
-    const save=async()=>{await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));return JSON.parse(await fs.readFile(file,'utf8'));};
+    const save=async()=>{await page.getByRole('button',{name:/^プロジェクトを保存 \(/,exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));return JSON.parse(await fs.readFile(file,'utf8'));};
     const long=await save();assert.equal(long.clips[0].duration,75);assert.equal(long.assets[0].kind,'image');assert.equal(long.assets[0].hasAudio,false);
     await page.locator('#prop-duration').fill('2');await page.locator('#prop-duration').press('Enter');await save();
-    await page.keyboard.press('Control+o');await page.waitForFunction(()=>document.querySelector('button[aria-label="元に戻す (Ctrl+Z)"]')?.disabled);
+    await page.keyboard.press('Control+o');await page.waitForFunction(()=>document.querySelector('button[aria-label^="元に戻す ("]')?.disabled);
     assert.equal(await page.locator('.media-card.offline').count(),0);assert.equal((await save()).clips[0].duration,2);
     const output=path.join(results,'black-video.mp4');await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},output);
     await page.getByRole('button',{name:'書き出し',exact:true}).click();await page.getByLabel('品質',{exact:true}).selectOption('draft');await page.getByRole('button',{name:'保存先を選んで書き出す',exact:true}).click();await page.getByText('書き出しが完了しました',{exact:true}).waitFor({timeout:120000});

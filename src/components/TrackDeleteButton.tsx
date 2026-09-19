@@ -1,3 +1,4 @@
+import { shortcutLabel } from '../shortcut-label';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Trash2 } from 'lucide-react';
@@ -18,7 +19,7 @@ export default function TrackDeleteButton({ track, project }: { track: Track; pr
     }}><Trash2 size={13}/></IconButton>
     {confirmation === project && createPortal(<div onKeyDown={e => e.stopPropagation()}>
       <Modal title="トラックを削除しますか？" onClose={close}>
-        <p className="modal-description">「{track.name}」と、このトラックに配置した素材 {ids.length} 個を削除します。<br/>他のトラックの素材と、プロジェクト内の元素材は残ります。リンク相手がある場合はリンクを解除します。Ctrl+Zで元に戻せます。</p>
+        <p className="modal-description">「{track.name}」と、このトラックに配置した素材 {ids.length} 個を削除します。<br/>他のトラックの素材と、プロジェクト内の元素材は残ります。リンク相手がある場合はリンクを解除します。{shortcutLabel('Ctrl+Z')}で元に戻せます。</p>
         <div className="modal-footer"><button className="secondary-button" onClick={close}>キャンセル</button><button className="primary-button" onClick={() => { if (useEditor.getState().project === confirmation && useEditor.getState().removeTrack(track.id)) close(); }}>トラックと素材を削除</button></div>
       </Modal>
     </div>, document.body)}

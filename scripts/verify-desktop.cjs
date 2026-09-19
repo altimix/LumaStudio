@@ -22,34 +22,34 @@ async function verify() {
     // Merely focusing an inspector field must not make a clean project dirty.
     const nameInput=page.getByRole('textbox',{name:'クリップ名',exact:true});
     await nameInput.focus();await nameInput.blur();
-    assert.equal(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),true);
+    assert.equal(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),true);
     const originalName=await nameInput.inputValue();
     await nameInput.fill('名前の履歴テスト');await nameInput.blur();
-    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();
+    await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).click();
     await page.locator('.timeline-clip.video').first().click();
     assert.equal(await nameInput.inputValue(),originalName);
-    assert.equal(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),true);
+    assert.equal(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),true);
     await page.waitForFunction(()=>{ const c=document.querySelector('.canvas-wrap canvas');const ctx=c.getContext('2d');const d=ctx.getImageData(c.width*.2,c.height*.5,2,2).data;return d[0]>40 && d[1]>30; },null,{timeout:15000});
     await page.screenshot({path:path.join(results,'editor-desktop.png')});
     // Source in-points retain sub-frame precision when a rounded display is only focused.
     const sourceIn=page.getByRole('spinbutton',{name:'素材の開始位置',exact:true});
     await sourceIn.fill('0.06666666666666667');await sourceIn.blur();
     await sourceIn.focus();await sourceIn.blur();
-    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();
+    await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).click();
     await page.locator('.timeline-clip.video').first().click();
     assert.equal(Number(await sourceIn.inputValue()),0);
-    assert.equal(await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).isDisabled(),true);
+    assert.equal(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),true);
     // Exercise pointer movement and resize handles, including undo to restore the source.
     const firstVideo=page.locator('.timeline-clip.video').first();
     let box=await firstVideo.boundingBox();
     await page.mouse.move(box.x+70,box.y+18);await page.mouse.down();await page.mouse.move(box.x+118,box.y+18,{steps:8});await page.mouse.up();
     await page.waitForFunction(()=>document.querySelector('.timeline-clip.video').getAttribute('aria-label').includes('開始 1.00 秒'));
-    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();
+    await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).click();
     box=await firstVideo.boundingBox();
     const trim=await firstVideo.locator('.trim-handle.right').boundingBox();
     await page.mouse.move(trim.x+trim.width/2,trim.y+trim.height/2);await page.mouse.down();await page.mouse.move(trim.x+trim.width/2-48,trim.y+trim.height/2,{steps:8});await page.mouse.up();
     await page.waitForFunction(()=>document.querySelector('.timeline-clip.video').getAttribute('aria-label').includes('長さ 7.00 秒'));
-    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();
+    await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).click();
     // An empty selection must not turn the keyboard shortcut into a split-all operation.
     assert.equal(await page.locator('.timeline-clip.selected').count(),1);
     await page.locator('.track-lane').last().click({position:{x:500,y:20}});
@@ -73,8 +73,8 @@ async function verify() {
     assert.match(await page.locator('.preview-panel .panel-heading').textContent(),/30 fps/);
     await page.screenshot({path:path.join(results,'locked-fps-protection.png')});
     await page.getByRole('button',{name:'キャンセル',exact:true}).click();
-    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();
-    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();
+    await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).click();
+    await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).click();
     await page.waitForFunction(()=>document.querySelector('.timeline-clip.video').getAttribute('aria-label').includes('長さ 8.00 秒'));
     await firstVideo.click();
     await page.getByRole('button',{name:'再生 (Space)',exact:true}).click();
@@ -87,11 +87,11 @@ async function verify() {
     await page.getByRole('button',{name:'先頭へ (Home)',exact:true}).click();
     await page.keyboard.press('Shift+ArrowRight');
     await page.waitForFunction(()=>document.querySelector('.preview-meta .timecode')?.textContent==='00:00:00:10');
-    await page.getByRole('button',{name:'選択クリップを分割 (Ctrl+B)',exact:true}).click();
+    await page.getByRole('button',{name:/^選択クリップを分割 \(/,exact:true}).click();
     assert.equal(await page.locator('.timeline-clip').count(),6);
-    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();assert.equal(await page.locator('.timeline-clip').count(),5);
-    await page.getByRole('button',{name:'やり直す (Ctrl+Shift+Z)',exact:true}).click();assert.equal(await page.locator('.timeline-clip').count(),6);
-    await page.getByRole('button',{name:'元に戻す (Ctrl+Z)',exact:true}).click();
+    await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).click();assert.equal(await page.locator('.timeline-clip').count(),5);
+    await page.getByRole('button',{name:/^やり直す \(/,exact:true}).click();assert.equal(await page.locator('.timeline-clip').count(),6);
+    await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).click();
     await page.locator('.timeline-clip.video').first().click();
     await page.getByRole('button',{name:'カラー',exact:true}).first().click();
     await page.getByRole('tab',{name:'エフェクト',exact:true}).click();
@@ -110,7 +110,7 @@ async function verify() {
     // Native import and native save dialogs are deterministically answered only in this test process.
     const savePath=path.join(results,'検証プロジェクト.luma');
     await app.evaluate(({dialog},target)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:target});},savePath);
-    await page.getByRole('button',{name:'プロジェクトを保存 (Ctrl+S)',exact:true}).click();
+    await page.getByRole('button',{name:/^プロジェクトを保存 \(/,exact:true}).click();
     await page.waitForFunction(()=>document.querySelector('.toast[role="status"]')?.textContent.includes('プロジェクトを保存しました'));
     const saved=JSON.parse(await fs.readFile(savePath,'utf8'));assert.ok(saved.clips.some(c=>c.text.includes('日本語テロップ')));
     assert.equal(saved.clips.filter(c=>c.kind==='video')[0].saturation,0.78);
