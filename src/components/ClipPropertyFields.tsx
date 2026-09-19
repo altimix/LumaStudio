@@ -59,7 +59,7 @@ export function NumericField({ clip, property, label, min, max, step = 1, factor
       now.transient({...baseline,clips},baseline);
     } else s.updateClip(clip.id, patch);
   };
-  return <PropertyNumberField inputId={`prop-${property}`} label={label} suffix={suffix} onFocus={()=>{if(visualFields(clip).some(field=>field===property)){useEditor.getState().stop();useEditor.setState({visualChannel:property});}}}
+  return <PropertyNumberField inputId={`prop-${property}`} label={label} suffix={suffix} onFocus={()=>{useEditor.getState().stop();if(visualFields(clip).some(field=>field===property))useEditor.setState({visualChannel:property});}}
     input={<ScrubbableNumberInput id={`prop-${property}`} value={value} min={min} max={max} step={step} onCommit={apply} onScrubStart={beginDrag} onScrubChange={apply} onScrubEnd={()=>{finishDrag();const current=useEditor.getState().project.clips.find(c=>c.id===clip.id);return current?displayValue(current):value;}} onScrubCancel={()=>finishDrag(true)}/>}
     slider={slider ? <input className="property-slider" type="range" aria-label={`${label}スライダー`} min={min} max={max} step={step} value={value} style={{ '--fill': `${(value - min) / (max - min) * 100}%` } as React.CSSProperties} onPointerDown={e=>{if(e.button===0)beginDrag();}} onPointerUp={()=>finishDrag()} onPointerCancel={()=>finishDrag(true)} onLostPointerCapture={()=>finishDrag(true)} onChange={e=>apply(Number(e.target.value))}/> : null}/>;
 }

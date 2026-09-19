@@ -113,6 +113,35 @@ const root = path.join(__dirname, '..');
     await focusChannels(channels.slice(9));assert.deepEqual(await save(),beforeColorFocus);await page.locator('.inspector-tabs button').first().click();
     checks.push('all 13 crop, mask and chroma number fields select their own keyframe graph without changing project data');
 
+    const focusDuringPlayback=async field=>{
+      await field.scrollIntoViewIfNeeded();await page.locator('.timeline-content').focus();await page.keyboard.press('Home');
+      for(let i=0;i<3;i++)await page.keyboard.press('Shift+ArrowRight');
+      const before=await page.locator('.ruler-label .timecode').textContent();await page.keyboard.press('l');
+      await page.waitForFunction(before=>document.querySelector('.ruler-label .timecode').textContent!==before,before);
+      await field.focus();assert.equal(await page.getByRole('status',{name:'シャトル状態'}).textContent(),'停止','focusing a numeric field stops playback');
+      const held=await page.locator('.ruler-label .timecode').textContent();await page.waitForTimeout(250);
+      assert.equal(await page.locator('.ruler-label .timecode').textContent(),held,'the edit position stays fixed while entering a value');
+      const [h,m,s,f]=held.split(':').map(Number);return (h*60+m)*60+s+f/fixture.fps;
+    };
+    const beforeTimingFocus=await save(),graphBefore=await page.locator('select[aria-label="キーフレームの表示項目"]').inputValue();
+    for(const property of ['start','duration','in','fadeIn','fadeOut'])await focusDuringPlayback(page.locator(`#prop-${property}`));
+    assert.deepEqual(await save(),beforeTimingFocus);assert.equal(await page.locator('select[aria-label="キーフレームの表示項目"]').inputValue(),graphBefore);
+    checks.push('timing and fade inputs stop playback on focus without changing the project, history or visual graph');
+
+    const audioClip=page.locator('.timeline-clip[data-clip-id="audio"]');await audioClip.focus();await audioClip.press('Enter');
+    await page.locator('.inspector-tabs').getByRole('button',{name:'オーディオ',exact:true}).click();
+    const beforeVolumeFocus=await save(),volume=page.locator('#prop-volume'),heldTime=await focusDuringPlayback(volume);
+    await volume.fill('65');await page.waitForTimeout(250);await volume.press('Enter');
+    const afterVolumeFocus=await save(),oldAudio=beforeVolumeFocus.clips.find(c=>c.id==='audio'),newAudio=afterVolumeFocus.clips.find(c=>c.id==='audio');
+    const keyTime=Math.round((heldTime-oldAudio.start)*fixture.fps)/fixture.fps,editedKey=newAudio.volumeKeyframes.find(k=>Math.abs(k.time-keyTime)<1e-7);
+    assert.ok(editedKey,'typing edits the point where the input received focus');assert.ok(Math.abs(editedKey.value*newAudio.volume-.65)<1e-9);
+    assert.deepEqual(newAudio.volumeKeyframes.filter(k=>Math.abs(k.time-keyTime)>=1e-7),oldAudio.volumeKeyframes);
+    await page.keyboard.press('Control+z');assert.deepEqual(await save(),beforeVolumeFocus);
+    await page.keyboard.press('Control+Shift+z');assert.deepEqual(await save(),afterVolumeFocus);
+    await page.keyboard.press('Control+z');assert.deepEqual(await save(),beforeVolumeFocus);
+    await page.locator(`.timeline-clip[data-clip-id="${clip.id}"]`).focus();await page.keyboard.press('Enter');await page.locator('.inspector-tabs button').first().click();
+    checks.push('audio volume editing during playback writes at the held frame and preserves other points through Undo/Redo');
+
     await rotation.click();await rotation.press('Tab');assert.notEqual(await page.evaluate(()=>document.activeElement?.id),'prop-rotation');
     const track=project.tracks.find(item=>item.id===clip.trackId);await page.getByRole('button',{name:`${track.name} ロック`,exact:true}).click();await save();assert.equal(await rotation.isDisabled(),true);
     checks.push('Tab navigation remains available and locked tracks disable scrubbing');
