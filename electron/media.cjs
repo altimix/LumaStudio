@@ -45,12 +45,12 @@ async function inspectMedia(file, cacheDir, { signal, onStage = () => {}, previe
   if (skipCache && !compatible) throw Error('原本の再生に互換プロキシが必要です。');
   const useProxy = !compatible || (kind === 'video' && previewProxy);
   if (useProxy) {
-    playbackPath = path.join(cacheDir, `${id}-proxy.${kind === 'image' ? 'png' : kind === 'audio' ? 'm4a' : 'mp4'}`);
+    playbackPath = path.join(cacheDir, `${id}-proxy${kind === 'video' ? '-v2' : ''}.${kind === 'image' ? 'png' : kind === 'audio' ? 'm4a' : 'mp4'}`);
     try { await fs.access(playbackPath); } catch {
       onStage('再生用の軽量ファイルを作成しています');
       const temp = playbackPath.replace(/(\.[^.]+)$/, '.tmp$1');
       const args = ['-y', '-i', file];
-      if (kind === 'video') args.push('-vf', 'scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p');
+      if (kind === 'video') args.push('-vf', "scale=w='min(1280,iw)':h='min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2", '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p');
       if (kind === 'image') args.push('-frames:v', '1', temp);
       else args.push('-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', temp);
       try { await run(ffmpeg, args, { signal }); signal?.throwIfAborted(); await fs.rename(temp, playbackPath); } finally { await fs.rm(temp, { force: true }).catch(() => {}); }

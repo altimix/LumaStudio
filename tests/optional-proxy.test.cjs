@@ -18,6 +18,20 @@ test('cancelling proxy generation removes temporary output and leaves original r
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-proxy-'));try{
  const file=path.join(dir,'原本.mp4'),cache=path.join(dir,'cache');await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','color=blue:size=640x360:rate=30:duration=1','-c:v','libx264',file]);
  const controller=new AbortController();await assert.rejects(inspectMedia(file,cache,{previewProxy:true,signal:controller.signal,onStage:stage=>{if(stage.includes('軽量'))controller.abort();}}));
- assert.equal((await fs.readdir(cache)).some(name=>name.includes('.tmp')||name.endsWith('-proxy.mp4')),false);assert.equal((await inspectMedia(file,cache)).path,file);
+ assert.equal((await fs.readdir(cache)).some(name=>name.includes('.tmp')||name.endsWith('.mp4')),false);assert.equal((await inspectMedia(file,cache)).path,file);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test('optional proxies never upscale small landscape or portrait sources and replace legacy caches',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-proxy-size-'));try{
+  for(const [width,height] of [[640,360],[360,640]]){
+   const file=path.join(dir,`${width}x${height}.mp4`),cache=path.join(dir,`${width}-cache`);
+   await run(ffmpeg,['-y','-v','error','-f','lavfi','-i',`color=blue:size=${width}x${height}:rate=5:duration=0.4`,'-c:v','libx264',file]);
+   const original=await inspectMedia(file,cache);
+   const legacy=path.join(cache,`${original.id}-proxy.mp4`);await fs.writeFile(legacy,'legacy oversized cached proxy');
+   const proxy=await inspectMedia(file,cache,{previewProxy:true});const video=(await probe(proxy.playbackPath)).streams.find(s=>s.codec_type==='video');
+   assert.equal(video.width,width);assert.equal(video.height,height);assert.notEqual(proxy.playbackPath,legacy);
+   assert.equal(proxy.width,width);assert.equal(proxy.height,height);assert.equal(proxy.path,file);
+  }
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
