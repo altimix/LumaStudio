@@ -1,108 +1,24 @@
-import { volumeAt } from '../../shared/volume-automation.mjs';
-import { sameVolumeCurve, setEffectiveVolume } from '../volume-editing';
 import AudioVolumeAutomation from './AudioVolumeAutomation';
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { PanelRightClose, SlidersHorizontal, RotateCcw, ChevronDown, Move, Scan, Palette, Pipette, Volume2, Film, Type, Info, Lock } from 'lucide-react';
 import { useEditor } from '../store';
-import { normalizeClip, timecode } from '../model';
-import { IconButton } from './UI';
+import { timecode } from '../model';
+import { navigatePanelTabs } from './UI';
 import type { BezierVideoMask, ChromaKey, Clip, VideoMask } from '../types';
 import VisualKeyframes from './VisualKeyframes';
-import { patchVisualClip, visualClipAt, hasVisualKeys } from '../../shared/visual-keyframes.mjs';
+import { visualClipAt, hasVisualKeys } from '../../shared/visual-keyframes.mjs';
 import { localVisualTime } from '../visual-editing';
 import AudioEnhancement from './AudioEnhancement';
 import TextEffects from './TextEffects';
 import GraphicEffects from './GraphicEffects';
-import { linkedIds, clipsLocked } from '../../shared/clip-links.mjs';
 import { MAX_MEDIA_SECONDS } from '../../shared/time.mjs';
 import { clampCropEdge, DEFAULT_BEZIER_MASK, DEFAULT_VIDEO_MASK, EMPTY_CROP, MAX_BEZIER_MASK_POINTS } from '../../shared/video-mask.mjs';
 import { DEFAULT_CHROMA_KEY } from '../../shared/chroma-key.mjs';
-import ScrubbableNumberInput from './ScrubbableNumberInput';
-import PropertyNumberField from './PropertyNumberField';
-import TextColorField from './TextColorField';
+import ColorField from './ColorField';
 import './mask-effects.css';
 import './chroma-key.css';
 
-type EditorState = ReturnType<typeof useEditor.getState>;
-function restoreGesture(before: EditorState) {
-  useEditor.setState({ project:before.project, history:before.history, future:before.future, historyPlayheads:before.historyPlayheads, futurePlayheads:before.futurePlayheads, historyLabels:before.historyLabels, futureLabels:before.futureLabels, currentAction:before.currentAction, dirty:before.dirty, activeVolumePoint:before.activeVolumePoint, zoom:before.zoom });
-}
-
-function NumericField({ clip, property, label, min, max, step = 1, factor = 1, offset = 0, suffix = '', slider = true }: { clip: Clip; property: keyof Clip; label: string; min: number; max: number; step?: number; factor?: number; offset?: number; suffix?: string; slider?: boolean }) {
-  const playhead=useEditor(s=>s.playhead);
-  const active=useEditor(s=>property==='volume'?s.activeVolumePoint:null);
-  const local=active?.clipId===clip.id?active.time:Math.max(0,Math.min(clip.duration,playhead-clip.start));
-  if(property==='volume'&&(clip.volumeKeyframes?.length||active?.clipId===clip.id))max=400;
-  const displayValue=(current:Clip)=>Number(visualClipAt(current,local)[property])*(property==='volume'?volumeAt(current.volumeKeyframes||[],local):1)*factor+offset;
-  const value = displayValue(useEditor.getState().project.clips.find(c=>c.id===clip.id)||clip);
-  const dragging=useRef(false),changed=useRef(false),dragStart=useRef<{state:EditorState;clip:Clip;time:number;selected:boolean;owner:object}|null>(null);
-  const finishDrag=(cancel=false)=>{
-    const start=dragStart.current;if(!start)return;dragStart.current=null;dragging.current=false;
-    const current=useEditor.getState(),now=current.project.clips.find(c=>c.id===start.clip.id);
-    if(current.gestureOwner!==start.owner)return;
-    const returned=now&&(property==='volume'?sameVolumeCurve(start.clip,now):JSON.stringify(start.clip)===JSON.stringify(now));
-    if(changed.current&&(cancel||returned))restoreGesture(start.state);
-    current.endGesture(start.owner);changed.current=false;
-  };
-  useEffect(()=>{
-    const cancel=()=>finishDrag(true),escape=(e:KeyboardEvent)=>{if(e.key==='Escape'&&dragStart.current){e.preventDefault();cancel();}};
-    const visibility=()=>{if(document.hidden)cancel();};
-    window.addEventListener('blur',cancel);window.addEventListener('keydown',escape);document.addEventListener('visibilitychange',visibility);
-    return()=>{cancel();window.removeEventListener('blur',cancel);window.removeEventListener('keydown',escape);document.removeEventListener('visibilitychange',visibility);};
-  },[clip.id,property]);
-  const beginDrag=()=>{
-    const state=useEditor.getState(),current=state.project.clips.find(c=>c.id===clip.id);
-    if(!current||state.project.tracks.find(t=>t.id===current.trackId)?.locked||state.gestureActive)return false;
-    if(['start','in','duration','speed'].includes(property)&&clipsLocked(state.project,linkedIds(state.project,[clip.id]))){state.notify('リンク相手を含むトラックのロックを解除してください。');return false;}
-    state.stop();const owner={},session={state,clip:current,time:property==='volume'?local:localVisualTime(current,state.playhead,state.project.fps),selected:state.activeVolumePoint?.clipId===current.id,owner};dragStart.current=session;
-    if(!state.beginGesture(owner,()=>finishDrag(true))){dragStart.current=null;return false;}dragging.current=true;changed.current=false;return true;
-  };
-  const apply = (newValue: number) => {
-    if (!Number.isFinite(newValue)) return; const s = useEditor.getState(); const current = s.project.clips.find(c => c.id === clip.id); const v = (Math.min(max, Math.max(min, newValue)) - offset) / factor;
-    if (!current || s.project.tracks.find(t => t.id === current.trackId)?.locked) return;
-    if (['start','in','duration','speed'].includes(property)&&clipsLocked(s.project,linkedIds(s.project,[clip.id]))){s.notify('リンク相手を含むトラックのロックを解除してください。');return;}
-    const start=dragStart.current;
-    if(s.gestureActive&&s.gestureOwner!==start?.owner)return;
-    let patch:Partial<Clip>;try{patch=property==='volume'?setEffectiveVolume(start?.clip||current,start?.time??local,v,s.project.fps,start?.selected??(s.activeVolumePoint?.clipId===current.id)):{[property]:v};}catch(error){s.notify((error as Error).message);return;}
-    let candidate:Clip;try{candidate=patchVisualClip(start?.clip||current,patch,start?.time??local);}catch(error){s.notify((error as Error).message);return;}
-    if(JSON.stringify(current)===JSON.stringify(candidate))return;
-    if (dragging.current) {
-      if (!changed.current) { s.checkpoint(`${label}を変更`); changed.current = true; }
-      const now=useEditor.getState(),baseline=start?.state.project||now.project,clips=baseline.clips.map(c=>c.id===clip.id?normalizeClip(candidate,baseline):c);
-      now.transient({...baseline,clips},baseline);
-    } else s.updateClip(clip.id, patch);
-  };
-  return <PropertyNumberField inputId={`prop-${property}`} label={label} suffix={suffix}
-    input={<ScrubbableNumberInput id={`prop-${property}`} value={value} min={min} max={max} step={step} onCommit={apply} onScrubStart={beginDrag} onScrubChange={apply} onScrubEnd={()=>{finishDrag();const current=useEditor.getState().project.clips.find(c=>c.id===clip.id);return current?displayValue(current):value;}} onScrubCancel={()=>finishDrag(true)}/>}
-    slider={slider ? <input className="property-slider" type="range" aria-label={`${label}スライダー`} min={min} max={max} step={step} value={value} style={{ '--fill': `${(value - min) / (max - min) * 100}%` } as React.CSSProperties} onPointerDown={e=>{if(e.button===0)beginDrag();}} onPointerUp={()=>finishDrag()} onPointerCancel={()=>finishDrag(true)} onLostPointerCapture={()=>finishDrag(true)} onChange={e=>apply(Number(e.target.value))}/> : null}/>;
-}
-function EffectField({ clip, label, value, min, max, step = 1, suffix = '', patch }: { clip: Clip; label: string; value: number; min: number; max: number; step?: number; suffix?: string; patch: (clip: Clip, value: number) => Partial<Clip> }) {
-  const dragging=useRef(false),changed=useRef(false);
-  const dragStart=useRef<{state:ReturnType<typeof useEditor.getState>;owner:object}|null>(null),inputId=`effect-${clip.id}-${label.replace(/\s/g,'-')}`;
-  const finish=(cancel=false)=>{
-    const start=dragStart.current;if(!start)return;dragStart.current=null;dragging.current=false;
-    const current=useEditor.getState();if(current.gestureOwner!==start.owner)return;
-    const before=start.state,oldClip=before.project.clips.find(c=>c.id===clip.id),nowClip=current.project.clips.find(c=>c.id===clip.id);
-    if(changed.current&&(cancel||(oldClip&&nowClip&&JSON.stringify(oldClip)===JSON.stringify(nowClip))))restoreGesture(before);
-    current.endGesture(start.owner);changed.current=false;
-  };
-  useEffect(()=>{const cancel=()=>finish(true),escape=(e:KeyboardEvent)=>{if(e.key==='Escape'&&dragStart.current){e.preventDefault();cancel();}},visibility=()=>{if(document.hidden)cancel();};window.addEventListener('blur',cancel);window.addEventListener('keydown',escape);document.addEventListener('visibilitychange',visibility);return()=>{cancel();window.removeEventListener('blur',cancel);window.removeEventListener('keydown',escape);document.removeEventListener('visibilitychange',visibility);};},[clip.id]);
-  const begin=()=>{const state=useEditor.getState(),current=state.project.clips.find(c=>c.id===clip.id),owner={};if(!current||state.project.tracks.find(t=>t.id===current.trackId)?.locked||state.gestureActive)return false;dragStart.current={state,owner};if(!state.beginGesture(owner,()=>finish(true))){dragStart.current=null;return false;}dragging.current=true;changed.current=false;return true;};
-  const apply=(input:number)=>{
-    if(!Number.isFinite(input))return;
-    const next=Math.min(max,Math.max(min,input)),state=useEditor.getState(),current=state.project.clips.find(c=>c.id===clip.id);
-    if(!current||state.project.tracks.find(t=>t.id===current.trackId)?.locked)return;
-    const start=dragStart.current;if(state.gestureActive&&state.gestureOwner!==start?.owner)return;
-    const time=localVisualTime(current,start?.state.playhead??state.playhead,state.project.fps),values=patch(visualClipAt(current,time),next);
-    let candidate:Clip;try{candidate=patchVisualClip(current,values,time);}catch(error){state.notify((error as Error).message);return;}
-    if(JSON.stringify(candidate)===JSON.stringify(current))return;
-    if(dragging.current){if(!changed.current){state.checkpoint(`${label}を変更`);changed.current=true;}const now=useEditor.getState();now.transient({...now.project,clips:now.project.clips.map(c=>c.id===current.id?normalizeClip(candidate,now.project):c)},start?.state.project);}
-    else state.updateClip(current.id,values);
-  };
-  return <PropertyNumberField inputId={inputId} label={label} suffix={suffix}
-    input={<ScrubbableNumberInput id={inputId} value={value} min={min} max={max} step={step} onCommit={apply} onScrubStart={begin} onScrubChange={apply} onScrubEnd={()=>{finish();return value;}} onScrubCancel={()=>finish(true)}/>}
-    slider={<input className="property-slider" type="range" aria-label={`${label}スライダー`} min={min} max={max} step={step} value={value} style={{'--fill':`${max>min?(value-min)/(max-min)*100:100}%`} as React.CSSProperties} onPointerDown={e=>{if(e.button===0)begin();}} onPointerUp={()=>finish()} onPointerCancel={()=>finish(true)} onLostPointerCapture={()=>finish(true)} onChange={e=>apply(Number(e.target.value))}/>}/>;
-}
+import { NumericField, EffectField } from './ClipPropertyFields';
 function CropMaskEffects({clip}:{clip:Clip}){
   const mode=useEditor(s=>s.mediaEditMode),crop=clip.crop||EMPTY_CROP,mask=clip.videoMask;
   const cropPatch=(key:keyof typeof EMPTY_CROP)=>(current:Clip,value:number)=>({crop:{...(current.crop||EMPTY_CROP),[key]:clampCropEdge(current.crop||EMPTY_CROP,key,value/100)}});
@@ -134,10 +50,10 @@ function CropMaskEffects({clip}:{clip:Clip}){
   return <>
     <Section title="クロップ" icon={Scan} open={!!clip.crop || mode==='crop'} onReset={()=>{const state=useEditor.getState();state.updateClip(clip.id,{crop:undefined});if(state.mediaEditMode==='crop')state.setMediaEditMode('transform');}}>
       <div className="mask-edit-buttons"><button className={'secondary-button '+(mode==='crop'?'active':'')} onClick={()=>useEditor.getState().setMediaEditMode(mode==='crop'?'transform':'crop')}>モニターでクロップ</button></div>
-      <EffectField clip={clip} label="上" value={crop.top*100} min={0} max={(0.99-crop.bottom)*100} step={.1} suffix="%" patch={cropPatch('top')}/>
-      <EffectField clip={clip} label="右" value={crop.right*100} min={0} max={(0.99-crop.left)*100} step={.1} suffix="%" patch={cropPatch('right')}/>
-      <EffectField clip={clip} label="下" value={crop.bottom*100} min={0} max={(0.99-crop.top)*100} step={.1} suffix="%" patch={cropPatch('bottom')}/>
-      <EffectField clip={clip} label="左" value={crop.left*100} min={0} max={(0.99-crop.right)*100} step={.1} suffix="%" patch={cropPatch('left')}/>
+      <EffectField clip={clip} label="上" value={crop.top*100} min={0} max={(0.99-crop.bottom)*100} step={.1} suffix="%" channel="crop.top" patch={cropPatch('top')}/>
+      <EffectField clip={clip} label="右" value={crop.right*100} min={0} max={(0.99-crop.left)*100} step={.1} suffix="%" channel="crop.right" patch={cropPatch('right')}/>
+      <EffectField clip={clip} label="下" value={crop.bottom*100} min={0} max={(0.99-crop.top)*100} step={.1} suffix="%" channel="crop.bottom" patch={cropPatch('bottom')}/>
+      <EffectField clip={clip} label="左" value={crop.left*100} min={0} max={(0.99-crop.right)*100} step={.1} suffix="%" channel="crop.left" patch={cropPatch('left')}/>
     </Section>
     <Section title="マスク" icon={Scan} open={!!mask} onReset={()=>{const state=useEditor.getState();state.updateClip(clip.id,{videoMask:undefined});if(state.mediaEditMode==='mask')state.setMediaEditMode('transform');}}>
       <div className="property-label"><label htmlFor="video-mask-type">形</label><select id="video-mask-type" value={mask?.type||'none'} onChange={e=>changeMaskType(e.target.value)}><option value="none">なし</option><option value="rectangle">長方形</option><option value="ellipse">楕円</option><option value="bezier">ベジェペン</option></select></div>
@@ -156,10 +72,10 @@ function CropMaskEffects({clip}:{clip:Clip}){
             <button type="button" className="secondary-button" aria-label={`点 ${index+1}を削除`} onClick={()=>updateBezier(current=>{const points=current.points.filter((_,pointIndex)=>pointIndex!==index);return {...current,points,closed:current.closed&&points.length>=3};})}>削除</button>
           </div>)}
         </div>:<>
-          <EffectField clip={clip} label="位置 X" value={mask.x*100} min={0} max={100} step={.1} suffix="%" patch={basicMaskPatch('x')}/><EffectField clip={clip} label="位置 Y" value={mask.y*100} min={0} max={100} step={.1} suffix="%" patch={basicMaskPatch('y')}/>
-          <EffectField clip={clip} label="幅" value={mask.width*100} min={1} max={100} step={.1} suffix="%" patch={basicMaskPatch('width')}/><EffectField clip={clip} label="高さ" value={mask.height*100} min={1} max={100} step={.1} suffix="%" patch={basicMaskPatch('height')}/>
+          <EffectField clip={clip} label="位置 X" value={mask.x*100} min={0} max={100} step={.1} suffix="%" channel="videoMask.x" patch={basicMaskPatch('x')}/><EffectField clip={clip} label="位置 Y" value={mask.y*100} min={0} max={100} step={.1} suffix="%" channel="videoMask.y" patch={basicMaskPatch('y')}/>
+          <EffectField clip={clip} label="幅" value={mask.width*100} min={1} max={100} step={.1} suffix="%" channel="videoMask.width" patch={basicMaskPatch('width')}/><EffectField clip={clip} label="高さ" value={mask.height*100} min={1} max={100} step={.1} suffix="%" channel="videoMask.height" patch={basicMaskPatch('height')}/>
         </>}
-        <EffectField clip={clip} label="境界のぼかし" value={mask.feather*100} min={0} max={50} step={.1} suffix="%" patch={commonMaskPatch('feather')}/>
+        <EffectField clip={clip} label="境界のぼかし" value={mask.feather*100} min={0} max={50} step={.1} suffix="%" channel="videoMask.feather" patch={commonMaskPatch('feather')}/>
         <label className="mask-checkbox"><input type="checkbox" checked={mask.inverted} onChange={e=>useEditor.getState().updateClip(clip.id,{videoMask:{...mask,inverted:e.target.checked}})}/>内側と外側を反転</label>
       </>:<p className="field-help">長方形、楕円、ベジェペンを選ぶと、外側を透明にできます。</p>}
     </Section>
@@ -172,13 +88,13 @@ function ChromaKeyEffects({clip}:{clip:Clip}){
   const reset=()=>{const state=useEditor.getState();state.updateClip(clip.id,{chromaKey:undefined});if(state.mediaEditMode==='chroma')state.setMediaEditMode('transform');};
   return <Section title="クロマキー" icon={Pipette} onReset={key?reset:undefined}>
     {!key?<><p className="field-help">背景色を透明にして、下の映像や画像と合成します。</p><button type="button" className="secondary-button chroma-enable" onClick={()=>useEditor.getState().updateClip(clip.id,{chromaKey:{...DEFAULT_CHROMA_KEY}})}>クロマキーを有効にする</button></>:<>
-      <div className="property-label"><label htmlFor={`chroma-color-${clip.id}`}>背景色</label><div className="color-field chroma-color"><span>{key.color.toUpperCase()}</span><input id={`chroma-color-${clip.id}`} type="color" value={key.color} onChange={event=>update({color:event.target.value})}/></div></div>
+      <ColorField id={`chroma-color-${clip.id}`} label="背景色" value={key.color} onChange={color=>update({color})}/>
       <button type="button" aria-pressed={mode==='chroma'} className={'secondary-button chroma-eyedropper '+(mode==='chroma'?'active':'')} onClick={()=>{const state=useEditor.getState();state.stop();state.setMediaEditMode(state.mediaEditMode==='chroma'?'transform':'chroma');}}><Pipette size={13}/>{mode==='chroma'?'スポイトを終了':'モニターから背景色を採る'}</button>
       <p className="field-help">{mode==='chroma'?'プログラムモニターの背景をクリックしてください。':'キー処理前の素材を5×5画素で平均して採色します。'}</p>
-      <EffectField clip={clip} label="色の許容範囲" value={key.tolerance*100} min={0} max={50} step={.1} suffix="%" patch={change('tolerance')}/>
-      <EffectField clip={clip} label="境界のなめらかさ" value={key.softness*100} min={0} max={50} step={.1} suffix="%" patch={change('softness')}/>
-      <EffectField clip={clip} label="緑の色かぶり除去" value={key.greenSpill*100} min={0} max={100} step={1} suffix="%" patch={change('greenSpill')}/>
-      <EffectField clip={clip} label="青の色かぶり除去" value={key.blueSpill*100} min={0} max={100} step={1} suffix="%" patch={change('blueSpill')}/>
+      <EffectField clip={clip} label="色の許容範囲" value={key.tolerance*100} min={0} max={50} step={.1} suffix="%" channel="chromaKey.tolerance" patch={change('tolerance')}/>
+      <EffectField clip={clip} label="境界のなめらかさ" value={key.softness*100} min={0} max={50} step={.1} suffix="%" channel="chromaKey.softness" patch={change('softness')}/>
+      <EffectField clip={clip} label="緑の色かぶり除去" value={key.greenSpill*100} min={0} max={100} step={1} suffix="%" channel="chromaKey.greenSpill" patch={change('greenSpill')}/>
+      <EffectField clip={clip} label="青の色かぶり除去" value={key.blueSpill*100} min={0} max={100} step={1} suffix="%" channel="chromaKey.blueSpill" patch={change('blueSpill')}/>
       <label className="mask-checkbox"><input type="checkbox" checked={key.matte} onChange={event=>update({matte:event.target.checked})}/>キーマットを表示（プレビューのみ）</label>
     </>}
   </Section>;
@@ -201,7 +117,7 @@ export default function Inspector({ onCollapse, onShowEffects }: { onCollapse: (
   };
   const patch = (values: Partial<Clip>) => { if (clip) useEditor.getState().updateClip(clip.id, values); };
   return <aside className="inspector-panel panel"><div className="panel-heading"><div className="panel-title"><SlidersHorizontal size={15}/><span>プロパティ</span></div><div className="inspector-heading-actions"><span className="inspector-count">{selected.length ? `${selected.length} 選択` : '選択なし'}</span><button className="icon-button panel-collapse" aria-label="プロパティパネルを折りたたむ" title="プロパティパネルを折りたたむ" aria-controls="workspace-inspector" aria-expanded={true} onClick={onCollapse}><PanelRightClose size={16}/></button></div></div>
-    {clip ? <><div className="inspector-clip"><span className={`inspector-clip-icon ${clip.kind}`}>{clip.kind === 'title' ? <Type size={18}/> : clip.kind === 'audio' ? <Volume2 size={18}/> : <Film size={18}/>}</span><div><input aria-label="クリップ名" value={clip.name} disabled={track?.locked} onFocus={() => { textEdit.current = null; }} onBlur={() => { textEdit.current = null; }} onChange={e => editText('name', e.target.value)}/><span>{clip.graphic ? '図形レイヤー' : clip.kind === 'title' ? 'テキストレイヤー' : asset?.codec?.toUpperCase() || 'MEDIA'} <span>·</span> {timecode(clip.duration, p.fps)}</span></div>{track?.locked ? <Lock size={15}/> : null}</div><div className="inspector-tabs">{[{ id: 'video', label: clip.graphic ? '図形' : clip.kind === 'title' ? 'テキスト' : 'ビデオ' }, { id: 'color', label: 'カラー' }, { id: 'audio', label: 'オーディオ' }].map(t => <button className={tab === t.id ? 'selected' : ''} key={t.id} onClick={() => useEditor.getState().setInspectorTab(t.id as typeof tab)}>{t.label}</button>)}</div>
+    {clip ? <><div className="inspector-clip"><span className={`inspector-clip-icon ${clip.kind}`}>{clip.kind === 'title' ? <Type size={18}/> : clip.kind === 'audio' ? <Volume2 size={18}/> : <Film size={18}/>}</span><div><input aria-label="クリップ名" value={clip.name} disabled={track?.locked} onFocus={() => { textEdit.current = null; }} onBlur={() => { textEdit.current = null; }} onChange={e => editText('name', e.target.value)}/><span>{clip.graphic ? '図形レイヤー' : clip.kind === 'title' ? 'テキストレイヤー' : asset?.codec?.toUpperCase() || 'MEDIA'} <span>·</span> {timecode(clip.duration, p.fps)}</span></div>{track?.locked ? <Lock size={15}/> : null}</div><div className="inspector-tabs" role="group" aria-label="プロパティの表示項目" onKeyDown={navigatePanelTabs}>{[{ id: 'video', label: clip.graphic ? '図形' : clip.kind === 'title' ? 'テキスト' : 'ビデオ' }, { id: 'color', label: 'カラー' }, { id: 'audio', label: 'オーディオ' }].map(t => <button className={tab === t.id ? 'selected' : ''} key={t.id} aria-pressed={tab===t.id} tabIndex={tab===t.id?0:-1} onClick={() => useEditor.getState().setInspectorTab(t.id as typeof tab)}>{t.label}</button>)}</div>
     <div className="inspector-content"><fieldset disabled={track?.locked}>
       {sourceClip&&clip.kind!=='audio'&&tab==='color'?<Section title="キーフレーム" icon={Scan} open={hasVisualKeys(sourceClip)}><VisualKeyframes key={clip.id} clip={sourceClip}/></Section>:null}
       {tab === 'video' ? <>
@@ -210,7 +126,7 @@ export default function Inspector({ onCollapse, onShowEffects }: { onCollapse: (
         {clip.graphic ? <Section title="図形" icon={Move}><GraphicEffects clip={clip}/></Section> : null}
         {clip.kind === 'title' && !clip.graphic ? <Section title="テキスト" icon={Type}>
           <textarea aria-label="テロップのテキスト" rows={3} maxLength={4000} value={clip.text} onFocus={() => { textEdit.current = null; }} onBlur={() => { textEdit.current = null; }} onChange={e => editText('text', e.target.value)}/>
-          <TextColorField id="text-color" label="文字色" value={clip.color} onChange={color => patch({ color })}/>
+          <ColorField id="text-color" label="文字色" value={clip.color} onChange={color => patch({ color })}/>
           <div className="property-label"><label htmlFor="text-style">スタイル</label><select id="text-style" value={clip.textStyle} onChange={e => patch({ textStyle: e.target.value as Clip['textStyle'] })}><option value="hero">シネマタイトル</option><option value="minimal">ミニマル</option><option value="subtitle">字幕</option></select></div>
           <NumericField clip={clip} property="fontSize" label="文字サイズ" min={16} max={240} suffix="px"/>
           <TextEffects key={clip.id} clip={clip}/>

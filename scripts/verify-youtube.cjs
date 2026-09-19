@@ -206,7 +206,7 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
     assert.ok(Math.abs((await backgroundAlpha())-64)<=1,'new subtitle background alpha is 25 percent');
     const subtitleId=saved.clips.find(c=>c.subtitle&&c.start<=1&&c.start+c.duration>1).id;
     await page.locator(`[data-clip-id="${subtitleId}"]`).click();
-    const background=page.getByRole('spinbutton',{name:'字幕の背景の濃さ（%）',exact:true});
+    const background=page.getByRole('spinbutton',{name:'字幕の背景の濃さ',exact:true});
     assert.equal(await background.inputValue(),'25');await background.fill('50');await background.press('Enter');
     await page.waitForFunction(()=>window.__ytCanvases.some(c=>{if(!c.width)return false;const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let count=0;for(let i=3;i<d.length;i+=4)if(Math.abs(d[i]-128)<=1)count++;return count>1000;}));
     assert.ok(Math.abs((await backgroundAlpha())-128)<=1,'inspector change immediately invalidates subtitle preview');

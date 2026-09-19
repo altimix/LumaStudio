@@ -47,8 +47,8 @@ async function verify() {
     await page.getByText('影・縁取りを調整',{exact:true}).click();assert.equal(await page.getByLabel('文字に影を付ける',{exact:true}).isChecked(),false);assert.equal(await page.getByLabel('文字に縁取りを付ける',{exact:true}).isChecked(),true);checks.push('new minimal text defaults to an outline without a shadow');await page.getByLabel('文字に影を付ける',{exact:true}).uncheck();const thin=await pixels(await writeCanvas('text-500.png'));await page.getByLabel('文字の太さ',{exact:true}).selectOption('900');
     await page.waitForFunction(()=>document.querySelector('#title-weight').value==='900'&&!document.querySelector('#title-weight').disabled);
     const thick=await pixels(await writeCanvas('text-900.png'));const ink=p=>{let n=0;for(let i=0;i<p.length;i+=3)if(p[i]>150&&p[i+1]>150&&p[i+2]>150)n++;return n;};assert.ok(ink(thick)>ink(thin)*1.15);checks.push('font weight changes the actual rendered Japanese glyphs');
-    await page.getByLabel('文字に影を付ける',{exact:true}).check();await color('影の色','#ff0000');await setNumber('影のぼかし（px）',0);await setNumber('影の距離（px）',18);
-    await page.getByLabel('文字に縁取りを付ける',{exact:true}).check();await color('縁取りの色','#00ff00');await setNumber('縁取りの幅（px）',5);
+    await page.getByLabel('文字に影を付ける',{exact:true}).check();await color('影の色','#ff0000');await setNumber('影のぼかし',0);await setNumber('影の距離',18);
+    await page.getByLabel('文字に縁取りを付ける',{exact:true}).check();await color('縁取りの色','#00ff00');await setNumber('縁取りの幅',5);
     const expected=await pixels(await writeCanvas('text-effects-preview.png'));let green=0,red=0;for(let i=0;i<expected.length;i+=3){if(expected[i+1]>80&&expected[i+1]>expected[i]*1.5)green++;if(expected[i]>80&&expected[i]>expected[i+1]*1.5)red++;}assert.ok(green>30&&red>30);checks.push('shadow and outline colors appear in canvas pixels');
     saved=await save();await open({...saved,name:'非表示フォントの検証',tracks:[...saved.tracks,{...saved.tracks[0],id:'hidden',name:'非表示',hidden:true}],clips:[...saved.clips,{...saved.clips[0],id:'hidden-title',trackId:'hidden',fontFamily:'Aoboshi One',fontWeight:400}]});await select();await page.locator('.title-drag-target').waitFor();assert.equal(await app.evaluate(()=>globalThis.__fontRequests),0);checks.push('hidden tracks do not download unused fonts or block offline export');await page.screenshot({path:path.join(results,'text-editor.png')});const output=path.join(results,'日本語テキスト.mp4');await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},output);
     await page.getByRole('button',{name:'書き出し',exact:true}).click();await page.getByLabel('品質',{exact:true}).selectOption('draft');await page.getByRole('button',{name:'保存先を選んで書き出す',exact:true}).click();await page.getByText('書き出しが完了しました',{exact:true}).waitFor({timeout:120000});
@@ -63,7 +63,12 @@ async function verify() {
     assert.equal(await page.getByRole('spinbutton',{name:'位置 X',exact:true}).inputValue(),'540');assert.equal(await page.getByRole('spinbutton',{name:'位置 Y',exact:true}).inputValue(),'960');await page.screenshot({path:path.join(results,'text-portrait.png')});checks.push('portrait minimal text starts at 540/960');
     if(process.platform==='darwin')await app.evaluate(({BrowserWindow})=>{globalThis.__textFullscreenReady=new Promise(resolve=>BrowserWindow.getAllWindows()[0].once('enter-full-screen',resolve));});
     await page.getByRole('button',{name:'プレビューを全画面表示',exact:true}).click();await page.waitForFunction(()=>!!document.fullscreenElement);
-    if(process.platform==='darwin')await app.evaluate(()=>globalThis.__textFullscreenReady);
+    if(process.platform==='darwin'){
+      await app.evaluate(()=>globalThis.__textFullscreenReady);
+      // macOS can release pointer capture once more while its Space animation
+      // finishes, after enter-full-screen. Begin the drag after that transition.
+      await page.waitForTimeout(800);
+    }
     const full=await page.locator('.canvas-wrap').boundingBox(),fullTarget=await page.locator('.title-drag-target').boundingBox();assert.ok(Math.abs(full.width/full.height-1080/1920)<.002);assert.ok(Math.abs(fullTarget.x+fullTarget.width/2-full.x-full.width/2)<3);
     await page.mouse.move(fullTarget.x+fullTarget.width/2,fullTarget.y+fullTarget.height/2);await page.mouse.down();await page.mouse.move(fullTarget.x+fullTarget.width/2+full.width*.1,fullTarget.y+fullTarget.height/2+full.height*.1,{steps:5});await page.mouse.up();await page.evaluate(()=>document.exitFullscreen());await page.waitForFunction(()=>!document.fullscreenElement);const fullSaved=await save();assert.ok(Math.abs(fullSaved.clips[0].x-10)<.7&&Math.abs(fullSaved.clips[0].y-10)<.7);checks.push('fullscreen portrait target follows the contained canvas and maps pointer movement accurately');
     const slow=require('../electron/font-sources.json').fonts.find(f=>!['Noto Sans JP','Zen Kaku Gothic New','Aoboshi One'].includes(f.family));
