@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld('luma', {
   previewProxy: (asset, enabled) => ipcRenderer.invoke('preview-proxy', asset, enabled),
   cancelImport: () => ipcRenderer.invoke('cancel-import'),
   relink: asset => ipcRenderer.invoke('relink', asset),
+  collectProject: p => ipcRenderer.invoke('collect-project', p),
+  relinkFolder: p => ipcRenderer.invoke('relink-folder', p),
   saveProject: (p, saveAs) => ipcRenderer.invoke('save-project', p, saveAs),
   openProject: () => ipcRenderer.invoke('open-project'),
   autosave: p => ipcRenderer.invoke('autosave', p),
