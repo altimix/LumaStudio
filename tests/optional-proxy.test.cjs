@@ -40,3 +40,17 @@ test('optional proxies never upscale small landscape or portrait sources and rep
   }
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
+
+test('legacy mandatory proxies remain playable when cache replacements cannot be written',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-proxy-legacy-'));try{
+  const file=path.join(dir,'旧形式.mkv'),cache=path.join(dir,'cache');
+  await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','color=blue:size=640x360:rate=5:duration=0.4','-c:v','libx264',file]);
+  const legacy=await inspectMedia(file,cache);assert.equal(legacy.proxy,true);assert.equal(legacy.playbackPath,path.join(cache,`${legacy.id}-proxy.mp4`));
+  const saved=JSON.parse(serializeProject({version:1,id:'legacy',name:'legacy',width:1920,height:1080,fps:30,assets:[legacy],clips:[],tracks:[{id:'v',kind:'video'}],markers:[]}));
+  assert.equal(saved.assets[0].previewProxy,undefined);const filesBefore=(await fs.readdir(cache)).sort();
+  const rename=t.mock.method(fs,'rename',async()=>{throw Error('cache is read-only');});
+  const restored=await hydrateProject(saved,(file,options)=>inspectMedia(file,cache,options),a=>a);
+  assert.equal(restored.assets[0].offline,undefined);assert.equal(restored.assets[0].playbackPath,legacy.playbackPath);assert.equal(restored.assets[0].thumbnailPath,legacy.thumbnailPath);
+  assert.equal(rename.mock.callCount(),0);assert.deepEqual((await fs.readdir(cache)).sort(),filesBefore);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});

@@ -45,7 +45,7 @@ async function inspectMedia(file, cacheDir, { signal, onStage = () => {}, previe
   if (skipCache && !compatible) throw Error('原本の再生に互換プロキシが必要です。');
   const useProxy = !compatible || (kind === 'video' && previewProxy);
   if (useProxy) {
-    playbackPath = path.join(cacheDir, `${id}-proxy${kind === 'video' ? '-v2' : ''}.${kind === 'image' ? 'png' : kind === 'audio' ? 'm4a' : 'mp4'}`);
+    playbackPath = path.join(cacheDir, `${id}-proxy${kind === 'video' && compatible && previewProxy ? '-v2' : ''}.${kind === 'image' ? 'png' : kind === 'audio' ? 'm4a' : 'mp4'}`);
     try { await fs.access(playbackPath); } catch {
       onStage('再生用の軽量ファイルを作成しています');
       const temp = playbackPath.replace(/(\.[^.]+)$/, '.tmp$1');
