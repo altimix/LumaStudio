@@ -20,6 +20,8 @@ async function verify(){
     await page.waitForFunction(()=>globalThis.__defaultCue&&!globalThis.__defaultCue.paused);
     assert.equal(await page.evaluate(()=>globalThis.__defaultCue.volume),.9);
     const save=async()=>{await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));return JSON.parse(await fs.readFile(file,'utf8'));};
+    const setNumber=async(label,value)=>{const field=page.getByRole('spinbutton',{name:label,exact:true});await field.fill(String(value));await field.press('Enter');};
+    const color=async(label,value)=>page.getByLabel(label,{exact:true}).evaluate((input,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));},value);
     const draw=async(label,from,to,cancel=false)=>{await page.getByRole('button',{name:label,exact:true}).click();await page.locator('.draw-layer').click({trial:true});const box=await page.locator('.draw-layer').boundingBox();await page.mouse.move(box.x+box.width*from[0],box.y+box.height*from[1]);await page.mouse.down();await page.mouse.move(box.x+box.width*to[0],box.y+box.height*to[1],{steps:6});if(cancel)await page.keyboard.press('Escape');await page.mouse.up();};
     for(const sound of ['chime','none']){
       await page.getByLabel('図形と同時に追加',{exact:true}).selectOption(sound);
@@ -30,6 +32,20 @@ async function verify(){
       await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===0);
     }
     checks.push('centered drawing completes its own gesture with and without sound and remains undoable');
+    await page.getByRole('button',{name:'四角で囲む',exact:true}).click();
+    assert.equal(await page.getByRole('slider',{name:'追加する図形の不透明度スライダー',exact:true}).isVisible(),false);
+    await page.getByLabel('追加する図形を塗りつぶす',{exact:true}).check();await color('追加する塗りつぶしの色','#00ccff');await setNumber('追加する図形の不透明度',50);
+    assert.equal(await page.locator('.timeline-clip').count(),0);
+    await page.getByRole('button',{name:'選択した図形を中央に追加',exact:true}).click();await page.locator('.timeline-clip.title').waitFor();
+    const filled=await save();assert.equal(filled.clips[0].opacity,.5);assert.equal(filled.clips[0].graphic.fill,true);assert.equal(filled.clips[0].graphic.fillColor,'#00ccff');
+    await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===0);
+    await setNumber('追加する図形の不透明度',25);await page.getByRole('button',{name:'丸で囲む',exact:true}).click();
+    const ghostBox=await page.locator('.draw-layer').boundingBox();await page.mouse.move(ghostBox.x+ghostBox.width*.2,ghostBox.y+ghostBox.height*.2);await page.mouse.down();await page.mouse.move(ghostBox.x+ghostBox.width*.7,ghostBox.y+ghostBox.height*.7,{steps:6});
+    assert.equal(await page.locator('.draw-layer svg g').getAttribute('fill'),'#00ccff');assert.equal(await page.locator('.draw-layer svg g').getAttribute('opacity'),'0.25');await page.mouse.up();
+    await page.locator('.timeline-clip.title').waitFor();const translucent=await save();assert.equal(translucent.clips[0].opacity,.25);assert.equal(translucent.clips[0].graphic.fill,true);
+    await setNumber('不透明度',75);assert.equal((await save()).clips[0].opacity,.75);await page.keyboard.press('Control+z');await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===0);
+    await page.getByLabel('追加する図形を塗りつぶす',{exact:true}).uncheck();await setNumber('追加する図形の不透明度',100);
+    checks.push('fill color and opacity apply before both insertion methods, match the drawing ghost and remain editable after insertion');
     await page.getByLabel('図形と同時に追加',{exact:true}).selectOption('chime');
     await draw('矢印を描く',[.12,.18],[.48,.35]);await page.locator('.timeline-clip.audio').waitFor();
     const defaults=await save();assert.equal(defaults.clips[0].color,'#ff0000');assert.equal(defaults.clips[1].volume,.9);assert.equal(defaults.assets[0].name,'チャイム.wav');
@@ -48,8 +64,9 @@ async function verify(){
     await page.mouse.move(r.x+r.width/2,r.y+r.height/2);await page.mouse.down();await page.mouse.move(r.x+r.width/2+wrap.width*.08,r.y+r.height/2+wrap.height*.05,{steps:6});await page.mouse.up();let moved=await save();assert.ok(moved.clips[0].x>first.x+7);
     const handle=await page.getByRole('button',{name:'図形のサイズを変更',exact:true}).boundingBox();await page.mouse.move(handle.x+5,handle.y+5);await page.mouse.down();await page.mouse.move(handle.x+30,handle.y+20,{steps:5});await page.mouse.up();const resized=await save();assert.ok(resized.clips[0].graphic.width>moved.clips[0].graphic.width);await page.keyboard.press('Control+z');assert.equal((await save()).clips[0].graphic.width,moved.clips[0].graphic.width);
     await draw('四角で囲む',[.55,.1],[.85,.4],true);assert.equal((await save()).clips.length,2);checks.push('graphic movement and resize are editable and undoable; Escape cancels a new drawing');
-    await page.getByLabel('図形と同時に追加',{exact:true}).selectOption('none');await draw('四角で囲む',[.55,.12],[.88,.42]);await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip.title').length===2);
-    await page.getByLabel('図形を塗りつぶす',{exact:true}).check();await page.getByLabel('図形を塗りつぶす',{exact:true}).uncheck();
+    await page.getByLabel('図形と同時に追加',{exact:true}).selectOption('none');await page.getByLabel('追加する図形を塗りつぶす',{exact:true}).check();await setNumber('追加する図形の不透明度',60);await draw('四角で囲む',[.55,.12],[.88,.42]);await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip.title').length===2);
+    assert.ok(await page.getByLabel('図形を塗りつぶす',{exact:true}).isChecked());
+    await page.getByLabel('追加する図形を塗りつぶす',{exact:true}).uncheck();await setNumber('追加する図形の不透明度',100);
     await draw('丸で囲む',[.2,.58],[.7,.85]);await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip.title').length===3);saved=await save();assert.deepEqual(saved.clips.filter(c=>c.graphic).map(c=>c.graphic.shape),['arrow','rectangle','ellipse']);
     const drawn=saved.clips.filter(c=>c.graphic);assert.equal(new Set(drawn.map(c=>c.trackId)).size,3,'overlapping drawings occupy distinct tracks');assert.ok(drawn.every(c=>c.start===drawn[0].start&&c.duration===drawn[0].duration),'auto-placement preserves drawing timing');checks.push('overlapping arrow, rectangle and ellipse create separate tracks without changing timing');
     const ellipseTrack=saved.tracks.find(t=>t.id===drawn[2].trackId).name;

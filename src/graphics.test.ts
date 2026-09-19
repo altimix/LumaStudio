@@ -4,8 +4,21 @@ import { emptyProject, makeTrack, applySequenceSettings } from './model';
 import { useEditor } from './store';
 import { graphicFromPoints } from '../shared/graphics.mjs';
 import type { Asset } from './types';
+import { styledDrawing } from './drawing-style';
 const sound:Asset={id:'cue',name:'pop.wav',path:'pop.wav',url:'',thumbnail:'',kind:'audio',duration:.24,width:0,height:0,fps:0,hasAudio:true,waveform:[],size:48000,codec:'pcm_s16le'};
 describe('editable drawing and synchronized attention cues',()=>{
+  it.each(['rectangle','ellipse','arrow'] as const)('applies fill and opacity to the new %s while preserving one Undo/Redo',shape=>{
+    const p=emptyProject();useEditor.getState().load(p);
+    const input=styledDrawing(shape,{x:100,y:100},{x:500,y:400},p,{color:'#123456',fill:true,fillColor:'#abcdef',opacity:.25,duration:3});
+    expect(useEditor.getState().addDrawing(input,sound)).toBe(true);const next=useEditor.getState().project;
+    expect(next.clips[0]).toMatchObject({opacity:.25,color:'#123456',graphic:{shape,fill:shape!=='arrow',fillColor:'#abcdef'}});
+    useEditor.getState().undo();expect(useEditor.getState().project).toBe(p);useEditor.getState().redo();expect(useEditor.getState().project).toBe(next);
+  });
+  it('preserves transparent drawings and rejects invalid opacity without adding sound or assets',()=>{
+    const p=emptyProject(),input=styledDrawing('rectangle',{x:0,y:0},{x:100,y:100},p,{color:'#ff0000',fill:true,fillColor:'#ffffff',opacity:0,duration:3});
+    useEditor.getState().load(p);expect(useEditor.getState().addDrawing(input)).toBe(true);expect(useEditor.getState().project.clips[0].opacity).toBe(0);
+    for(const opacity of [-.1,1.1,NaN,Infinity]){useEditor.getState().load(p);expect(useEditor.getState().addDrawing({...input,opacity},sound)).toBe(false);expect(useEditor.getState().project).toBe(p);expect(useEditor.getState().history).toHaveLength(0);}
+  });
   it.each(['arrow','rectangle','ellipse'] as const)('adds %s and its sound in one undoable transaction',shape=>{
     const p=emptyProject();useEditor.getState().load(p);useEditor.getState().seek(2);
     const input={...graphicFromPoints(shape,{x:100,y:100},{x:800,y:600},1920,1080),color:'#ffcc33',duration:3};

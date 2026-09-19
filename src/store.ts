@@ -32,8 +32,8 @@ type EditorState = {
   historyPlayheads:(number|null)[]; futurePlayheads:(number|null)[]; clipMenuOpen:boolean;
   addTransition(options:TransitionOptions,fromId?:string,toId?:string):void; removeTransition(id:string,kind?:'video'|'audio'):void;
   activeTransitionId:string|null; effectCategory:'transitions'|'looks'|'audio'; resizeTransition(id:string,duration:number):boolean;
-  drawTool: Graphic['shape'] | null; drawSettings: { color:string; duration:number; sound:'none'|SoundId; volume:number };
-  addDrawing(input:Pick<Clip,'graphic'|'x'|'y'|'rotation'|'color'|'duration'>&{start?:number},sound?:Asset,volume?:number):boolean;
+  drawTool: Graphic['shape'] | null; drawSettings: { color:string; fill:boolean; fillColor:string; opacity:number; duration:number; sound:'none'|SoundId; volume:number };
+  addDrawing(input:Pick<Clip,'graphic'|'x'|'y'|'rotation'|'color'|'duration'>&{start?:number;opacity?:number},sound?:Asset,volume?:number):boolean;
   projectGeneration: number; project: Project; selected: string[]; playhead: number; seekRevision: number; playing: boolean; shuttleRate: number; zoom: number; snapping: boolean; tool: 'select' | 'razor' | 'rate'; mediaEditMode: 'transform' | 'crop' | 'mask' | 'chroma';
   panel: Panel; inspectorTab: 'video' | 'color' | 'audio'; history: Project[]; future: Project[]; historyLabels: string[]; futureLabels: string[]; currentAction: string; dirty: boolean; savedPath: string | null; clipboard: Clip[];
   toast: string; sourceId: string | null; ready: boolean; autosavedAt: string; previewQuality: number; safeGuides: boolean; gestureActive: boolean; gestureOwner:object|null; gestureCancel:(()=>void)|null; beginGesture(owner:object,cancel:()=>void):boolean; endGesture(owner:object):void; trackMenuOpen: boolean;
@@ -95,7 +95,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if(s.activeTransitionId===id)set({activeTransitionId:null});
     s.notify(kind?`${kind==='video'?'映像':'音声'}の効果を解除しました。`:'つなぎ目の効果を削除しました。素材の配置や動画の長さは変わりません。');
   },
-  drawTool:null,drawSettings:{color:'#ff0000',duration:3,sound:'chime',volume:.9},
+  drawTool:null,drawSettings:{color:'#ff0000',fill:false,fillColor:'#ffcc33',opacity:1,duration:3,sound:'chime',volume:.9},
   addDrawing:(input,sound,volume=.9)=>{
     const s=get(),p=s.project,track=p.tracks.find(t=>!t.locked&&!t.hidden);
     if(!track){s.notify('図形を置くトラックを表示し、ロックを解除してください。');return false;}
@@ -103,7 +103,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     let tracks=p.tracks,soundTrack=tracks.find(t=>t.kind==='audio'&&!t.locked);
     if(sound&&!soundTrack){if(tracks.length<24){soundTrack=makeTrack('audio');tracks=[...tracks,soundTrack];}else soundTrack=tracks.find(t=>t.kind==='audio'&&!t.locked);if(!soundTrack){s.notify('効果音を追加する音声トラックのロックを解除してください。');return false;}}
     const clip=normalizeClip({...makeClip(track.id,s.playhead),...input,text:'',name:SHAPE_NAMES[input.graphic.shape],textStyle:'minimal',textShadow:false},p);
-    try{validateGraphic(clip);}catch(error){s.notify((error as Error).message);return false;}
+    try{validateGraphic(clip);if(!Number.isFinite(clip.opacity)||clip.opacity<0||clip.opacity>1)throw new Error('図形の不透明度は0〜100%で指定してください。');}catch(error){s.notify((error as Error).message);return false;}
     const assets=sound&&!p.assets.some(a=>a.id===sound.id)?[...p.assets,sound]:p.assets;
     const audio=sound?normalizeClip({...makeClip(soundTrack!.id,clip.start,sound),volume}, {...p,assets}):undefined;
     if(!s.place({...p,tracks,assets,clips:[...p.clips,clip,...(audio?[audio]:[])]},audio?'図形と効果音を追加':'図形を追加'))return false;
