@@ -4,7 +4,8 @@ import { createPortal } from 'react-dom';
 import { useEditor } from '../store';
 import type { Asset, Clip, Crop } from '../types';
 import { fadeAt } from '../render';
-import { opacityAt } from '../../shared/opacity.mjs';
+import { visualClipAt, patchVisualClip } from '../../shared/visual-keyframes.mjs';
+import { localVisualTime } from '../visual-editing';
 import { mediaBounds, mediaCorner, mediaNormalizedPoint, mediaPoint, mediaSourceKey, moveMedia, resizeMedia, visualOrder, type Corner, type MediaSize, type SourceSize } from '../media-transform';
 import { NO_SNAP, sameSnapGuides, snapMonitorPosition } from '../monitor-snap';
 import MonitorSnapGuides from './MonitorSnapGuides';
@@ -32,9 +33,10 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
     if (!after || after.source !== before.source || after.width !== before.width || after.height !== before.height) cleanup.current?.();
   }, [sizes]);
   const sourceSize = (clip: Clip, asset: Asset): SourceSize => sizes[clip.id]?.source === mediaSourceKey(project, asset) ? sizes[clip.id] : asset;
-  const active = playing ? [] : project.clips.flatMap(clip => {
+  const active = playing ? [] : project.clips.flatMap(raw => {
+    const clip=visualClipAt(raw,time-raw.start);
     const track = tracks.get(clip.trackId), asset = assets.get(clip.assetId || '');
-    return (clip.kind === 'video' || clip.kind === 'image') && track && !track.hidden && asset && !asset.offline && time >= clip.start && time < clip.start + clip.duration && fadeAt(clip, time) * opacityAt(clip.opacityKeyframes, time - clip.start, clip.opacity) > .001 ? [{ clip, asset, locked: track.locked }] : [];
+    return (clip.kind === 'video' || clip.kind === 'image') && track && !track.hidden && asset && !asset.offline && time >= clip.start && time < clip.start + clip.duration && fadeAt(clip, time) * clip.opacity > .001 ? [{ clip, asset, locked: track.locked }] : [];
   });
   const start = (event: ReactPointerEvent<HTMLButtonElement>, renderedClip: Clip, source: SourceSize, corner?: Corner) => {
     if (event.button !== 0 || cleanup.current || useEditor.getState().gestureActive) return;
@@ -43,7 +45,7 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
     // Keep subsequent Delete/playback shortcuts in the monitor's context.
     event.currentTarget.focus({ preventScroll: true });
     const initial = useEditor.getState(), project = initial.project;
-    const clip = project.clips.find(item => item.id === renderedClip.id);
+    const raw = project.clips.find(item => item.id === renderedClip.id),at=raw?localVisualTime(raw,initial.playhead,project.fps):0,clip=raw&&visualClipAt(raw,at);
     const measured = sizes[renderedClip.id];
     if (!clip || !measured || initial.playing || initial.gestureActive) return;
     initial.select([clip.id]);
@@ -70,10 +72,10 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
       if (closed) return;
       const current = useEditor.getState(); detach();
       if (changed && current.gestureOwner === owner && current.project.id === before.project.id) {
-        const item = current.project.clips.find(c => c.id === clip.id), pure = current.project === expected;
+        const sourceItem = current.project.clips.find(c => c.id === clip.id), item=sourceItem&&visualClipAt(sourceItem,at), pure = current.project === expected;
         if (item && item.x === last.x && item.y === last.y && item.scale === last.scale) {
           const onlyDrag = pure && current.history.at(-1) === before.project && current.currentAction === action;
-          useEditor.setState({ project: pure ? before.project : { ...current.project, clips: current.project.clips.map(c => c.id === clip.id ? { ...c, x: clip.x, y: clip.y, scale: clip.scale } : c) }, ...(onlyDrag ? {
+          useEditor.setState({ project: pure ? before.project : { ...current.project, clips: current.project.clips.map(c => c.id === clip.id ? { ...c, x: raw!.x, y: raw!.y, scale: raw!.scale, visualKeyframes:raw!.visualKeyframes, opacityKeyframes:raw!.opacityKeyframes } : c) }, ...(onlyDrag ? {
             history: before.history, future: before.future, historyPlayheads: before.historyPlayheads, futurePlayheads: before.futurePlayheads,
             historyLabels: before.historyLabels, futureLabels: before.futureLabels, currentAction: before.currentAction, dirty: before.dirty,
           } : {}) });
@@ -95,10 +97,11 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
       if (patch.x === last.x && patch.y === last.y && (!('scale' in patch) || patch.scale === last.scale)) return;
       writing = true;
       try {
+        const next=patchVisualClip(raw!,patch,at);
         if (!changed) { before = current; current.checkpoint(action); changed = true; }
-        current.transient({ ...current.project, clips: current.project.clips.map(c => c.id === clip.id ? { ...c, ...patch } : c) });
+        current.transient({ ...current.project, clips: current.project.clips.map(c => c.id === clip.id ? next : c) });
         expected = useEditor.getState().project; last = { ...last, ...patch };
-      } finally { writing = false; }
+      } catch(error){current.notify((error as Error).message);} finally { writing = false; }
     };
     const up = (e: PointerEvent) => { if (e.pointerId === pointer) finish(); };
     const cancelPointer = (e: PointerEvent) => { if (e.pointerId === pointer) cancel(); };
@@ -125,7 +128,7 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
   const startEffect = (event:ReactPointerEvent<HTMLButtonElement>,renderedClip:Clip,source:SourceSize,operation:EffectOperation) => {
     if(event.button!==0||cleanup.current||useEditor.getState().gestureActive)return;
     event.preventDefault();event.stopPropagation();event.currentTarget.focus({preventScroll:true});
-    const initial=useEditor.getState(),clip=initial.project.clips.find(c=>c.id===renderedClip.id),viewport=root.current;
+    const initial=useEditor.getState(),raw=initial.project.clips.find(c=>c.id===renderedClip.id),at=raw?localVisualTime(raw,initial.playhead,initial.project.fps):0,clip=raw&&visualClipAt(raw,at),viewport=root.current;
     if(!clip||!viewport||initial.playing||initial.project.tracks.find(t=>t.id===clip.trackId)?.locked)return;
     if(operation.kind==='mask'&&(!clip.videoMask||clip.videoMask.type==='bezier'))return;
     const owner={},target=event.currentTarget,pointer=event.pointerId,rect=viewport.getBoundingClientRect();
@@ -158,7 +161,7 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
         }
         patch={videoMask:mask};
       }
-      writing=true;try{if(!changed){before=current;current.checkpoint(action);changed=true;}const now=useEditor.getState();now.transient({...now.project,clips:now.project.clips.map(c=>c.id===clip.id?{...c,...patch}:c)});expected=useEditor.getState().project;}finally{writing=false;}
+      writing=true;try{const next=patchVisualClip(raw!,patch,at);if(!changed){before=current;current.checkpoint(action);changed=true;}const now=useEditor.getState();now.transient({...now.project,clips:now.project.clips.map(c=>c.id===clip.id?next:c)});expected=useEditor.getState().project;}catch(error){current.notify((error as Error).message);}finally{writing=false;}
     };
     const up=(e:PointerEvent)=>{if(e.pointerId===pointer)finish();},cancelPointer=(e:PointerEvent)=>{if(e.pointerId===pointer)cancel();},key=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();cancel();}};
     cleanup.current=cancel;window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',cancelPointer);window.addEventListener('keydown',key);window.addEventListener('blur',cancel);target.addEventListener('lostpointercapture',cancelPointer);target.setPointerCapture(pointer);
@@ -167,7 +170,7 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
   const sampleChromaAt=async(event:ReactPointerEvent<HTMLButtonElement>,renderedClip:Clip,source:SourceSize)=>{
     if(event.button!==0||cleanup.current||useEditor.getState().gestureActive)return;
     event.preventDefault();event.stopPropagation();event.currentTarget.focus({preventScroll:true});
-    const state=useEditor.getState(),clip=state.project.clips.find(item=>item.id===renderedClip.id),viewport=root.current;
+    const state=useEditor.getState(),raw=state.project.clips.find(item=>item.id===renderedClip.id),clip=raw&&visualClipAt(raw,localVisualTime(raw,state.playhead,state.project.fps)),viewport=root.current;
     if(!clip?.chromaKey||!viewport||state.playing||state.mediaEditMode!=='chroma'||state.project.tracks.find(track=>track.id===clip.trackId)?.locked)return;
     if(state.playhead<clip.start||state.playhead>=clip.start+clip.duration){state.notify('再生ヘッドを選択素材の上に移動してください。');return;}
     const rect=viewport.getBoundingClientRect();if(!rect.width||!rect.height)return;
@@ -175,12 +178,12 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
     if(point.x<0||point.x>1||point.y<0||point.y>1){state.notify('素材の内側をクリックしてください。');return;}
     try{
       const color=await onSampleChroma(clip.id,point),current=useEditor.getState(),latest=current.project.clips.find(item=>item.id===clip.id);
-      if(!latest?.chromaKey||current.playing||current.mediaEditMode!=='chroma'||current.project.tracks.find(track=>track.id===latest.trackId)?.locked)return;
-      current.updateClip(latest.id,{chromaKey:{...latest.chromaKey,color}});current.notify(`背景色 ${color.toUpperCase()} を取得しました。`);
+      if(!latest||current.project!==state.project||current.playhead!==state.playhead||current.playing||current.mediaEditMode!=='chroma'||current.project.tracks.find(track=>track.id===latest.trackId)?.locked)return;
+      current.updateClip(latest.id,{chromaKey:{...clip.chromaKey,color}});current.notify(`背景色 ${color.toUpperCase()} を取得しました。`);
     }catch(error){useEditor.getState().notify((error as Error).message);}
   };
   const current = active.find(item => selected.includes(item.clip.id));
-  const selectedClip=selected.length===1?project.clips.find(clip=>clip.id===selected[0]):undefined,selectedAsset=assets.get(selectedClip?.assetId||''),selectedTrack=tracks.get(selectedClip?.trackId||'');
+  const selectedRaw=selected.length===1?project.clips.find(clip=>clip.id===selected[0]):undefined,selectedClip=selectedRaw&&visualClipAt(selectedRaw,time-selectedRaw.start),selectedAsset=assets.get(selectedClip?.assetId||''),selectedTrack=tracks.get(selectedClip?.trackId||'');
   const chromaCurrent=selectedClip&&selectedAsset&&selectedTrack&&(selectedClip.kind==='video'||selectedClip.kind==='image')&&selectedClip.chromaKey&&!selectedTrack.hidden&&!selectedAsset.offline?{clip:selectedClip,asset:selectedAsset,locked:selectedTrack.locked}:undefined;
   const effectOverlay=()=>{
     if(editMode==='chroma'){

@@ -4,6 +4,7 @@ import type { Clip } from '../types';
 import { fonts, fontEntry, fontStyle } from '../../shared/text-style.mjs';
 import { ensureFont } from '../fonts';
 import TextBoxControls from './TextBoxControls';
+import TextColorField from './TextColorField';
 
 export default function TextEffects({ clip }: { clip: Clip }) {
   const [search, setSearch] = useState(''), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
@@ -11,14 +12,16 @@ export default function TextEffects({ clip }: { clip: Clip }) {
   const font = fontStyle(clip), entry = fontEntry(font.family)!;
   const patch = (values: Partial<Clip>) => useEditor.getState().updateClip(clip.id, values);
   const changeFont = async (family: string, weight: number) => {
-    const snapshot = useEditor.getState().project.id; setBusy(true); setStatus('フォントを読み込んでいます…');
+    const snapshot = useEditor.getState(); setBusy(true); setStatus('フォントを読み込んでいます…');
     try {
       await ensureFont(family, weight);
-      if (alive.current && useEditor.getState().project.id === snapshot) { patch({ fontFamily: family, fontWeight: weight }); setStatus(''); }
+      const current=useEditor.getState();
+      if (alive.current && current.project === snapshot.project && current.playhead===snapshot.playhead) { patch({ fontFamily: family, fontWeight: weight }); setStatus(''); }
+      else if(alive.current)setStatus('編集位置が変わったため、フォントの変更を取り消しました。');
     } catch (error) { if (alive.current) setStatus((error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, '')); }
     finally { if (alive.current) setBusy(false); }
   };
-  const color = (property: 'shadowColor' | 'strokeColor', label: string) => <div className="property-label"><label htmlFor={property}>{label}</label><input id={property} type="color" value={clip[property] || '#000000'} onChange={e => patch({ [property]: e.target.value })}/></div>;
+  const color = (property: 'shadowColor' | 'strokeColor', label: string) => <TextColorField id={property} label={label} value={clip[property] || '#000000'} onChange={value => patch({ [property]: value })}/>;
   const number = (property: 'shadowBlur' | 'shadowDistance' | 'strokeWidth', label: string, fallback: number, max: number) => <label className="text-effect-size">{label}<input type="number" min={0} max={max} step={1} key={`${clip.id}-${property}-${clip[property]}`} defaultValue={clip[property] ?? fallback} onBlur={e => { const value = Number(e.currentTarget.value); if (e.currentTarget.value !== '' && Number.isFinite(value)) patch({ [property]: Math.max(0, Math.min(max, value)) }); }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/></label>;
   return <div className="text-effects">
     <label htmlFor="title-font">日本語フォント</label><input className="font-picker-search" aria-label="日本語フォントを検索" placeholder="フォント名で検索（Noto、Zen など）" value={search} onChange={e => setSearch(e.target.value)}/>

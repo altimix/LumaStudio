@@ -11,6 +11,9 @@ import ClipContextMenu, { type ClipMenuAnchor } from './ClipContextMenu';
 import GapContextMenu, { type GapMenuAnchor } from './GapContextMenu';
 import { findTimelineGap } from '../gap-editing';
 import ClipVolumeLine from './ClipVolumeLine';
+import ClipVisualKeys from './ClipVisualKeys';
+import { hasVisualKeys } from '../../shared/visual-keyframes.mjs';
+import { addVisualPoint } from '../visual-editing';
 import ClipWaveform from './ClipWaveform';
 import { snapMove } from '../move-snapping';
 import { linkedIds, clipsLocked, cloneLinkedClips } from '../../shared/clip-links.mjs';
@@ -27,12 +30,14 @@ import { rulerStep, timelineLength, timelineZoomBounds } from '../../shared/time
 import { clipWaveformRange, EMPTY_WAVEFORM_RANGE } from '../waveform-viewport';
 
 function ClipItem({ clip, asset, track, selected, related, zoom, waveformLeft, waveformRight, onDrag, onMenu, editingLocked, tool }: { clip: Clip; asset?: Asset; track: Track; editingLocked:boolean; tool: 'select'|'razor'|'rate'; selected: boolean; related:boolean; waveformLeft:number; waveformRight:number; onMenu:(clip:Clip,element:HTMLElement,x:number,y:number)=>void; zoom: number; onDrag: (e: React.PointerEvent, c: Clip, mode: 'move' | 'left' | 'right') => void }) {
+  const tab=useEditor(s=>s.inspectorTab),showKeys=clip.kind!=='audio'&&hasVisualKeys(clip)&&tab!=='audio';
   return <div className={`timeline-clip ${clip.kind} ${editingLocked ? 'editing-locked' : ''} ${selected ? 'selected' : ''} ${related ? 'linked-selected' : ''} ${clip.audioMuted ? 'audio-muted' : ''} ${asset?.offline ? 'offline' : ''} ${track.locked ? 'locked' : ''}`} data-clip-id={clip.id} tabIndex={0} role="button" aria-label={`${clip.name}、開始 ${clip.start.toFixed(2)} 秒、長さ ${clip.duration.toFixed(2)} 秒`} aria-pressed={selected} style={{ left: clip.start * zoom, width: Math.max(5, clip.duration * zoom) }} onPointerDown={e => onDrag(e, clip, 'move')} onContextMenu={e => {e.preventDefault();e.stopPropagation();onMenu(clip,e.currentTarget,e.clientX,e.clientY);}} onKeyDown={e => { if(e.key==='ContextMenu'||(e.shiftKey&&e.key==='F10')){e.preventDefault();e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();onMenu(clip,e.currentTarget,r.left+Math.min(40,r.width/2),r.top+20);return;} if (e.key === 'Enter') { e.preventDefault(); useEditor.getState().select([clip.id]); useEditor.getState().seek(clip.start); } }}>
     {clip.kind === 'video' || clip.kind === 'image' ? <div className="clip-filmstrip" style={{ backgroundImage: asset?.thumbnail ? `url("${asset.thumbnail}")` : undefined }}/> : null}
     <div className="clip-name">{clip.kind === 'title' ? <Type size={12}/> : clip.kind === 'audio' ? <Music2 size={12}/> : <Film size={12}/>}<span>{clip.name}</span>{clip.linkId ? <Link2 className="clip-link-icon" size={11} aria-label="映像と音声をリンク中"/> : null}{clip.audioMuted ? <VolumeX size={11} aria-label="ミュート中"/> : null}{clip.speed !== 1 ? <small>{Number(clip.speed.toFixed(3))}×</small> : null}</div>
     {!clip.audioDetached&&asset?.hasAudio?<ClipWaveform clip={clip} asset={asset} zoom={zoom} left={waveformLeft} right={waveformRight}/>:null}
     {clip.fadeIn ? <div className="clip-fade in" style={{ width: clip.fadeIn * zoom }}/> : null}{clip.fadeOut ? <div className="clip-fade out" style={{ width: clip.fadeOut * zoom }}/> : null}
-    {asset?.hasAudio&&!clip.audioDetached&&['audio','video'].includes(clip.kind)?<ClipVolumeLine clip={clip} zoom={zoom} selected={selected} locked={track.locked}/>:null}
+    {showKeys?<ClipVisualKeys clip={clip} locked={track.locked}/>:asset?.hasAudio&&!clip.audioDetached&&['audio','video'].includes(clip.kind)?<ClipVolumeLine clip={clip} zoom={zoom} selected={selected} locked={track.locked}/>:null}
+    {selected&&clip.kind!=='audio'&&!showKeys&&tab!=='audio'?<button type="button" className="clip-add-visual-key" aria-label="素材にキーフレームを追加" title="再生ヘッドにキーフレームを追加" disabled={track.locked} onPointerDown={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();addVisualPoint(clip.id);}}>◇＋</button>:null}
     {!editingLocked ? <><div className="trim-handle left" title={tool === 'rate' ? '開始側をドラッグして再生速度を調整' : '開始点をドラッグして長さを調整'} onPointerDown={e => onDrag(e, clip, 'left')}/><div className="trim-handle right" title={tool === 'rate' ? '終了側をドラッグして再生速度を調整' : '終了点をドラッグして長さを調整'} onPointerDown={e => onDrag(e, clip, 'right')}/></> : null}
   </div>;
 }

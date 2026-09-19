@@ -3,6 +3,8 @@ export type MediaKind = 'video' | 'audio' | 'image';
 export interface TextBox { width: number; height: number }
 export interface OpacityKeyframe { time: number; value: number }
 export interface VolumeKeyframe { time: number; value: number }
+export type VisualValues = Pick<Clip, 'x' | 'y' | 'scale' | 'rotation' | 'opacity'> & Partial<Pick<Clip, 'fontSize' | 'color' | 'fontFamily' | 'fontWeight' | 'textStyle' | 'textShadow' | 'shadowColor' | 'shadowBlur' | 'shadowDistance' | 'textStroke' | 'strokeColor' | 'strokeWidth' | 'captionBackgroundOpacity' | 'exposure' | 'contrast' | 'saturation' | 'graphic'>> & { crop?: Crop | null; videoMask?: VideoMask | null; chromaKey?: ChromaKey | null; textBox?: TextBox | null };
+export interface VisualKeyframe { time: number; values: VisualValues }
 export interface Crop { top: number; right: number; bottom: number; left: number }
 export interface BasicVideoMask { type: 'rectangle' | 'ellipse'; x: number; y: number; width: number; height: number; feather: number; inverted: boolean }
 export interface BezierMaskPoint { x: number; y: number; inX: number; inY: number; outX: number; outY: number; kind: 'line' | 'curve' }
@@ -29,6 +31,7 @@ export interface Clip {
   audioTreatment?: 'speech' | 'normalize';
   linkId?: string; audioDetached?: boolean; audioMuted?: boolean;
   opacityKeyframes?: OpacityKeyframe[];
+  visualKeyframes?: VisualKeyframe[];
   volumeKeyframes?: VolumeKeyframe[];
   crop?: Crop;
   videoMask?: VideoMask;
@@ -57,6 +60,8 @@ export interface BgmLibrary { folder:string|null; tracks:BgmTrack[]; errors:stri
 export type AudioPreparePhase = 'preparing' | 'speech' | 'refining' | 'analysis' | 'processing' | 'correction' | 'saving' | 'cached' | 'complete';
 export interface AudioPrepareProgress { requestId: string; phase: AudioPreparePhase; progress: number; processedSeconds: number; durationSeconds: number | null }
 export interface DesktopAPI {
+  onRenderTitleFrame(cb:(request:{id:string;clip:Clip;time:number;width:number;height:number;projectWidth:number})=>void):()=>void;
+  finishTitleFrame(id:string,png?:string,error?:string):Promise<boolean>;
   copyText(text: string): Promise<void>;
   listBgm():Promise<BgmLibrary>;
   chooseBgmFolder():Promise<BgmLibrary|null>;

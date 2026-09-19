@@ -1,6 +1,7 @@
 import { numberTracks } from './track-names';
 import type { Asset, Clip, Project, Track } from './types';
 import { windowOpacity } from '../shared/opacity.mjs';
+import { windowVisualKeys } from '../shared/visual-keyframes.mjs';
 import { retimeVolume, windowVolume } from '../shared/volume-automation.mjs';
 import { MAX_MEDIA_SECONDS } from '../shared/time.mjs';
 import { captionBottomY } from './caption-style';
@@ -67,7 +68,7 @@ export function normalizeClip(c: Clip, p: Project): Clip {
   const fadeIn = clamp(c.fadeIn, 0, duration); const fadeOut = clamp(c.fadeOut, 0, duration - fadeIn);
   const opacityKeyframes = c.kind === 'title' && duration !== c.duration ? windowOpacity(c.opacityKeyframes, 0, duration) : c.opacityKeyframes;
   const volumeKeyframes = retimeVolume(c, { in: inPoint, duration, speed });
-  return { ...c, start: Math.max(0, roundFrame(c.start, p.fps)), in: inPoint, duration, speed, fadeIn, fadeOut, ...(opacityKeyframes ? { opacityKeyframes } : {}), ...(volumeKeyframes ? { volumeKeyframes } : {}) };
+  return { ...c, start: Math.max(0, roundFrame(c.start, p.fps)), in: inPoint, duration, speed, fadeIn, fadeOut, ...(opacityKeyframes ? { opacityKeyframes } : {}), ...(volumeKeyframes ? { volumeKeyframes } : {}), ...(c.visualKeyframes && duration !== c.duration ? { visualKeyframes: windowVisualKeys(c, 0, duration) } : {}) };
 }
 export function applySequenceSettings(p: Project, settings: Pick<Project, 'name' | 'width' | 'height' | 'fps'>): Project {
   const changingFps = settings.fps !== p.fps;
@@ -104,20 +105,20 @@ export function splitClip(c: Clip, at: number, fps: number): [Clip, Clip] | null
   const left = roundFrame(at - c.start, fps); const right = c.duration - left;
   if (left < 1 / fps - 0.000001 || right < 1 / fps - 0.000001) return null;
   return [
-    { ...c, duration: left, fadeIn: Math.min(c.fadeIn, left), fadeOut: 0, ...(c.opacityKeyframes ? { opacityKeyframes: windowOpacity(c.opacityKeyframes, 0, left) } : {}), ...(c.volumeKeyframes ? { volumeKeyframes: windowVolume(c.volumeKeyframes, 0, left) } : {}) },
-    { ...c, id: uid(), start: c.start + left, in: c.kind === 'title' || c.kind === 'image' ? 0 : c.in + left * c.speed, duration: right, fadeIn: 0, fadeOut: Math.min(c.fadeOut, right), ...(c.opacityKeyframes ? { opacityKeyframes: windowOpacity(c.opacityKeyframes, left, right) } : {}), ...(c.volumeKeyframes ? { volumeKeyframes: windowVolume(c.volumeKeyframes, left, right) } : {}) }
+    { ...c, duration: left, fadeIn: Math.min(c.fadeIn, left), fadeOut: 0, ...(c.opacityKeyframes ? { opacityKeyframes: windowOpacity(c.opacityKeyframes, 0, left) } : {}), ...(c.volumeKeyframes ? { volumeKeyframes: windowVolume(c.volumeKeyframes, 0, left) } : {}), ...(c.visualKeyframes ? { visualKeyframes: windowVisualKeys(c, 0, left) } : {}) },
+    { ...c, id: uid(), start: c.start + left, in: c.kind === 'title' || c.kind === 'image' ? 0 : c.in + left * c.speed, duration: right, fadeIn: 0, fadeOut: Math.min(c.fadeOut, right), ...(c.opacityKeyframes ? { opacityKeyframes: windowOpacity(c.opacityKeyframes, left, right) } : {}), ...(c.volumeKeyframes ? { volumeKeyframes: windowVolume(c.volumeKeyframes, left, right) } : {}), ...(c.visualKeyframes ? { visualKeyframes: windowVisualKeys(c, left, right) } : {}) }
   ];
 }
 export function trimClip(c: Clip, edge: 'left' | 'right', delta: number, p: Project): Clip {
   const min = 1 / p.fps; delta = roundFrame(delta, p.fps);
   if (edge === 'right') {
     const next = normalizeClip({ ...c, duration: c.duration + delta }, p);
-    return { ...next, ...(c.opacityKeyframes ? { opacityKeyframes: windowOpacity(c.opacityKeyframes, 0, next.duration) } : {}), ...(c.volumeKeyframes ? { volumeKeyframes: retimeVolume(c, next) } : {}) };
+    return { ...next, ...(c.opacityKeyframes ? { opacityKeyframes: windowOpacity(c.opacityKeyframes, 0, next.duration) } : {}), ...(c.volumeKeyframes ? { volumeKeyframes: retimeVolume(c, next) } : {}), ...(c.visualKeyframes ? { visualKeyframes: windowVisualKeys(c, 0, next.duration) } : {}) };
   }
   const sourceLimited = c.kind !== 'title' && c.kind !== 'image';
   delta = clamp(delta, Math.max(-c.start, sourceLimited ? -c.in / c.speed : -c.start), c.duration - min);
   const next = normalizeClip({ ...c, start: c.start + delta, in: sourceLimited ? c.in + delta * c.speed : 0, duration: c.duration - delta }, p);
-  return { ...next, ...(c.opacityKeyframes ? { opacityKeyframes: windowOpacity(c.opacityKeyframes, next.start - c.start, next.duration) } : {}), ...(c.volumeKeyframes ? { volumeKeyframes: retimeVolume(c, next) } : {}) };
+  return { ...next, ...(c.opacityKeyframes ? { opacityKeyframes: windowOpacity(c.opacityKeyframes, next.start - c.start, next.duration) } : {}), ...(c.volumeKeyframes ? { volumeKeyframes: retimeVolume(c, next) } : {}), ...(c.visualKeyframes ? { visualKeyframes: windowVisualKeys(c, next.start - c.start, next.duration) } : {}) };
 }
 /** Stretch the same source interval to a new sequence length; keep the other edge fixed. */
 export function rateStretchClip(c: Clip, edge: 'left' | 'right', delta: number, p: Project): Clip {
@@ -129,7 +130,7 @@ export function rateStretchClip(c: Clip, edge: 'left' | 'right', delta: number, 
   const duration = clamp(roundFrame(c.duration + (edge === 'right' ? delta : -delta), p.fps), min, max);
   if (duration === c.duration) return c;
   const ratio = duration / c.duration;
-  return { ...c, start: edge === 'left' ? roundFrame(end - duration, p.fps) : c.start, duration, speed: Math.min(4,Math.max(.25,span / duration)), fadeIn: Math.min(duration,c.fadeIn * ratio), fadeOut: Math.min(Math.max(0,duration-Math.min(duration,c.fadeIn * ratio)),c.fadeOut * ratio), ...(c.volumeKeyframes ? { volumeKeyframes: c.volumeKeyframes.map(key => ({...key,time:Math.min(duration,key.time*ratio)})) } : {}) };
+  return { ...c, start: edge === 'left' ? roundFrame(end - duration, p.fps) : c.start, duration, speed: Math.min(4,Math.max(.25,span / duration)), fadeIn: Math.min(duration,c.fadeIn * ratio), fadeOut: Math.min(Math.max(0,duration-Math.min(duration,c.fadeIn * ratio)),c.fadeOut * ratio), ...(c.volumeKeyframes ? { volumeKeyframes: c.volumeKeyframes.map(key => ({...key,time:Math.min(duration,key.time*ratio)})) } : {}), ...(c.visualKeyframes ? { visualKeyframes: c.visualKeyframes.map(key => ({ ...key, time: Math.min(duration, key.time * ratio) })) } : {}) };
 }
 export function snapTime(time: number, p: Project, excludeIds: string[], threshold: number, playhead: number): number {
   const points = [0, playhead, ...p.markers.map(m => m.time), ...p.clips.filter(c => !excludeIds.includes(c.id)).flatMap(c => [c.start, c.start + c.duration])];

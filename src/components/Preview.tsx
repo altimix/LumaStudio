@@ -4,11 +4,10 @@ import { useEditor } from '../store';
 import { endTime, timecode } from '../model';
 import { fadeAt, titleCanvas } from '../render';
 import { IconButton } from './UI';
-import { opacityAt } from '../../shared/opacity.mjs';
+import { visualClipAt } from '../../shared/visual-keyframes.mjs';
 import { TimelineAudio } from '../audio';
 import { bindAudioMeterReset, publishAudioPeaks } from '../meter-store';
-import { ensureProjectFonts, fontRevision, isFontReady } from '../fonts';
-import { fontStyle } from '../../shared/text-style.mjs';
+import { ensureProjectFonts, fontRevision, isFontReady, projectFontStyles } from '../fonts';
 import TitleDragLayer from './TitleDragLayer';
 import { transitionPlan, visualSourceTime, type PlannedTransition } from '../../shared/transitions.mjs';
 import { TransitionPreview } from '../transition-preview';
@@ -38,7 +37,7 @@ export default function Preview({ readOnly = false }: { readOnly?: boolean }) {
   const [transformActions, setTransformActions] = useState<HTMLDivElement | null>(null);
   const playhead = useEditor(s => s.playhead); const playing = useEditor(s => s.playing); const project = useEditor(s => s.project);
   const [fontVersion, setFontVersion] = useState(0), [fontStatus, setFontStatus] = useState(''), [fontRetry, setFontRetry] = useState(0);
-  const fontUse = JSON.stringify(project.clips.filter(c => c.kind === 'title' && !c.graphic && !project.tracks.find(t => t.id === c.trackId)?.hidden).map(fontStyle));
+  const fontUse = JSON.stringify(projectFontStyles(project));
   useEffect(() => {
     let active = true;
     const snapshot = useEditor.getState().project;
@@ -169,7 +168,7 @@ export default function Preview({ readOnly = false }: { readOnly?: boolean }) {
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
       const alive = new Set<string>(), activeTitles = new Set<string>(), activeMaskedFrames = new Set<string>();
       if(plannedProject!==p){plans=transitionPlan(p);plannedProject=p;projectRevision++;const ids=new Set(p.clips.map(c=>c.id));for(const id of knownSizes.keys())if(!ids.has(id)){knownSizes.delete(id);sizesChanged=true;}for(const [id,item] of maskedFrames)if(!ids.has(id)){disposeMaskedFrame(item);maskedFrames.delete(id);}}
-      const diagnosticMatteId=s.selected.length===1?p.clips.find(clip=>clip.id===s.selected[0]&&(clip.kind==='video'||clip.kind==='image')&&clip.chromaKey?.matte&&t>=clip.start&&t<clip.start+clip.duration&&!p.tracks.find(track=>track.id===clip.trackId)?.hidden&&!p.assets.find(asset=>asset.id===clip.assetId)?.offline)?.id:undefined;
+      const diagnosticMatteId=s.selected.length===1?p.clips.find(clip=>clip.id===s.selected[0]&&(clip.kind==='video'||clip.kind==='image')&&visualClipAt(clip,t-clip.start).chromaKey?.matte&&t>=clip.start&&t<clip.start+clip.duration&&!p.tracks.find(track=>track.id===clip.trackId)?.hidden&&!p.assets.find(asset=>asset.id===clip.assetId)?.offline)?.id:undefined;
       // A key matte is a diagnostic view of the selected source, not another
       // composited layer. Keep the monitor black outside that source/mask and
       // bypass transitions and lower tracks while the diagnostic is visible.
@@ -201,7 +200,8 @@ export default function Preview({ readOnly = false }: { readOnly?: boolean }) {
       for(const [id,buffers]of transitionBuffers)if(!active.some(pair=>pair.id===id)){buffers.renderer.dispose();for(const buffer of [buffers.a,buffers.b])buffer.width=buffer.height=0;transitionBuffers.delete(id);}
       for(const pair of active){let buffers=transitionBuffers.get(pair.id);if(!buffers){buffers={a:document.createElement('canvas'),b:document.createElement('canvas'),aReady:false,bReady:false,aUsable:false,bUsable:false,aAvailable:false,bAvailable:false,renderer:new TransitionPreview(message=>{useEditor.getState().stop();useEditor.getState().notify(message);},gpuPool)};transitionBuffers.set(pair.id,buffers);}buffers.aReady=buffers.bReady=buffers.aUsable=buffers.bUsable=buffers.aAvailable=buffers.bAvailable=false;for(const buffer of [buffers.a,buffers.b]){if(buffer.width!==w||buffer.height!==h){buffer.width=w;buffer.height=h;}buffer.getContext('2d')!.clearRect(0,0,w,h);}}
       let frameReady=true, frameUnavailable=false; let transitionsReady=true,transitionsPresented=true;const tracks = [...p.tracks].reverse();
-      for (const track of tracks) for (const clip of p.clips.filter(c => c.trackId === track.id).sort((a,b) => a.start - b.start)) {
+      for (const track of tracks) for (const sourceClip of p.clips.filter(c => c.trackId === track.id).sort((a,b) => a.start - b.start)) {
+        const clip=visualClipAt(sourceClip,t-sourceClip.start);
         if(diagnosticMatteId&&clip.id!==diagnosticMatteId)continue;
         if ((t < clip.start || t >= clip.start + clip.duration) && !pairs.has(clip.id)) continue;
         const asset = p.assets.find(a => a.id === clip.assetId);
@@ -293,7 +293,7 @@ export default function Preview({ readOnly = false }: { readOnly?: boolean }) {
           const masked = clip.kind === 'video' || clip.kind === 'image' ? maskedVideoFrame(source, previewClip, maskWidth, maskHeight, maskedFrames.get(clip.id),sourceKey) : undefined;
           if (masked) { maskedFrames.set(clip.id, masked); activeMaskedFrames.add(clip.id); } else if (maskedFrames.has(clip.id)) { disposeMaskedFrame(maskedFrames.get(clip.id)!); maskedFrames.delete(clip.id); }
           drawContext.save(); drawContext.translate(w / 2 + w * (clip.graphic?0:clip.x) / 100, h / 2 + h * (clip.graphic?0:clip.y) / 100); drawContext.rotate((clip.graphic?0:clip.rotation) * Math.PI / 180);
-          drawContext.globalAlpha = showMatte ? 1 : opacityAt(clip.opacityKeyframes, t - clip.start, clip.opacity) * fade;
+          drawContext.globalAlpha = showMatte ? 1 : clip.opacity * fade;
           if (!showMatte && clip.kind !== 'title' && (clip.exposure !== 0 || clip.contrast !== 1 || clip.saturation !== 1)) drawContext.filter = `brightness(${2 ** clip.exposure}) contrast(${clip.contrast}) saturate(${clip.saturation})`;
           drawContext.drawImage(masked?.canvas || source, -fittedWidth / 2, -fittedHeight / 2, fittedWidth, fittedHeight); drawContext.restore();
           if(buffers){if(clip.id===pair!.fromId){buffers.aAvailable=true;buffers.aReady=sourceReady;buffers.aUsable=sourceUsable;}else{buffers.bAvailable=true;buffers.bReady=sourceReady;buffers.bUsable=sourceUsable;}}

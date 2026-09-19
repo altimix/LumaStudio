@@ -11,7 +11,8 @@ import Toast from './components/Toast';
 import { ArrowUpRight, Check, CheckCircle2, ChevronDown, Download, FolderOpen, HelpCircle, Keyboard, LoaderCircle, Plus, Save, Settings2, Upload, X, RotateCcw, HardDrive, Monitor, Film, ExternalLink } from 'lucide-react';
 import { useEditor } from './store';
 import { applySequenceSettings, demoProject, emptyProject, endTime, timecode, uid } from './model';
-import { renderTitles } from './render';
+import { renderTitles, titleCanvas } from './render';
+import { visualClipAt } from '../shared/visual-keyframes.mjs';
 import { ensureProjectFonts } from './fonts';
 import { validateTransitions } from '../shared/transitions.mjs';
 import { validateTextStyle } from '../shared/text-style.mjs';
@@ -121,8 +122,14 @@ export default function App() {
     };
     void start();
     const exportOff = window.luma?.onExportProgress(setProgress);
+    const frameOff=window.luma?.onRenderTitleFrame(request=>{
+      let canvas:HTMLCanvasElement|undefined;
+      try{canvas=titleCanvas(visualClipAt(request.clip,request.time),request.width,request.height,request.projectWidth);void window.luma?.finishTitleFrame(request.id,canvas.toDataURL('image/png')).catch(()=>{});}
+      catch(error){void window.luma?.finishTitleFrame(request.id,undefined,errorText(error)).catch(()=>{});}
+      finally{if(canvas)canvas.width=canvas.height=0;}
+    });
     const importOff = window.luma?.onImportProgress(data => { if (importInFlight.current) { setImportProgress(data); setImportLabel(`${data.index}/${data.total} 読み込み中: ${data.name}`); } });
-    return () => { exportOff?.(); importOff?.(); };
+    return () => { exportOff?.(); importOff?.(); frameOff?.(); };
   }, []);
   useEffect(() => {
     if (!ready) return; void window.luma?.setDirty(dirty);

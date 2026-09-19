@@ -7,7 +7,9 @@ import { useEditor } from '../store';
 import { normalizeClip, timecode } from '../model';
 import { IconButton } from './UI';
 import type { BezierVideoMask, ChromaKey, Clip, VideoMask } from '../types';
-import TitleOpacity from './TitleOpacity';
+import VisualKeyframes from './VisualKeyframes';
+import { patchVisualClip, visualClipAt, hasVisualKeys } from '../../shared/visual-keyframes.mjs';
+import { localVisualTime } from '../visual-editing';
 import AudioEnhancement from './AudioEnhancement';
 import TextEffects from './TextEffects';
 import GraphicEffects from './GraphicEffects';
@@ -17,6 +19,7 @@ import { clampCropEdge, DEFAULT_BEZIER_MASK, DEFAULT_VIDEO_MASK, EMPTY_CROP, MAX
 import { DEFAULT_CHROMA_KEY } from '../../shared/chroma-key.mjs';
 import ScrubbableNumberInput from './ScrubbableNumberInput';
 import PropertyNumberField from './PropertyNumberField';
+import TextColorField from './TextColorField';
 import './mask-effects.css';
 import './chroma-key.css';
 
@@ -26,12 +29,12 @@ function restoreGesture(before: EditorState) {
 }
 
 function NumericField({ clip, property, label, min, max, step = 1, factor = 1, offset = 0, suffix = '', slider = true }: { clip: Clip; property: keyof Clip; label: string; min: number; max: number; step?: number; factor?: number; offset?: number; suffix?: string; slider?: boolean }) {
-  const playhead=useEditor(s=>property==='volume'?s.playhead:0);
+  const playhead=useEditor(s=>s.playhead);
   const active=useEditor(s=>property==='volume'?s.activeVolumePoint:null);
   const local=active?.clipId===clip.id?active.time:Math.max(0,Math.min(clip.duration,playhead-clip.start));
   if(property==='volume'&&(clip.volumeKeyframes?.length||active?.clipId===clip.id))max=400;
-  const displayValue=(current:Clip)=>Number(current[property])*(property==='volume'?volumeAt(current.volumeKeyframes||[],local):1)*factor+offset;
-  const value = displayValue(clip);
+  const displayValue=(current:Clip)=>Number(visualClipAt(current,local)[property])*(property==='volume'?volumeAt(current.volumeKeyframes||[],local):1)*factor+offset;
+  const value = displayValue(useEditor.getState().project.clips.find(c=>c.id===clip.id)||clip);
   const dragging=useRef(false),changed=useRef(false),dragStart=useRef<{state:EditorState;clip:Clip;time:number;selected:boolean;owner:object}|null>(null);
   const finishDrag=(cancel=false)=>{
     const start=dragStart.current;if(!start)return;dragStart.current=null;dragging.current=false;
@@ -51,20 +54,21 @@ function NumericField({ clip, property, label, min, max, step = 1, factor = 1, o
     const state=useEditor.getState(),current=state.project.clips.find(c=>c.id===clip.id);
     if(!current||state.project.tracks.find(t=>t.id===current.trackId)?.locked||state.gestureActive)return false;
     if(['start','in','duration','speed'].includes(property)&&clipsLocked(state.project,linkedIds(state.project,[clip.id]))){state.notify('リンク相手を含むトラックのロックを解除してください。');return false;}
-    const owner={},session={state,clip:current,time:local,selected:state.activeVolumePoint?.clipId===current.id,owner};dragStart.current=session;
+    state.stop();const owner={},session={state,clip:current,time:property==='volume'?local:localVisualTime(current,state.playhead,state.project.fps),selected:state.activeVolumePoint?.clipId===current.id,owner};dragStart.current=session;
     if(!state.beginGesture(owner,()=>finishDrag(true))){dragStart.current=null;return false;}dragging.current=true;changed.current=false;return true;
   };
   const apply = (newValue: number) => {
     if (!Number.isFinite(newValue)) return; const s = useEditor.getState(); const current = s.project.clips.find(c => c.id === clip.id); const v = (Math.min(max, Math.max(min, newValue)) - offset) / factor;
-    if (!current || s.project.tracks.find(t => t.id === current.trackId)?.locked || (property!=='volume'&&current[property] === v)) return;
+    if (!current || s.project.tracks.find(t => t.id === current.trackId)?.locked) return;
     if (['start','in','duration','speed'].includes(property)&&clipsLocked(s.project,linkedIds(s.project,[clip.id]))){s.notify('リンク相手を含むトラックのロックを解除してください。');return;}
     const start=dragStart.current;
     if(s.gestureActive&&s.gestureOwner!==start?.owner)return;
     let patch:Partial<Clip>;try{patch=property==='volume'?setEffectiveVolume(start?.clip||current,start?.time??local,v,s.project.fps,start?.selected??(s.activeVolumePoint?.clipId===current.id)):{[property]:v};}catch(error){s.notify((error as Error).message);return;}
-    if(JSON.stringify(current)===JSON.stringify({...current,...patch}))return;
+    let candidate:Clip;try{candidate=patchVisualClip(start?.clip||current,patch,start?.time??local);}catch(error){s.notify((error as Error).message);return;}
+    if(JSON.stringify(current)===JSON.stringify(candidate))return;
     if (dragging.current) {
       if (!changed.current) { s.checkpoint(`${label}を変更`); changed.current = true; }
-      const now=useEditor.getState(),baseline=start?.state.project||now.project,clips=baseline.clips.map(c=>c.id===clip.id?normalizeClip({...c,...patch},baseline):c);
+      const now=useEditor.getState(),baseline=start?.state.project||now.project,clips=baseline.clips.map(c=>c.id===clip.id?normalizeClip(candidate,baseline):c);
       now.transient({...baseline,clips},baseline);
     } else s.updateClip(clip.id, patch);
   };
@@ -89,8 +93,10 @@ function EffectField({ clip, label, value, min, max, step = 1, suffix = '', patc
     const next=Math.min(max,Math.max(min,input)),state=useEditor.getState(),current=state.project.clips.find(c=>c.id===clip.id);
     if(!current||state.project.tracks.find(t=>t.id===current.trackId)?.locked)return;
     const start=dragStart.current;if(state.gestureActive&&state.gestureOwner!==start?.owner)return;
-    const values=patch(current,next);if(Object.entries(values).every(([key,nextValue])=>JSON.stringify(current[key as keyof Clip])===JSON.stringify(nextValue)))return;
-    if(dragging.current){if(!changed.current){state.checkpoint(`${label}を変更`);changed.current=true;}const now=useEditor.getState();now.transient({...now.project,clips:now.project.clips.map(c=>c.id===current.id?normalizeClip({...c,...values},now.project):c)},start?.state.project);}
+    const time=localVisualTime(current,start?.state.playhead??state.playhead,state.project.fps),values=patch(visualClipAt(current,time),next);
+    let candidate:Clip;try{candidate=patchVisualClip(current,values,time);}catch(error){state.notify((error as Error).message);return;}
+    if(JSON.stringify(candidate)===JSON.stringify(current))return;
+    if(dragging.current){if(!changed.current){state.checkpoint(`${label}を変更`);changed.current=true;}const now=useEditor.getState();now.transient({...now.project,clips:now.project.clips.map(c=>c.id===current.id?normalizeClip(candidate,now.project):c)},start?.state.project);}
     else state.updateClip(current.id,values);
   };
   return <PropertyNumberField inputId={inputId} label={label} suffix={suffix}
@@ -106,7 +112,7 @@ function CropMaskEffects({clip}:{clip:Clip}){
   };
   const commonMaskPatch=(key:'feather')=>(current:Clip,value:number)=>({videoMask:{...(current.videoMask||DEFAULT_VIDEO_MASK),[key]:value/100} as VideoMask});
   const updateBezier=(change:(mask:BezierVideoMask)=>BezierVideoMask)=>{
-    const state=useEditor.getState(),current=state.project.clips.find(item=>item.id===clip.id);
+    const state=useEditor.getState(),raw=state.project.clips.find(item=>item.id===clip.id),current=raw&&visualClipAt(raw,localVisualTime(raw,state.playhead,state.project.fps));
     if(current?.videoMask?.type==='bezier')state.updateClip(clip.id,{videoMask:change(current.videoMask)});
   };
   const changeMaskType=(type:string)=>{
@@ -162,7 +168,7 @@ function CropMaskEffects({clip}:{clip:Clip}){
 function ChromaKeyEffects({clip}:{clip:Clip}){
   const mode=useEditor(s=>s.mediaEditMode),key=clip.chromaKey;
   const change=(property:'tolerance'|'softness'|'greenSpill'|'blueSpill')=>(current:Clip,value:number)=>({chromaKey:{...(current.chromaKey||DEFAULT_CHROMA_KEY),[property]:value/100} as ChromaKey});
-  const update=(patch:Partial<ChromaKey>)=>{const current=useEditor.getState().project.clips.find(item=>item.id===clip.id);if(current?.chromaKey)useEditor.getState().updateClip(clip.id,{chromaKey:{...current.chromaKey,...patch}});};
+  const update=(patch:Partial<ChromaKey>)=>{if(clip.chromaKey)useEditor.getState().updateClip(clip.id,{chromaKey:{...clip.chromaKey,...patch}});};
   const reset=()=>{const state=useEditor.getState();state.updateClip(clip.id,{chromaKey:undefined});if(state.mediaEditMode==='chroma')state.setMediaEditMode('transform');};
   return <Section title="クロマキー" icon={Pipette} onReset={key?reset:undefined}>
     {!key?<><p className="field-help">背景色を透明にして、下の映像や画像と合成します。</p><button type="button" className="secondary-button chroma-enable" onClick={()=>useEditor.getState().updateClip(clip.id,{chromaKey:{...DEFAULT_CHROMA_KEY}})}>クロマキーを有効にする</button></>:<>
@@ -182,7 +188,8 @@ function Section({ title, icon: Icon, children, onReset, open = true }: { title:
 }
 export default function Inspector({ onCollapse, onShowEffects }: { onCollapse: () => void; onShowEffects: () => void }) {
   const p = useEditor(s => s.project); const selected = useEditor(s => s.selected); const tab = useEditor(s => s.inspectorTab);
-  const clip = p.clips.find(c => c.id === selected[0]); const asset = p.assets.find(a => a.id === clip?.assetId);
+  const playhead=useEditor(s=>s.playhead),sourceClip=p.clips.find(c=>c.id===selected[0]);
+  const clip = sourceClip&&visualClipAt(sourceClip,localVisualTime(sourceClip,playhead,p.fps)); const asset = p.assets.find(a => a.id === clip?.assetId);
   const track = p.tracks.find(t => t.id === clip?.trackId);
   const textEdit = useRef<string | null>(null);
   const editText = (property: 'name' | 'text', value: string) => {
@@ -196,13 +203,19 @@ export default function Inspector({ onCollapse, onShowEffects }: { onCollapse: (
   return <aside className="inspector-panel panel"><div className="panel-heading"><div className="panel-title"><SlidersHorizontal size={15}/><span>プロパティ</span></div><div className="inspector-heading-actions"><span className="inspector-count">{selected.length ? `${selected.length} 選択` : '選択なし'}</span><button className="icon-button panel-collapse" aria-label="プロパティパネルを折りたたむ" title="プロパティパネルを折りたたむ" aria-controls="workspace-inspector" aria-expanded={true} onClick={onCollapse}><PanelRightClose size={16}/></button></div></div>
     {clip ? <><div className="inspector-clip"><span className={`inspector-clip-icon ${clip.kind}`}>{clip.kind === 'title' ? <Type size={18}/> : clip.kind === 'audio' ? <Volume2 size={18}/> : <Film size={18}/>}</span><div><input aria-label="クリップ名" value={clip.name} disabled={track?.locked} onFocus={() => { textEdit.current = null; }} onBlur={() => { textEdit.current = null; }} onChange={e => editText('name', e.target.value)}/><span>{clip.graphic ? '図形レイヤー' : clip.kind === 'title' ? 'テキストレイヤー' : asset?.codec?.toUpperCase() || 'MEDIA'} <span>·</span> {timecode(clip.duration, p.fps)}</span></div>{track?.locked ? <Lock size={15}/> : null}</div><div className="inspector-tabs">{[{ id: 'video', label: clip.graphic ? '図形' : clip.kind === 'title' ? 'テキスト' : 'ビデオ' }, { id: 'color', label: 'カラー' }, { id: 'audio', label: 'オーディオ' }].map(t => <button className={tab === t.id ? 'selected' : ''} key={t.id} onClick={() => useEditor.getState().setInspectorTab(t.id as typeof tab)}>{t.label}</button>)}</div>
     <div className="inspector-content"><fieldset disabled={track?.locked}>
+      {sourceClip&&clip.kind!=='audio'&&tab!=='audio'?<Section title="キーフレーム" icon={Scan} open={hasVisualKeys(sourceClip)}><VisualKeyframes key={clip.id} clip={sourceClip}/></Section>:null}
       {tab === 'video' ? <>
         <Section title="基本設定" icon={Film}><NumericField clip={clip} property="start" label="開始時間" min={0} max={MAX_MEDIA_SECONDS} step={1 / p.fps} suffix="秒" slider={false}/><NumericField clip={clip} property="duration" label="長さ" min={1 / p.fps} max={MAX_MEDIA_SECONDS} step={1 / p.fps} suffix="秒" slider={false}/>{clip.kind === 'video' || clip.kind === 'audio' ? <><NumericField clip={clip} property="in" label="素材の開始位置" min={0} max={asset?.duration || MAX_MEDIA_SECONDS} step={1 / p.fps} suffix="秒" slider={false}/><div className="property-label"><label htmlFor="playback-speed">再生速度</label><select id="playback-speed" value={clip.speed} onChange={e => patch({ speed: Number(e.target.value) })}>{[...new Set([0.25,0.5,0.75,1,1.25,1.5,2,3,4,clip.speed])].sort((a,b)=>a-b).map(v => <option value={v} key={v}>{v === 1 ? '1× 標準' : `${Number(v.toFixed(3))}×`}</option>)}</select></div></> : null}</Section>
         {clip.graphic ? <Section title="図形" icon={Move}><GraphicEffects clip={clip}/></Section> : null}
-        {clip.kind === 'title' && !clip.graphic ? <Section title="テキスト" icon={Type}><textarea aria-label="テロップのテキスト" rows={3} maxLength={4000} value={clip.text} onFocus={() => { textEdit.current = null; }} onBlur={() => { textEdit.current = null; }} onChange={e => editText('text', e.target.value)}/><div className="property-label"><label htmlFor="text-style">スタイル</label><select id="text-style" value={clip.textStyle} onChange={e => patch({ textStyle: e.target.value as Clip['textStyle'] })}><option value="hero">シネマタイトル</option><option value="minimal">ミニマル</option><option value="subtitle">字幕</option></select></div><NumericField clip={clip} property="fontSize" label="文字サイズ" min={16} max={240} suffix="px"/><TextEffects key={clip.id} clip={clip}/><div className="property-label"><label htmlFor="text-color">文字色</label><div className="color-field"><span>{clip.color.toUpperCase()}</span><input id="text-color" type="color" value={clip.color} onChange={e => patch({ color: e.target.value })}/></div></div></Section> : null}
-        {clip.kind !== 'audio' ? <Section title="トランスフォーム" icon={Move} onReset={() => patch({ x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 })}><div className="position-fields"><NumericField clip={clip} property="x" label="位置 X" min={-p.width * 1.5} max={p.width * 2.5} factor={p.width / 100} offset={p.width / 2} step={1} suffix="px" slider={false}/><NumericField clip={clip} property="y" label="位置 Y" min={-p.height * 1.5} max={p.height * 2.5} factor={p.height / 100} offset={p.height / 2} step={1} suffix="px" slider={false}/></div><p className="field-help">画面左上を基準にした素材の中心座標です。</p><NumericField clip={clip} property="scale" label="スケール" min={10} max={300} factor={100} suffix="%"/><NumericField clip={clip} property="rotation" label="回転" min={-180} max={180} suffix="°"/>{clip.opacityKeyframes?.length ? <p className="field-help">不透明度は下のキーフレームで変化します。すべて削除すると基本値 {Math.round(clip.opacity * 100)}% に戻ります。</p> : <NumericField clip={clip} property="opacity" label="不透明度" min={0} max={100} factor={100} suffix="%"/>}</Section> : null}
+        {clip.kind === 'title' && !clip.graphic ? <Section title="テキスト" icon={Type}>
+          <textarea aria-label="テロップのテキスト" rows={3} maxLength={4000} value={clip.text} onFocus={() => { textEdit.current = null; }} onBlur={() => { textEdit.current = null; }} onChange={e => editText('text', e.target.value)}/>
+          <TextColorField id="text-color" label="文字色" value={clip.color} onChange={color => patch({ color })}/>
+          <div className="property-label"><label htmlFor="text-style">スタイル</label><select id="text-style" value={clip.textStyle} onChange={e => patch({ textStyle: e.target.value as Clip['textStyle'] })}><option value="hero">シネマタイトル</option><option value="minimal">ミニマル</option><option value="subtitle">字幕</option></select></div>
+          <NumericField clip={clip} property="fontSize" label="文字サイズ" min={16} max={240} suffix="px"/>
+          <TextEffects key={clip.id} clip={clip}/>
+        </Section> : null}
+        {clip.kind !== 'audio' ? <Section title="トランスフォーム" icon={Move} onReset={() => patch({ x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 })}><div className="position-fields"><NumericField clip={clip} property="x" label="位置 X" min={-p.width * 1.5} max={p.width * 2.5} factor={p.width / 100} offset={p.width / 2} step={1} suffix="px" slider={false}/><NumericField clip={clip} property="y" label="位置 Y" min={-p.height * 1.5} max={p.height * 2.5} factor={p.height / 100} offset={p.height / 2} step={1} suffix="px" slider={false}/></div><p className="field-help">画面左上を基準にした素材の中心座標です。</p><NumericField clip={clip} property="scale" label="スケール" min={10} max={300} factor={100} suffix="%"/><NumericField clip={clip} property="rotation" label="回転" min={-180} max={180} suffix="°"/><NumericField clip={clip} property="opacity" label="不透明度" min={0} max={100} factor={100} suffix="%"/></Section> : null}
         {(clip.kind === 'video' || clip.kind === 'image') ? <CropMaskEffects clip={clip}/> : null}
-        {clip.kind === 'title' ? <Section title="不透明度キーフレーム" icon={Scan}><TitleOpacity key={clip.id} clip={clip} fps={p.fps}/></Section> : null}
         <Section title="フェード" icon={Scan}><NumericField clip={clip} property="fadeIn" label="フェードイン" min={0} max={Math.min(10, clip.duration)} step={0.1} suffix="秒"/><NumericField clip={clip} property="fadeOut" label="フェードアウト" min={0} max={Math.min(10, clip.duration)} step={0.1} suffix="秒"/><p className="field-help">{clip.audioDetached ? '映像に反映されます。音声のフェードは音声クリップで調整します。' : '映像と音声に反映されます。'}</p></Section>
       </> : null}
       {tab === 'color' ? clip.kind === 'audio' || clip.kind === 'title' ? <div className="inspector-empty-small"><Palette size={24}/><p>色調整する映像・画像クリップを選択してください。</p></div> : <><Section title="基本補正" icon={Palette} onReset={() => patch({ exposure: 0, contrast: 1, saturation: 1 })}><NumericField clip={clip} property="exposure" label="露出" min={-2} max={2} step={0.01} suffix="EV"/><NumericField clip={clip} property="contrast" label="コントラスト" min={0} max={200} factor={100} suffix="%"/><NumericField clip={clip} property="saturation" label="彩度" min={0} max={200} factor={100} suffix="%"/></Section><ChromaKeyEffects clip={clip}/><div className="color-advice"><span className="eyebrow">COLOR YOUR STORY</span><p>色は、物語の温度。</p><small>左のエフェクトパネルから6種類のルックを適用できます。</small><button className="secondary-button" onClick={onShowEffects}>ルックを選ぶ</button></div></> : null}

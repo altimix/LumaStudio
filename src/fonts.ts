@@ -1,6 +1,7 @@
 import type { Clip, Project } from './types';
 import { DEFAULT_FONT, fontEntry, fontStyle } from '../shared/text-style.mjs';
 import './fonts.css';
+import { visualClipAt, visualKeys } from '../shared/visual-keyframes.mjs';
 const loaded = new Set<string>(), pending = new Map<string, Promise<void>>();
 let revision = 0;
 const fontKey = (family: string, weight: number) => `${family}:${fontEntry(family)?.variable ? 'variable' : weight}`;
@@ -26,7 +27,10 @@ export async function ensureFont(family: string, weight: number) {
   }
   return task;
 }
+export function projectFontStyles(p:Project) {
+  return p.clips.filter(c=>c.kind==='title'&&!c.graphic&&!p.tracks.find(t=>t.id===c.trackId)?.hidden).flatMap(c=>[fontStyle(c),...visualKeys(c).map(key=>fontStyle(visualClipAt(c,key.time)))]);
+}
 export function ensureProjectFonts(p: Project) {
-  const required = new Map(p.clips.filter(c => c.kind === 'title' && !c.graphic && !p.tracks.find(t => t.id === c.trackId)?.hidden).map(c => { const f = fontStyle(c); return [fontKey(f.family, f.weight), f]; }));
+  const required = new Map(projectFontStyles(p).map(f => [fontKey(f.family,f.weight),f]));
   return Promise.all([...required.values()].map(f => ensureFont(f.family, f.weight)));
 }
