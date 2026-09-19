@@ -38,7 +38,22 @@ async function verify(){
     assert.equal(await page.locator('.timeline-clip').count(),0);
     await page.getByRole('button',{name:'選択した図形を中央に追加',exact:true}).click();await page.locator('.timeline-clip.title').waitFor();
     const filled=await save();assert.equal(filled.clips[0].opacity,.5);assert.equal(filled.clips[0].graphic.fill,true);assert.equal(filled.clips[0].graphic.fillColor,'#00ccff');
+    const focusDrawingSetting=async field=>{
+      await field.scrollIntoViewIfNeeded();await page.locator('.timeline-content').focus();await page.keyboard.press('Home');await page.keyboard.press('l');
+      await page.waitForFunction(()=>document.querySelector('.ruler-label .timecode').textContent!=='00:00:00:00');
+      await field.focus();assert.equal(await page.getByRole('status',{name:'シャトル状態'}).textContent(),'停止','drawing settings stop playback on focus');
+      const held=await page.locator('.ruler-label .timecode').textContent();await page.waitForTimeout(250);assert.equal(await page.locator('.ruler-label .timecode').textContent(),held);
+    };
+    await focusDrawingSetting(page.getByRole('spinbutton',{name:'追加する図形の不透明度',exact:true}));
+    await focusDrawingSetting(page.getByRole('spinbutton',{name:'表示時間',exact:true}));
+    const opacityToggle=page.getByRole('button',{name:'追加する図形の不透明度のスライダー',exact:true});
+    await focusDrawingSetting(opacityToggle);await opacityToggle.press('Enter');
+    const insertionOpacity=page.getByRole('slider',{name:'追加する図形の不透明度スライダー',exact:true});
+    await focusDrawingSetting(insertionOpacity);await insertionOpacity.press('ArrowRight');assert.equal(await insertionOpacity.inputValue(),'51');
+    await setNumber('追加する図形の不透明度',50);await opacityToggle.click();assert.deepEqual(await save(),filled,'insertion preferences leave existing clips unchanged');
+    await page.locator('.timeline-content').focus();await page.keyboard.press('Home');for(let i=0;i<3;i++)await page.keyboard.press('Shift+ArrowRight');
     await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===0);
+    checks.push('drawing opacity, duration and slider controls hold the playhead without changing existing clips or adding Undo entries');
     await setNumber('追加する図形の不透明度',25);await page.getByRole('button',{name:'丸で囲む',exact:true}).click();
     const ghostBox=await page.locator('.draw-layer').boundingBox();await page.mouse.move(ghostBox.x+ghostBox.width*.2,ghostBox.y+ghostBox.height*.2);await page.mouse.down();await page.mouse.move(ghostBox.x+ghostBox.width*.7,ghostBox.y+ghostBox.height*.7,{steps:6});
     assert.equal(await page.locator('.draw-layer svg g').getAttribute('fill'),'#00ccff');assert.equal(await page.locator('.draw-layer svg g').getAttribute('opacity'),'0.25');await page.mouse.up();
