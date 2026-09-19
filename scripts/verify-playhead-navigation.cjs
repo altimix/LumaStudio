@@ -110,6 +110,7 @@ async function verify() {
     const cueJump = async index => {
       await page.getByRole('button', { name: 'YouTube', exact: true }).click();
       await page.locator('.yt-cue-jump').nth(index).click();
+      await page.getByRole('dialog', { name: 'YouTube制作スタジオ', exact: true }).getByRole('button', { name: '閉じる', exact: true }).click();
     };
     await cueJump(0); assert.equal((await visible('subtitle jump')).time, 70);
     await cueJump(1); assert.equal((await visible('subtitle jump beyond the last clip')).time, 140);

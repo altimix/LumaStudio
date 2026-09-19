@@ -76,6 +76,59 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
     assert.ok(!JSON.stringify(await page.evaluate(()=>window.luma.aiStatus())).includes(KEY)); checks.push('native encrypted key storage and no key in IPC status');
     await page.getByRole('button',{name:'日本語字幕',exact:true}).click(); await page.getByRole('button',{name:'日本語で文字起こし',exact:true}).click();
     await page.locator('.yt-cue').first().waitFor({timeout:120000}); await done(); assert.equal(await page.locator('.yt-cue').count(),4);
+    assert.equal(await page.locator('.canvas-wrap canvas').count(), 1);
+    await page.getByRole('button', { name:'字幕2の映像を確認', exact:true }).click();
+    assert.equal(await page.getByRole('dialog', { name:'YouTube制作スタジオ' }).isVisible(), true);
+    await page.locator('.preview-meta > .timecode.accent').filter({hasText:'00:00:12:00'}).waitFor();
+    await page.getByRole('button', { name:'前の字幕', exact:true }).click();
+    await page.locator('.preview-meta > .timecode.accent').filter({hasText:'00:00:00:09'}).waitFor();
+    const startLoopCapture=async()=>page.evaluate(()=>{
+      window.captionLoopFrames=[];window.captionLoopObserver?.disconnect();
+      const canvas=document.querySelector('.caption-monitor canvas');
+      window.captionLoopObserver=new MutationObserver(()=>{
+        if(document.querySelector('.caption-monitor-controls button[aria-pressed="true"]'))window.captionLoopFrames.push(Number(canvas.dataset.previewTime));
+      });window.captionLoopObserver.observe(canvas,{attributes:true,attributeFilter:['data-preview-time']});
+    });
+    const assertLoopFrames=async(start,end)=>{
+      const frames=await page.evaluate(()=>{window.captionLoopObserver.disconnect();return window.captionLoopFrames;});
+      assert.ok(frames.length>10,'sampled composited loop frames');
+      assert.deepEqual(frames.filter(time=>time<start-1e-6||time>=end),[],`composited frames remain in [${start},${end})`);
+      assert.ok(frames.some((time,index)=>index>0&&time<frames[index-1]-.1),'a rendered loop restart was observed');
+    };
+    await startLoopCapture();
+    await page.getByRole('button', { name:'この字幕を反復再生', exact:true }).click();
+    await page.waitForFunction(() => document.querySelector('.preview-meta > .timecode.accent').textContent >= '00:00:02:00');
+    await page.waitForFunction(() => document.querySelector('.preview-meta > .timecode.accent').textContent < '00:00:01:00');
+    await page.getByRole('button', { name:'反復再生を停止', exact:true }).click();
+    await assertLoopFrames(.3,2.5);
+    await page.screenshot({path:path.join(results,'youtube-caption-workspace.png')});
+    checks.push('one preview remains visible with captions; cue navigation keeps the dialog open and selected interval loops');
+    await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).click();
+    await page.getByRole('button',{name:'一時停止 (Space)',exact:true}).click();
+    await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).waitFor();
+    await page.getByRole('button',{name:'字幕4の映像を確認',exact:true}).click();
+    const finalEnd=page.getByRole('spinbutton',{name:'字幕4の終了秒',exact:true});await finalEnd.fill('35');await finalEnd.press('Tab');
+    await startLoopCapture();
+    await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).click();
+    for(let repeat=0;repeat<2;repeat++){
+      await page.waitForFunction(()=>document.querySelector('.caption-monitor .timecode.accent')?.textContent.startsWith('00:00:34'),undefined,{timeout:15000});
+      await page.waitForFunction(()=>document.querySelector('.caption-monitor .timecode.accent')?.textContent.startsWith('00:00:32'),undefined,{timeout:5000});
+      await page.getByRole('button',{name:'一時停止 (Space)',exact:true}).waitFor();
+    }
+    await page.getByRole('button',{name:'反復再生を停止',exact:true}).click();
+    await assertLoopFrames(32,35);
+    const finalStart=page.getByRole('spinbutton',{name:'字幕4の開始秒',exact:true});
+    await finalStart.fill('32.01');await finalStart.press('Tab');
+    await finalEnd.fill('37');await finalEnd.press('Tab');
+    await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.caption-monitor .timecode.accent')?.textContent.startsWith('00:00:34'),undefined,{timeout:15000});
+    await page.waitForFunction(()=>document.querySelector('.caption-monitor .timecode.accent')?.textContent.startsWith('00:00:32'),undefined,{timeout:5000});
+    await page.getByRole('button',{name:'反復再生を停止',exact:true}).click();
+    for(const start of ['34.99','35','36']){await finalStart.fill(start);await finalStart.press('Tab');await page.getByRole('button',{name:'字幕4の映像を確認',exact:true}).click();assert.equal(await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).isDisabled(),true);await page.getByText('この字幕には再生できる長さの区間がありません。時刻を確認してください。',{exact:true}).waitFor();}
+    await finalStart.fill('32');await finalStart.press('Tab');
+    await finalEnd.fill('32.01');await finalEnd.press('Tab');assert.equal(await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).isDisabled(),true);
+    await finalEnd.fill('34');await finalEnd.press('Tab');await page.getByRole('button',{name:'字幕1の映像を確認',exact:true}).click();
+    checks.push('a cue ending at the sequence end repeats twice without being stopped by Preview');
     const firstCue=await page.getByRole('textbox',{name:'字幕1の本文',exact:true}).inputValue();
     assert.equal(firstCue.replace(/\s/g,''),'日本語の字幕を自然な区切りで読みやすく作成します。');
     assert.ok([...firstCue.replace(/\s/g,'')].length>=20&&[...firstCue.replace(/\s/g,'')].length<=30);
@@ -86,6 +139,13 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
     await first.press('Tab'); assert.equal(await first.inputValue(),originalCue); assert.match(await page.locator('.yt-error').textContent(),/空行/);
     const cueEnd=page.getByRole('spinbutton',{name:'字幕1の終了秒',exact:true}); await cueEnd.fill('13'); assert.equal(await page.getByRole('button',{name:'SRT保存',exact:true}).isDisabled(),true); await cueEnd.press('Tab'); assert.equal(await cueEnd.inputValue(),'2.5');
     checks.push('invalid subtitle drafts block apply/export and revert to accepted text and times on blur');
+    await page.getByRole('button',{name:'字幕2の映像を確認',exact:true}).click();
+    assert.equal(await page.getByRole('button',{name:'字幕1の映像を確認',exact:true}).getAttribute('aria-pressed'),'true');
+    await page.getByRole('button',{name:'字幕2の映像を確認',exact:true}).click();
+    assert.equal(await page.getByRole('button',{name:'字幕2の映像を確認',exact:true}).getAttribute('aria-pressed'),'true');
+    await page.getByRole('button',{name:'前の字幕',exact:true}).click();
+    await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).click();await page.getByRole('button',{name:'反復再生を停止',exact:true}).click();
+    checks.push('failed drafts only reject one navigation; subsequent cue jumps and loops recover; out-of-range loops are disabled');
     await first.fill('日本語の字幕を\n読みやすく作成します。'); await first.press('Tab');
     await page.getByRole('button',{name:'字幕をタイムラインに適用',exact:true}).click();
     await page.getByRole('button',{name:'SRT保存',exact:true}).click(); await done(); await page.getByRole('button',{name:'VTT保存',exact:true}).click(); await done();
@@ -131,7 +191,7 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
     assert.equal(await page.getByRole('textbox',{name:/YouTubeタイトル案/}).count(),3); checks.push('401 redaction, cancellation and existing results retained');
     await page.getByRole('button',{name:'編集に戻る',exact:true}).click(); await page.keyboard.press('Control+s'); await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
     const saved=JSON.parse(await fs.readFile(projectFile,'utf8')); assert.equal(saved.clips.filter(c=>c.subtitle).length,4);assert.ok(saved.clips.filter(c=>c.subtitle).every(c=>c.textShadow===false&&c.textStroke===true&&c.strokeColor==='#0064ff'&&c.strokeWidth===4&&c.captionBackgroundOpacity===.25&&c.y>33&&c.fontWeight===700));checks.push('captions persist a four-pixel blue outline, a light background and a lower position'); assert.equal(saved.clips.find(c=>c.subtitle).text,'日本語の字幕を\n読みやすく作成します。'); assert.equal(saved.youtube.titles.length,3); assert.deepEqual(saved.youtube.hashtags,['#動画編集','#日本語字幕','#YouTube制作']); assert.ok(!JSON.stringify(saved).includes(KEY)); await openFile(projectFile);
-    await page.waitForFunction(()=>window.__ytCanvases.some(c=>c.width>0)); await page.keyboard.press('End'); await page.waitForFunction(()=>window.__ytCanvases.every(c=>c.width===0)); checks.push('inactive subtitle canvas backing stores are released');
+    await page.waitForFunction(()=>window.__ytCanvases.some(c=>c.width>0)); await page.keyboard.press('End'); await page.waitForFunction(()=>window.__ytCanvases.every(c=>c.width===0||c.isConnected)); checks.push('inactive subtitle canvas backing stores are released');
     // Use a short export fixture; AI chapters were tested above against all 35 seconds.
     saved.clips=saved.clips.filter(c=>c.start<6).map(c=>({...c,duration:Math.min(c.duration,6-c.start)})); saved.youtube.cues=saved.youtube.cues.filter(c=>c.end<=6); saved.youtube.sourceKey=timelineKey(saved);
     await fs.writeFile(projectFile,JSON.stringify(saved)); await openFile(projectFile);

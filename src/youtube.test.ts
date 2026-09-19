@@ -2,7 +2,7 @@ import { numberTracks } from './track-names';
 import { describe, expect, it } from 'vitest';
 import { emptyProject, makeClip, makeTrack } from './model';
 import { useEditor } from './store';
-import { applySubtitles, emptyYoutube } from './youtube';
+import { applySubtitles, captionPlaybackRange, emptyYoutube } from './youtube';
 import { chapterTime, cuesFromTranscription, descriptionWithChapters, parseHashtags, subtitleFile, subtitleTime, timelineKey, validChapters, validateYoutube, wrapJapanese, youtubeText } from '../shared/youtube.mjs';
 const fixture = () => { const p = emptyProject(); p.clips = [{ ...makeClip(p.tracks[0].id, 0), duration: 40, text: '元のタイトル' }]; p.youtube = { ...emptyYoutube(p), cues: [{ start: 1, end: 3, text: '日本語の字幕です。' }, { start: 5, end: 7, text: '編集して保存します。' }] }; return p; };
 describe('YouTube timing and Japanese captions', () => {
@@ -83,4 +83,23 @@ it('keeps short leading captions on their previous lane across rounded overlap r
   let p=fixture();p.youtube!.cues=[{start:0,end:.2,text:'短い導入'},{start:.2,end:1.0169,text:'先の字幕'},{start:1.0162,end:2,text:'後の字幕'}];
   p=applySubtitles(p);const placements=p.clips.filter(c=>c.subtitle).map(c=>[c.text,c.trackId]);
   for(let i=0;i<10;i++){p=applySubtitles(p);expect(p.clips.filter(c=>c.subtitle).map(c=>[c.text,c.trackId])).toEqual(placements);}
+});
+
+describe('caption playback frame range', () => {
+  it('rejects cue starts rounded onto the sequence end at every supported frame rate', () => {
+    for (const fps of [24, 25, 30, 50, 60]) {
+      expect(captionPlaybackRange({start:35-.25/fps,end:36,text:'末尾'},fps,35)).toBeNull();
+      expect(captionPlaybackRange({start:35,end:36,text:'末尾'},fps,35)).toBeNull();
+      expect(captionPlaybackRange({start:35-1/fps,end:36,text:'最終フレーム'},fps,35)).toEqual({start:35-1/fps,end:35});
+    }
+  });
+  it('uses frame-rounded loop boundaries and clips a crossing cue to the sequence end', () => {
+    expect(captionPlaybackRange({start:32.01,end:37,text:'字幕'},30,35)).toEqual({start:32,end:35});
+    expect(captionPlaybackRange({start:1.01,end:1.01+1/30,text:'字幕'},30,35)).toEqual({start:1,end:31/30});
+  });
+  it('rejects sub-frame and empty sequence intervals like applying subtitles does', () => {
+    expect(captionPlaybackRange({start:1,end:1.01,text:'短い'},30,35)).toBeNull();
+    expect(captionPlaybackRange({start:0,end:1,text:'空'},30,0)).toBeNull();
+    expect(captionPlaybackRange(undefined,30,35)).toBeNull();
+  });
 });
