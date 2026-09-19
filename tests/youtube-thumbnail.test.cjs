@@ -42,6 +42,20 @@ test('brief excludes transparent titles while retaining titles made visible by k
  const brief=thumbnailBrief(p,'');assert.ok(!brief.includes('古い見出し'));assert.ok(!brief.includes('隠した原稿'));
  assert.ok(brief.includes('今の見出し'));assert.ok(brief.includes('後半の見せ場'));
 });
+test('common visual keys determine whether thumbnail references and text ever appear',()=>{
+ const {setVisualKey}=require('../shared/visual-keyframes.mjs'),p=project(path.resolve('food.mp4')),clip=p.clips[0];
+ p.clips=[setVisualKey({...clip,opacity:0},0,{opacity:1})];assert.equal(thumbnailFrames(p).length,3);
+ p.clips=[setVisualKey(clip,0,{opacity:0})];assert.deepEqual(thumbnailFrames(p),[]);
+ const title={...clip,kind:'title',text:'見せる文字',fontSize:40,textStyle:'minimal',color:'#ffffff',fontWeight:400};
+ p.clips=[setVisualKey({...title,opacity:0},0,{opacity:1}),setVisualKey({...title,id:'hidden',text:'隠す文字'},0,{opacity:0})];
+ assert.match(thumbnailBrief(p,''),/見せる文字/);assert.doesNotMatch(thumbnailBrief(p,''),/隠す文字/);
+});
+test('partial visual keys inherit base opacity for thumbnail references and text',()=>{
+ const p=project(path.resolve('food.mp4')),clip={...p.clips[0],visualKeyframes:[{time:0,values:{x:10}}]};
+ p.clips=[clip];assert.equal(thumbnailFrames(p).length,3);p.clips=[{...clip,opacity:0}];assert.deepEqual(thumbnailFrames(p),[]);
+ p.clips=[{...clip,kind:'title',text:'見える原稿'},{...clip,kind:'title',id:'hidden',text:'隠す原稿',opacity:0}];
+ assert.match(thumbnailBrief(p,''),/見える原稿/);assert.doesNotMatch(thumbnailBrief(p,''),/隠す原稿/);
+});
 test('image API sends reference scenes as multipart at high quality in both aspect ratios',async()=>{
  for(const portrait of [false,true]){
   let request;const image=await jpeg(portrait?864:1536,portrait?1536:864);

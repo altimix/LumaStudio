@@ -6,6 +6,9 @@ const { randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { ffmpeg, run } = require('./media.cjs');
 const { validateOpacityKeys, opacityExpression } = require('../shared/opacity.mjs');
+const { validateVisualKeys, visualClipAt, visualKeys, visualExpression, needsTitleFrames } = require('../shared/visual-keyframes.mjs');
+const { animatedColorFilter, animatedChromaFilter, animatedTransformFilter, usesAnimatedMask, usesAnimatedChroma, maskFrame } = require('./visual-animation.cjs');
+const { writeFrameSequence } = require('./frame-sequence.cjs');
 const { validateVolumeKeys } = require('../shared/volume-automation.mjs');
 const { writeFilterScript } = require('./filter-script.cjs');
 const { validateYoutube } = require('../shared/youtube.mjs');
@@ -61,6 +64,7 @@ function validateProject(p, { allowForeignPaths = false } = {}) {
     finite(c.speed, 0.25, 4, '速度'); finite(c.scale, 0.1, 3, '拡大率'); finite(c.x, -200, 200, 'X座標'); finite(c.y, -200, 200, 'Y座標'); finite(c.rotation, -180, 180, '回転');
     finite(c.opacity, 0, 1, '不透明度'); finite(c.volume, 0, 2, '音量'); finite(c.exposure, -2, 2, '露出'); finite(c.contrast, 0, 2, 'コントラスト'); finite(c.saturation, 0, 2, '彩度'); finite(c.fadeIn, 0, c.duration, 'フェードイン'); finite(c.fadeOut, 0, c.duration, 'フェードアウト');
     validateOpacityKeys(c);
+    validateVisualKeys(c);
     validateVolumeKeys(c);
     if (c.volumeKeyframes !== undefined && !hasClipAudio(c, p.assets.find(a => a.id === c.assetId))) throw new Error('音声のないクリップには音量ポイントを設定できません。');
     validateGraphic(c);
@@ -121,14 +125,18 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
   const args = ['-hide_banner', '-y', '-filter_complex_threads', '2', '-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:r=${fps}:d=${number(duration)}`, '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${number(duration)}`];
   const visible = p.clips.filter(c => c.kind !== 'audio' && !p.tracks.find(t => t.id === c.trackId)?.hidden);
   const only = visible.length === 1 ? visible[0] : null, onlyAsset = p.assets.find(a => a.id === only?.assetId);
-  const directVideo = onlyAsset?.codec === 'h264' && only?.kind === 'video' && only.start === 0 && only.duration === duration && only.scale === 1 && only.x === 0 && only.y === 0 && only.rotation === 0 && only.opacity === 1 && !only.opacityKeyframes?.length && !only.fadeIn && !only.fadeOut && only.exposure === 0 && only.contrast === 1 && only.saturation === 1 && !hasVideoMask(only) && !hasChromaKey(only) && !p.transitions?.length && onlyAsset?.width * height === onlyAsset?.height * width;
+  const directVideo = onlyAsset?.codec === 'h264' && only?.kind === 'video' && only.start === 0 && only.duration === duration && only.scale === 1 && only.x === 0 && only.y === 0 && only.rotation === 0 && only.opacity === 1 && !only.opacityKeyframes?.length && !only.visualKeyframes?.length && !only.fadeIn && !only.fadeOut && only.exposure === 0 && only.contrast === 1 && only.saturation === 1 && !hasVideoMask(only) && !hasChromaKey(only) && !p.transitions?.length && onlyAsset?.width * height === onlyAsset?.height * width;
   const filters = directVideo ? [] : ['[0:v]format=rgba[base]'];
   let base = 'base'; const audios = ['[1:a]']; let input = 2;
   const envelopes=audioEnvelopes(p), plans=transitionPlan(p), transitionClips=new Set(plans.filter(t=>t.video).flatMap(t=>[t.fromId,t.toId])), visuals=[];
   const anySolo = p.tracks.some(t => t.solo);
   // Bottom track is composited first. Later clips within a track are on top.
   const sorted = [...p.tracks].reverse().flatMap(t => p.clips.filter(c => c.trackId === t.id).sort((a,b) => a.start - b.start));
-  for (const c of sorted) {
+  for (const rawClip of sorted) {
+    const c=visualClipAt(rawClip,0),animated=!!c.visualKeyframes?.length;
+    const values=animated?visualKeys(rawClip).map(key=>visualClipAt(rawClip,key.time)):[c];
+    const moving=animated&&!c.graphic&&values.some(value=>['x','y','scale','rotation'].some(field=>value[field]!==c[field]));
+    const colorChanges=animated&&values.some(value=>['exposure','contrast','saturation'].some(field=>value[field]!==c[field]));
     const track = p.tracks.find(t => t.id === c.trackId);
     const asset = p.assets.find(a => a.id === c.assetId);
     const visual = c.kind !== 'audio' && !track.hidden;
@@ -140,26 +148,30 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
     const videoWindow=mediaWindow(c,asset,plans,'video'),audioWindow=mediaWindow(c,asset,plans,'audio');
     const window=visual?videoWindow:audioWindow;
     if (visual) {
-      if (c.kind === 'image' || c.kind === 'title') args.push('-loop', '1', '-framerate', String(fps));
+      const sequence=typeof source==='object',offset=c.start-videoWindow.start,animatedMask=usesAnimatedMask(rawClip);
+      if (!sequence&&(c.kind === 'image' || c.kind === 'title')) args.push('-loop', '1', '-framerate', String(fps));
       else args.push('-ss', number(window.sourceIn));
-      args.push('-t', number(window.sourceDuration), '-i', source);
+      args.push('-t', number(window.sourceDuration), '-i', sequence?source.path:source);
       const index = input++;
       let maskIndex;
-      if (hasBezierMask(c)) {
+      if (hasBezierMask(c)||animatedMask) {
         const maskPath = maskPaths[c.id];
         if (!maskPath) throw new Error(`ベジェマスクを準備できませんでした: ${c.name}`);
-        args.push('-loop', '1', '-framerate', String(fps), '-i', maskPath);
+        if(typeof maskPath==='string')args.push('-loop','1','-framerate',String(fps));
+        args.push('-i',typeof maskPath==='string'?maskPath:maskPath.path);
         maskIndex = input++;
       }
-      const fitW = Math.max(2, Math.round(width * (c.graphic?1:c.scale) / 2) * 2); const fitH = Math.max(2, Math.round(height * (c.graphic?1:c.scale) / 2) * 2);
-      const f = [`[${index}:v]setpts=(PTS-STARTPTS)/${number(c.speed)}`, `fps=${fps}:eof_action=pass`];
+      const fitW = Math.max(2, Math.round(width * (c.graphic||moving?1:c.scale) / 2) * 2); const fitH = Math.max(2, Math.round(height * (c.graphic||moving?1:c.scale) / 2) * 2);
+      const f = [`[${index}:v]setpts=(PTS-STARTPTS)/${number(sequence?1:c.speed)}`, `fps=${fps}:eof_action=pass`];
+      f.push(`tpad=start_mode=clone:start_duration=${number(videoWindow.padBefore)}:stop_mode=clone:stop_duration=${number(videoWindow.padAfter+1/fps)}`,`trim=duration=${number(videoWindow.duration)}`,'setpts=PTS-STARTPTS');
       // Match the preview: calculate the key from decoded source pixels before
       // clip scaling can blend background color into fine foreground edges.
-      if (hasChromaKey(c)) f.push('format=rgba', ffmpegChromaFilter(c));
+      if (usesAnimatedChroma(rawClip)) f.push('format=rgba',animatedChromaFilter(rawClip,offset));
+      else if (hasChromaKey(c)) f.push('format=rgba', ffmpegChromaFilter(c));
       f.push(`scale=${fitW}:${fitH}:force_original_aspect_ratio=decrease:force_divisible_by=2`, 'setsar=1', ...(directVideo ? [`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`] : ['format=rgba']));
-      f.push(`tpad=start_mode=clone:start_duration=${number(videoWindow.padBefore)}:stop_mode=clone:stop_duration=${number(videoWindow.padAfter+1/fps)}`,`trim=duration=${number(videoWindow.duration)}`,'setpts=PTS-STARTPTS');
-      if (c.kind !== 'title' && (c.exposure !== 0 || c.contrast !== 1 || c.saturation !== 1)) f.push(colorFilter(c));
-      if (hasBezierMask(c)) {
+      if(c.kind!=='title'&&colorChanges)f.push(animatedColorFilter(rawClip,offset));
+      else if (c.kind !== 'title' && (c.exposure !== 0 || c.contrast !== 1 || c.saturation !== 1)) f.push(colorFilter(c));
+      if (hasBezierMask(c)||animatedMask) {
         filters.push(f.join(',') + `[premask${index}]`);
         filters.push(`[${maskIndex}:v]format=gray[maskraw${index}]`);
         // In the bundled FFmpeg scale2ref, iw/ih are the dimensions of the
@@ -173,18 +185,22 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
         filters.push(`[maskcolor${index}][combinedalpha${index}]alphamerge[masked${index}]`);
         f.length = 0; f.push(`[masked${index}]null`);
       } else if (hasVideoMask(c)) f.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${ffmpegMaskExpression(c)})'`);
-      if (c.rotation&&!c.graphic) { const angle = number(c.rotation * Math.PI / 180); f.push(`rotate=${angle}:ow=rotw(${angle}):oh=roth(${angle}):c=none`); }
-      if (c.opacityKeyframes?.length) f.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacityExpression(c.opacityKeyframes)})'`);
-      else if (c.opacity !== 1) f.push(`colorchannelmixer=aa=${number(c.opacity)}`);
+      if(moving)f.push(`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black@0`,animatedTransformFilter(rawClip,offset));
+      else {
+        if (c.rotation&&!c.graphic) { const angle = number(c.rotation * Math.PI / 180); f.push(`rotate=${angle}:ow=rotw(${angle}):oh=roth(${angle}):c=none`); }
+        if(animated&&values.some(value=>value.opacity!==c.opacity))f.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${visualExpression(rawClip,'opacity','T',offset)})'`);
+        else if (c.opacityKeyframes?.length) f.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacityExpression(c.opacityKeyframes)})'`);
+        else if (c.opacity !== 1) f.push(`colorchannelmixer=aa=${number(c.opacity)}`);
+      }
       if (c.fadeIn) f.push(`fade=t=in:st=${number(c.start-videoWindow.start)}:d=${number(c.fadeIn)}:alpha=1`);
       if (c.fadeOut) f.push(`fade=t=out:st=${number(c.start-videoWindow.start+c.duration - c.fadeOut)}:d=${number(c.fadeOut)}:alpha=1`);
       f.push('settb=AVTB');filters.push(f.join(',')+'[v'+index+']');
       let label='v'+index;
-      if(transitionClips.has(c.id)){
+      if(transitionClips.has(c.id)&&!moving){
         filters.push(`color=c=black@0:s=${width}x${height}:r=${fps}:d=${number(videoWindow.duration)},format=rgba[blank${index}]`);
         filters.push(`[blank${index}][v${index}]overlay=x=(W-w)/2+W*${number(c.x/100)}:y=(H-h)/2+H*${number(c.y/100)}:format=auto:shortest=1,format=gbrap,settb=AVTB[layer${index}]`);label='layer'+index;
       }
-      visuals.push({clip:{...c,start:videoWindow.start,duration:videoWindow.duration},label,full:transitionClips.has(c.id)});
+      visuals.push({clip:{...c,start:videoWindow.start,duration:videoWindow.duration},label,full:moving||transitionClips.has(c.id)});
     }
     if (audio) {
       if (c.audioTreatment&&!audioPaths[c.id]) throw new Error('自動調整した音声を準備できませんでした。');
@@ -202,8 +218,10 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
   args.push('-filter_complex', filters.join(';'), '-map', '[vfinal]', '-map', '[afinal]', '-t', number(duration), '-r', String(fps), ...encodingArgs(settings.encoder ?? 'cpu', settings.quality), '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', output);
   return { args, duration };
 }
-async function exportProject(p, settings, output, { titleImages = {}, audioPaths = {}, onProgress = () => {}, signal, encoders = exportEncoders, spawnProcess = spawn } = {}) {
+async function exportProject(p, settings, output, { titleImages = {}, titleFrameProvider, audioPaths = {}, onProgress = () => {}, signal, encoders = exportEncoders, spawnProcess = spawn } = {}) {
   validateProject(p);
+  finite(settings?.fps,1,120,'書き出しFPS');finite(settings?.width,128,7680,'書き出し幅');finite(settings?.height,128,4320,'書き出し高さ');
+  if(!Number.isInteger(settings.fps)||settings.width%2||settings.height%2)throw new Error('書き出しサイズは偶数、FPSは整数で指定してください。');
   const requested=validateEncoder(settings?.encoder);
   if(signal?.aborted)throw new Error('書き出しをキャンセルしました。');
   const resolveEncoder=()=>new Promise((resolve,reject)=>{
@@ -224,18 +242,29 @@ async function exportProject(p, settings, output, { titleImages = {}, audioPaths
       sources[a.id] = file;
     }
     for (const c of p.clips.filter(c => c.kind === 'title' && !p.tracks.find(t => t.id === c.trackId)?.hidden)) {
+      if(needsTitleFrames(c)){
+        if(typeof titleFrameProvider!=='function')throw new Error('テキストのキーフレーム画像を準備できませんでした。');
+        const file=path.join(tempDir,`${randomUUID()}.mov`);
+        await writeFrameSequence(file,{fps:settings.fps,frames:Math.max(1,Math.ceil(c.duration*settings.fps-1e-7)),signal,frame:time=>titleFrameProvider(c,time,p.width,p.height),onFrame:progress=>onProgress({status:'preparing',progress,output})});
+        sources[c.id]={path:file};continue;
+      }
       const data = titleImages[c.id];
       if (typeof data !== 'string' || !data.startsWith('data:image/png;base64,') || data.length > 24 * 1024 * 1024) throw new Error('テロップ画像を作成できませんでした。');
       const file = path.join(tempDir, `${randomUUID()}.png`);
       await fs.writeFile(file, Buffer.from(data.split(',')[1], 'base64')); sources[c.id] = file;
     }
     const masks = {};
-    for (const c of p.clips.filter(c => hasBezierMask(c) && c.kind !== 'audio' && !p.tracks.find(t => t.id === c.trackId)?.hidden)) {
+    for (const c of p.clips.filter(c => (hasBezierMask(visualClipAt(c,0))||usesAnimatedMask(c)) && c.kind !== 'audio' && !p.tracks.find(t => t.id === c.trackId)?.hidden)) {
       const asset = p.assets.find(a => a.id === c.assetId);
       const sourceWidth = Math.max(1, Math.round(asset?.width || p.width)), sourceHeight = Math.max(1, Math.round(asset?.height || p.height));
       const scale = Math.min(1, 512 / Math.max(sourceWidth, sourceHeight));
       const width = Math.max(1, Math.round(sourceWidth * scale)), height = Math.max(1, Math.round(sourceHeight * scale));
-      const file = path.join(tempDir, `${randomUUID()}.pgm`), alpha = rasterizeBezierMask(c, width, height);
+      if(usesAnimatedMask(c)){
+        const window=mediaWindow(c,asset,transitionPlan(p),'video'),file=path.join(tempDir,`${randomUUID()}.mkv`);
+        await writeFrameSequence(file,{fps:settings.fps,frames:Math.max(1,Math.ceil(window.duration*settings.fps-1e-7)),format:'pgm',signal,frame:time=>maskFrame(c,time+window.start-c.start,width,height),onFrame:progress=>onProgress({status:'preparing',progress,output})});
+        masks[c.id]={path:file};continue;
+      }
+      const file = path.join(tempDir, `${randomUUID()}.pgm`), alpha = rasterizeBezierMask(visualClipAt(c,0), width, height);
       await fs.writeFile(file, Buffer.concat([Buffer.from(`P5\n${width} ${height}\n255\n`), Buffer.from(alpha)]));
       masks[c.id] = file;
     }

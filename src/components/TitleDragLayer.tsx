@@ -8,7 +8,8 @@ import { resizeTextBox } from '../../shared/text-box.mjs';
 import InlineTextEditor from './InlineTextEditor';
 import './text-box.css';
 import { isFontReady } from '../fonts';
-import { opacityAt } from '../../shared/opacity.mjs';
+import { visualClipAt, patchVisualClip } from '../../shared/visual-keyframes.mjs';
+import { localVisualTime } from '../visual-editing';
 import { moveMedia, visualOrder } from '../media-transform';
 import { NO_SNAP, sameSnapGuides, snapMonitorPosition } from '../monitor-snap';
 import MonitorSnapGuides from './MonitorSnapGuides';
@@ -38,7 +39,7 @@ export default function TitleDragLayer({ fontVersion }: { fontVersion: number })
     const unsubscribe=useEditor.subscribe(state=>{const session=editRef.current;if(session&&(state.project!==session.project||state.playhead!==session.time||state.playing||!state.selected.includes(session.clip.id)))finishInline(false);});
     return()=>{unsubscribe();cleanup.current?.();finishInline(false,undefined,false);};
   },[]);
-  const active = [...p.tracks].reverse().filter(t => !t.hidden).flatMap(t => p.clips.filter(c => c.kind === 'title' && c.trackId === t.id && time >= c.start && time < c.start + c.duration && isFontReady(c) && fadeAt(c, time) * opacityAt(c.opacityKeyframes, time - c.start, c.opacity) > 0.001).sort((a, b) => a.start - b.start).map(clip => ({ clip, locked: t.locked })));
+  const active = [...p.tracks].reverse().filter(t => !t.hidden).flatMap(t => p.clips.filter(c => c.kind === 'title' && c.trackId === t.id && time >= c.start && time < c.start + c.duration).map(c=>visualClipAt(c,time-c.start)).filter(c=>isFontReady(c)&&fadeAt(c,time)*c.opacity>.001).sort((a, b) => a.start - b.start).map(clip => ({ clip, locked: t.locked })));
   const drag = (event: ReactPointerEvent<HTMLButtonElement>, renderedClip: Clip, mode:'move'|'resize'|'text-resize'='move',handle={x:1,y:1}) => {
     if (event.button !== 0 || cleanup.current) return;
     event.preventDefault(); event.stopPropagation();
@@ -46,7 +47,7 @@ export default function TitleDragLayer({ fontVersion }: { fontVersion: number })
     // Keyboard shortcuts must follow the title, not the previously used input.
     event.currentTarget.focus({ preventScroll: true });
     const initial = useEditor.getState(), p = initial.project, projectId = p.id;
-    const clip = p.clips.find(item => item.id === renderedClip.id);
+    const raw = p.clips.find(item => item.id === renderedClip.id),at=raw?localVisualTime(raw,initial.playhead,p.fps):0,clip=raw&&visualClipAt(raw,at);
     if (!clip || initial.playing || initial.gestureActive) return;
     if (initial.project.tracks.find(t => t.id === clip.trackId)?.locked) return;
     const owner={};if(!initial.beginGesture(owner,()=>cancel()))return;initial.stop(); initial.select([clip.id]);
@@ -68,10 +69,18 @@ export default function TitleDragLayer({ fontVersion }: { fontVersion: number })
       const current = useEditor.getState();
       finish();
       if (changed && current.gestureOwner===owner && current.project.id === projectId) {
-        const clips = current.project.clips.map(c => c.id === clip.id ? { ...c, x: clip.x, y: clip.y, captionAutoPosition: clip.captionAutoPosition, ...(mode==='resize'?{graphic:clip.graphic}:mode==='text-resize'?{textBox:clip.textBox}:{}) } : c);
+        const clips = current.project.clips.map(c => c.id === clip.id ? { ...c, x: raw!.x, y: raw!.y, visualKeyframes:raw!.visualKeyframes, opacityKeyframes:raw!.opacityKeyframes, captionAutoPosition: raw!.captionAutoPosition, ...(mode==='resize'?{graphic:raw!.graphic}:mode==='text-resize'?{textBox:raw!.textBox}:{}) } : c);
         const onlyDrag = current.history.at(-1) === before.project && current.currentAction === action;
         useEditor.setState({ project: { ...current.project, clips }, ...(onlyDrag ? { history: before.history, future: before.future, historyPlayheads:before.historyPlayheads, futurePlayheads:before.futurePlayheads, historyLabels: before.historyLabels, futureLabels: before.futureLabels, currentAction: before.currentAction, dirty: before.dirty } : {}) });
       }
+    };
+    const apply=(state:ReturnType<typeof useEditor.getState>,patch:Partial<Clip>)=>{
+      try {
+        const next=patchVisualClip(raw!,patch,at);
+        if(JSON.stringify(next)===JSON.stringify(state.project.clips.find(c=>c.id===clip.id)))return;
+        if(!changed){before=state;state.checkpoint(action);changed=true;}
+        state.transient({...state.project,clips:state.project.clips.map(c=>c.id===clip.id?next:c)});
+      }catch(error){state.notify((error as Error).message);}
     };
     const move = (e: PointerEvent, bypass = e.altKey) => {
       if (e.pointerId !== pointer || closed) return;
@@ -81,23 +90,19 @@ export default function TitleDragLayer({ fontVersion }: { fontVersion: number })
       if (!changed && Math.hypot(e.clientX - x, e.clientY - y) < 3) return;
       if(mode==='text-resize'){
         const patch=resizeTextBox(clip,box,p,handle,(e.clientX-x)/rect.width*p.width,(e.clientY-y)/rect.height*p.height);
-        if (!changed) { before = state; state.checkpoint(action); changed = true; }
-        state.transient({...state.project,clips:state.project.clips.map(c=>c.id===clip.id?{...c,...patch}:c)});return;
+        apply(state,patch);return;
       }
       if(mode==='resize'&&clip.graphic){
         const dx=(e.clientX-x)/rect.width*p.width/clip.scale,dy=(e.clientY-y)/rect.height*p.height/clip.scale,angle=clip.rotation*Math.PI/180;
         const graphic={...clip.graphic,width:Math.max(4,Math.min(16000,clip.graphic.width+2*(dx*Math.cos(angle)+dy*Math.sin(angle)))),height:Math.max(4,Math.min(16000,clip.graphic.height+2*(-dx*Math.sin(angle)+dy*Math.cos(angle))))};
-        if (!changed) { before = state; state.checkpoint(action); changed = true; }
-        state.transient({...state.project,clips:state.project.clips.map(c=>c.id===clip.id?{...c,graphic}:c)});return;
+        apply(state,{graphic});return;
       }
       const delta = { x: (e.clientX-x)/rect.width*p.width, y: (e.clientY-y)/rect.height*p.height };
       const result = snapMonitorPosition(clip, size, p, delta, rect, snapped, previousDelta);
       previousDelta = delta; snapped = result.guides;
       const visible = bypass ? NO_SNAP : result.guides, patch = bypass ? moveMedia(clip, p, delta) : { x: result.x, y: result.y };
       setGuides(previous => sameSnapGuides(previous, visible) ? previous : visible);
-      if (patch.x === current.x && patch.y === current.y) return;
-      if (!changed) { before = state; state.checkpoint(action); changed = true; }
-      state.transient({ ...state.project, clips: state.project.clips.map(c => c.id === clip.id ? { ...c, ...(c.captionAutoPosition ? {captionAutoPosition:false} : {}), ...patch } : c) });
+      apply(state,{...(current.captionAutoPosition?{captionAutoPosition:false}:{}),...patch});
     };
     const up = (e: PointerEvent) => { if (e.pointerId === pointer) finish(); };
     const cancelPointer = (e: PointerEvent) => { if (e.pointerId === pointer) cancel(); };

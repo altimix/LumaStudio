@@ -2,12 +2,13 @@ import { numberTracks } from './track-names';
 import { trackDeletionReason } from './track-editing';
 import { separateOverlappingClips } from './track-placement';
 import { resetAudioMeter } from './meter-store';
-import { captionStyle, captionBottomY, reflowEditedCaptions } from './caption-style';
+import { captionStyle, positionAutomaticCaption, reflowEditedCaptions } from './caption-style';
 import type { SoundId } from '../shared/sounds.mjs';
 import { create } from 'zustand';
 import type { Asset, Clip, Project, Track, Graphic, TransitionOptions } from './types';
 import { uid, endTime, makeClip, makeTrack, emptyProject, normalizeClip, roundFrame, splitClip, rippleTrim } from './model';
 import { validateOpacityKeys, windowOpacity } from '../shared/opacity.mjs';
+import { patchVisualClip, validateVisualKeys, windowVisualKeys } from '../shared/visual-keyframes.mjs';
 import { retimeVolume, validateVolumeKeys } from '../shared/volume-automation.mjs';
 import { validateTextStyle } from '../shared/text-style.mjs';
 import { validateGraphic, SHAPE_NAMES } from '../shared/graphics.mjs';
@@ -23,6 +24,7 @@ import { resizeTransition } from './transition-editing';
 import { deleteTimelineGap, rippleGapTime } from './gap-editing';
 export type Panel = 'media' | 'effects' | 'titles' | 'draw' | 'bgm';
 type EditorState = {
+  visualChannel: string;
   activeVolumePoint: {clipId:string;time:number}|null;
   addBgm(asset:Asset,fit:boolean,volume:number):boolean;
   setBgmVolumeDb(db:number,ids?:string[]):void;
@@ -61,6 +63,7 @@ function capacity(current: number, added: number, label = 'クリップ') {
   return false;
 }
 export const useEditor = create<EditorState>((set, get) => ({
+  visualChannel: 'opacity',
   addBgm:(asset,fit,volume)=>{
     const s=get();if(s.gestureActive){s.notify('ドラッグ中の編集を完了してください。');return false;}
     try{const result=insertBgm(s.project,asset,s.playhead,fit,volume);if(!s.place(result.project,'BGMを追加'))return false;s.stop();set({activeVolumePoint:null,selected:result.ids,sourceId:null});s.setInspectorTab('audio');s.notify(`BGMを追加しました${result.repeats>1?`（${result.repeats}回の繰り返し）`:''}。右側で音量とフェードを調整できます。`);return true;}
@@ -118,7 +121,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       if(next!==s.project && s.commit(next,`BGM音量を${db} dBに設定`))s.notify(`BGM音量を${db} dBに設定しました。`);
     } catch(e){s.notify((e as Error).message);}
   },
-  setRate:(speed,ids)=>{const s=get(),targets=linkedIds(s.project,ids||s.selected);if(!Number.isFinite(speed)||speed<.25||speed>4)return;if(clipsLocked(s.project,targets)){s.notify('リンク相手を含むトラックのロックを解除してください。');return;}s.commit({...s.project,clips:s.project.clips.map(c=>targets.includes(c.id)&&['video','audio'].includes(c.kind)?normalizeClip({...c,speed,duration:c.duration*c.speed/speed,fadeIn:c.fadeIn*c.speed/speed,fadeOut:c.fadeOut*c.speed/speed,...(c.volumeKeyframes?{volumeKeyframes:retimeVolume(c,{in:c.in,speed,duration:c.duration*c.speed/speed})}:{})},s.project):c)},'再生速度を変更');},
+  setRate:(speed,ids)=>{const s=get(),targets=linkedIds(s.project,ids||s.selected);if(!Number.isFinite(speed)||speed<.25||speed>4)return;if(clipsLocked(s.project,targets)){s.notify('リンク相手を含むトラックのロックを解除してください。');return;}s.commit({...s.project,clips:s.project.clips.map(c=>targets.includes(c.id)&&['video','audio'].includes(c.kind)?normalizeClip({...c,speed,duration:c.duration*c.speed/speed,fadeIn:c.fadeIn*c.speed/speed,fadeOut:c.fadeOut*c.speed/speed,...(c.visualKeyframes?{visualKeyframes:c.visualKeyframes.map(key=>({...key,time:key.time*c.speed/speed}))}:{}),...(c.volumeKeyframes?{volumeKeyframes:retimeVolume(c,{in:c.in,speed,duration:c.duration*c.speed/speed})}:{})},s.project):c)},'再生速度を変更');},
   projectGeneration: 0, project: emptyProject(), selected: [], playhead: 2.4, seekRevision: 0, playing: false, shuttleRate: 1, zoom: 48, snapping: true, tool: 'select', mediaEditMode: 'transform', panel: 'media', inspectorTab: 'video', panelRequestId: 0, inspectorRequestId: 0,
   history: [], future: [], historyLabels: [], futureLabels: [], currentAction: '開始', dirty: false, savedPath: null, clipboard: [], toast: '', sourceId: null, ready: false, autosavedAt: '', previewQuality: 0.5, safeGuides: false, gestureActive: false, gestureOwner:null, gestureCancel:null, trackMenuOpen: false,
   beginGesture:(owner,cancel)=>{if(get().gestureActive)return false;set({gestureActive:true,gestureOwner:owner,gestureCancel:cancel});return true;},
@@ -131,11 +134,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     catch(error){s.notify((error as Error).message);return false;}
   },
   commit: (p, label = 'クリップのプロパティを変更', undoPlayhead) => {
-    const s=get(); try {p=numberTracks(pruneTransitions(syncLinkedEdits(s.project,p,uid)));} catch(e){s.notify((e as Error).message);return false;}
+    const s=get(); try {p=numberTracks(pruneTransitions(syncLinkedEdits(s.project,p,uid)));p.clips.forEach(validateVisualKeys);} catch(e){s.notify((e as Error).message);return false;}
     set({project:p,activeVolumePoint:volumeSelectionAfterEdit(s,p),zoom:boundedZoom(s.zoom,Math.max(endTime(p),s.playhead)),history:[...s.history.slice(-79),s.project],historyPlayheads:[...s.historyPlayheads.slice(-79),undoPlayhead??null],historyLabels:[...s.historyLabels.slice(-79),s.currentAction],currentAction:label,future:[],futurePlayheads:[],futureLabels:[],dirty:true});return true;
   },
   checkpoint: (label = 'プロパティを変更') => set(s => ({ history: [...s.history.slice(-79), s.project], historyPlayheads:[...s.historyPlayheads.slice(-79),null], historyLabels: [...s.historyLabels.slice(-79), s.currentAction], currentAction: label, future: [], futurePlayheads:[], futureLabels: [], dirty: true })),
-  transient: (p,baseline) => {const s=get();try{p=reflowEditedCaptions(baseline||s.project,p);p=numberTracks(pruneTransitions(syncLinkedEdits(baseline||s.project,p,uid)));set({project:p,activeVolumePoint:volumeSelectionAfterEdit(s,p),zoom:boundedZoom(s.zoom,Math.max(endTime(p),s.playhead)),dirty:true});}catch(e){s.notify((e as Error).message);}},
+  transient: (p,baseline) => {const s=get();try{p=reflowEditedCaptions(baseline||s.project,p);p=numberTracks(pruneTransitions(syncLinkedEdits(baseline||s.project,p,uid)));p.clips.forEach(validateVisualKeys);set({project:p,activeVolumePoint:volumeSelectionAfterEdit(s,p),zoom:boundedZoom(s.zoom,Math.max(endTime(p),s.playhead)),dirty:true});}catch(e){s.notify((e as Error).message);}},
   select: selected => set(s=>({ selected, activeTransitionId:null, activeVolumePoint:selected.length===1&&selected[0]===s.activeVolumePoint?.clipId?s.activeVolumePoint:null, mediaEditMode:selected.length===1&&selected[0]===s.selected[0]?s.mediaEditMode:'transform' })),
   seek: t => { if (Number.isFinite(t)) set(s => ({ playhead: Math.max(0, Math.min(MAX_MEDIA_SECONDS, roundFrame(t, s.project.fps))), zoom: boundedZoom(s.zoom, Math.max(endTime(s.project), Math.min(MAX_MEDIA_SECONDS, t))), seekRevision: s.seekRevision + 1 })); },
   togglePlay: () => set(s => ({ playing: endTime(s.project) > 0 && !s.playing, shuttleRate: 1, zoom: boundedZoom(s.zoom, endTime(s.project)), playhead: s.playhead >= endTime(s.project) ? 0 : s.playhead })),
@@ -156,15 +159,17 @@ export const useEditor = create<EditorState>((set, get) => ({
     const s = get(); const clip = s.project.clips.find(c => c.id === id);
     if (!clip || s.project.tracks.find(t => t.id === clip.trackId)?.locked) return;
     if (patch.trackId !== undefined) { const destination = s.project.tracks.find(t => t.id === patch.trackId); if (!destination || destination.locked) { s.notify('配置先トラックのロックを解除してください。'); return; } }
-    const next = { ...clip, ...patch };
-    if (next.captionAutoPosition && (['x','y','scale','rotation','textBox'].some(key=>Object.hasOwn(patch,key)) || next.textStyle!=='subtitle')) next.captionAutoPosition=false;
-    if (next.captionAutoPosition) next.y=captionBottomY(s.project,next.text,next.fontSize);
-    if (patch.speed !== undefined && patch.speed !== clip.speed) {const ratio=clip.speed/patch.speed;next.duration=clip.duration*ratio;next.fadeIn=patch.fadeIn??clip.fadeIn*ratio;next.fadeOut=patch.fadeOut??clip.fadeOut*ratio;}
+    let next: Clip;
+    try { next = patchVisualClip(clip, patch, Math.max(0, Math.min(clip.duration, roundFrame(s.playhead - clip.start, s.project.fps)))); }
+    catch (error) { s.notify((error as Error).message); return; }
+    next=positionAutomaticCaption(s.project,next,clip);
+    if (patch.speed !== undefined && patch.speed !== clip.speed) {const ratio=clip.speed/patch.speed;next.duration=clip.duration*ratio;next.fadeIn=patch.fadeIn??clip.fadeIn*ratio;next.fadeOut=patch.fadeOut??clip.fadeOut*ratio;if(clip.visualKeyframes)next.visualKeyframes=clip.visualKeyframes.map(key=>({...key,time:key.time*ratio}));}
     const normalized = normalizeClip(next, s.project);
     if (patch.volumeKeyframes === undefined && clip.volumeKeyframes) normalized.volumeKeyframes = retimeVolume(clip, normalized);
     if (clip.kind === 'title' && patch.duration !== undefined && patch.opacityKeyframes === undefined && clip.opacityKeyframes) normalized.opacityKeyframes = windowOpacity(clip.opacityKeyframes, 0, normalized.duration);
-    try { validateOpacityKeys(normalized); validateVolumeKeys(normalized); validateGraphic(normalized); validateVideoMask(normalized); validateChromaKey(normalized); if (normalized.kind === 'title') validateTextStyle(normalized); } catch (e) { s.notify((e as Error).message); return; }
-    s.commit({ ...s.project, clips: s.project.clips.map(c => c.id === id ? normalized : c) }, patch.volumeKeyframes !== undefined ? '音量ポイントを変更' : patch.opacityKeyframes !== undefined ? '不透明度キーフレームを変更' : patch.speed !== undefined ? '再生速度を変更' : 'クリップのプロパティを変更');
+    if (patch.duration !== undefined && patch.visualKeyframes === undefined && clip.visualKeyframes) normalized.visualKeyframes = windowVisualKeys(clip, 0, normalized.duration);
+    try { validateOpacityKeys(normalized); validateVisualKeys(normalized); validateVolumeKeys(normalized); validateGraphic(normalized); validateVideoMask(normalized); validateChromaKey(normalized); if (normalized.kind === 'title') validateTextStyle(normalized); } catch (e) { s.notify((e as Error).message); return; }
+    s.commit({ ...s.project, clips: s.project.clips.map(c => c.id === id ? normalized : c) }, patch.volumeKeyframes !== undefined ? '音量ポイントを変更' : patch.visualKeyframes !== undefined ? 'キーフレームを変更' : patch.opacityKeyframes !== undefined ? '不透明度キーフレームを変更' : patch.speed !== undefined ? '再生速度を変更' : 'クリップのプロパティを変更');
   },
   updateTrack: (id, patch) => { const s = get(); const track = s.project.tracks.find(t => t.id === id); if (!track || (track.locked && patch.name !== undefined)) return; s.commit({ ...s.project, tracks: s.project.tracks.map(t => t.id === id ? { ...t, ...patch, ...(patch.name !== undefined ? { autoName: false } : {}) } : t) }, patch.locked !== undefined ? (patch.locked ? 'トラックをロック' : 'トラックのロックを解除') : 'トラックを変更'); },
   importAssets: assets => { const s = get(); const known = new Set(s.project.assets.map(a => a.id)); const fresh = assets.filter(a => { if (known.has(a.id)) return false; known.add(a.id); return true; }); if (!capacity(s.project.assets.length, fresh.length, '素材')) return; if (fresh.length) s.commit({ ...s.project, assets: [...s.project.assets, ...fresh] }, '素材を読み込み'); s.notify(`${assets.length} 件の素材を読み込みました`); },

@@ -96,6 +96,8 @@ function handle(channel, fn) {
   });
 }
 function installIPC() {
+  const titleFrames=require('./frame-sequence.cjs').createTitleFrameBroker(request=>window.webContents.send('render-title-frame',request));
+  handle('finish-title-frame',(id,png,error)=>titleFrames.finish(id,png,error));
   const updateChecker = createUpdateChecker({ currentVersion: app.getVersion(), platform: process.platform, arch: process.arch,
     ...(process.env.LUMA_TEST_DATA ? { fetchRelease: async () => ({ tag_name: `v${app.getVersion()}`, draft: false, prerelease: false, assets: [] }) } : {}) });
   handle('check-updates', refresh => { if (refresh !== undefined && typeof refresh !== 'boolean') throw new Error('更新確認の指定が不正です。'); return updateChecker.check(refresh === true); });
@@ -381,7 +383,8 @@ function installIPC() {
     try {
       if (!window.isDestroyed()) window.webContents.send('export-progress', { status: 'preparing', progress: 0, output });
       const audioPaths = await preparedAudioPaths(p, exportController.signal);
-      const completed = await exportProject(p, settings, output, { titleImages, audioPaths, signal: exportController.signal, onProgress: progress => { if (!window.isDestroyed()) window.webContents.send('export-progress', progress); } });
+      const signal=exportController.signal;
+      const completed = await exportProject(p, settings, output, { titleImages, titleFrameProvider:(clip,time,width,height)=>titleFrames.request(clip,time,width,height,p.width,signal), audioPaths, signal, onProgress: progress => { if (!window.isDestroyed()) window.webContents.send('export-progress', progress); } });
       completedExports.add(completed); return completed;
     } finally { exportController = null; finishExport(); }
   });

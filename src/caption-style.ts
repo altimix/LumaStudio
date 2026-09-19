@@ -1,5 +1,6 @@
 import type { Clip, Project } from './types';
 import { wrapCaption } from '../shared/captions.mjs';
+import { visualClipAt, visualKeys } from '../shared/visual-keyframes.mjs';
 
 export function captionBottomY(p: Pick<Project,'width'|'height'>, text:string, fontSize:number) {
   const boxHeight=fontSize*(text.split('\n').length*1.22+.26),bottom=p.height*(p.height>p.width?.92:.96);
@@ -9,10 +10,25 @@ export function reflowEditedCaptions(before:Project,next:Project):Project {
   const old=new Map(before.clips.map(c=>[c.id,c]));let changed=false;
   const clips=next.clips.map(c=>{
     const previous=old.get(c.id);if(!c.captionAutoPosition||!previous||previous===c)return c;
-    const moved=['x','y','scale','rotation'].some(key=>c[key as keyof Clip]!==previous[key as keyof Clip]);
-    if(moved||c.textStyle!=='subtitle'){changed=true;return {...c,captionAutoPosition:false};}
-    const y=captionBottomY(next,c.text,c.fontSize);if(y===c.y)return c;changed=true;return {...c,y};
+    const result=positionAutomaticCaption(next,c,previous);if(result!==c)changed=true;return result;
   });return changed?{...next,clips}:next;
+}
+export function positionAutomaticCaption(p:Pick<Project,'width'|'height'>,clip:Clip,previous?:Clip):Clip {
+  if(!clip.captionAutoPosition)return clip;
+  // Inspect the values actually used by rendering, including newly inserted keys.
+  for(const time of [0,...visualKeys(clip).map(key=>key.time)]){
+    const value=visualClipAt(clip,time),old=previous&&visualClipAt(previous,time);
+    const moved=old&&(['x','scale','rotation','textBox'] as const).some(key=>JSON.stringify(value[key])!==JSON.stringify(old[key]));
+    const manualY=old&&Math.abs(value.y-old.y)>1e-7&&Math.abs(value.y-captionBottomY(p,clip.text,value.fontSize))>1e-7;
+    if(value.textStyle!=='subtitle'||moved||manualY)return {...clip,captionAutoPosition:false};
+  }
+  const y=captionBottomY(p,clip.text,clip.fontSize);
+  const visualKeyframes=clip.visualKeyframes?.map(key=>{
+    const nextY=captionBottomY(p,clip.text,Number(key.values.fontSize??clip.fontSize));
+    return key.values.y===nextY?key:{...key,values:{...key.values,y:nextY}};
+  });
+  if(y===clip.y&&(!visualKeyframes||visualKeyframes.every((key,index)=>key===clip.visualKeyframes![index])))return clip;
+  return {...clip,y,...(visualKeyframes?{visualKeyframes}:{})};
 }
 export function captionStyle(p: Pick<Project,'width'|'height'>, text: string): Pick<Clip,'text'|'fontSize'|'fontWeight'|'textShadow'|'textStroke'|'strokeColor'|'strokeWidth'|'color'|'y'|'captionBackgroundOpacity'|'captionAutoPosition'> {
   const portrait=p.height>p.width,wrapped=text.includes('\n')?text:wrapCaption(text,portrait?15:24);

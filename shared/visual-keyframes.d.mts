@@ -1,0 +1,18 @@
+import type { Clip, VisualKeyframe, VisualValues } from '../src/types';
+export const MAX_VISUAL_KEYFRAMES: number;
+export const TRANSFORM_FIELDS: (keyof VisualValues)[];
+export const TEXT_FIELDS: (keyof VisualValues)[];
+export const VIDEO_FIELDS: (keyof VisualValues)[];
+export const VISUAL_RANGES: Partial<Record<keyof VisualValues, [number, number]>>;
+export function visualFields(clip: Clip): (keyof VisualValues)[];
+export function hasVisualKeys(clip: Clip): boolean;
+export function visualSnapshot(clip: Clip): VisualValues;
+export function visualKeys(clip: Clip): VisualKeyframe[];
+export function visualValuesAt(clip: Clip, time: number): VisualValues;
+export function visualClipAt(clip: Clip, time: number): Clip;
+export function setVisualKey(clip: Clip, time: number, patch?: Partial<Clip>): Clip;
+export function patchVisualClip(clip: Clip, patch: Partial<Clip>, time: number): Clip;
+export function windowVisualKeys(clip: Clip, offset: number, duration: number): VisualKeyframe[] | undefined;
+export function validateVisualKeys(clip: Clip): void;
+export function visualExpression(clip: Clip, field: string, variable?: string, offset?: number, fallback?:number): string;
+export function needsTitleFrames(clip: Clip): boolean;
