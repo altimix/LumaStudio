@@ -1,7 +1,7 @@
 import { timelineKey } from './youtube.mjs';
 import { visualSourceTime } from './transitions.mjs';
 import { visualKeys } from './visual-keyframes.mjs';
-function everVisible(clip){const keys=visualKeys(clip);return keys.length?keys.some(key=>key.values.opacity>0):clip.opacity>0;}
+function everVisible(clip){const keys=visualKeys(clip);return keys.length?keys.some(key=>(key.values.opacity??clip.opacity)>0):clip.opacity>0;}
 export function thumbnailFormat(p) {
   return p.height>p.width?{width:864,height:1536,ratio:'9:16',portrait:true}:{width:1536,height:864,ratio:'16:9',portrait:false};
 }
