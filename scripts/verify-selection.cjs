@@ -162,6 +162,7 @@ async function verify() {
       await open({...baseline,clips:baseline.clips.map(c=>c.id==='a1'?{...c,volumeKeyframes:[{time:0,value:1},{time:2,value:1}]}:c)});
       await clip('a1').click({position:{x:25,y:10}});
       if(mode==='interpolated'){await page.keyboard.press('Home');for(let i=0;i<90;i++)await page.keyboard.press('ArrowRight');}else await clip('a1').locator('.volume-node').first().focus();
+      const volumeToggle=page.getByRole('button',{name:'音量のスライダー',exact:true});if(await volumeToggle.getAttribute('aria-expanded')==='false')await volumeToggle.click();
       const slider=page.getByRole('slider',{name:'音量スライダー',exact:true});await slider.scrollIntoViewIfNeeded();const b=await slider.boundingBox();
       const initialStyle=await slider.evaluate(el=>({image:getComputedStyle(el).backgroundImage,height:el.getBoundingClientRect().height,size:getComputedStyle(el).backgroundSize}));
       assert.ok(initialStyle.image.includes('25%')&&initialStyle.image.includes('131, 147, 116'),'property slider preserves the current value fill');assert.ok(initialStyle.height>=24);assert.equal(initialStyle.size,'100% 6px');

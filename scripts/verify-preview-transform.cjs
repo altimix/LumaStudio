@@ -13,6 +13,14 @@ async function verify() {
   page.on('pageerror', error => errors.push(error.message));
   const close = (actual, expected, label, tolerance = .03) => assert.ok(Math.abs(actual - expected) <= tolerance, `${label}: ${actual} vs ${expected}`);
   const fields = clip => ({ x: clip.x, y: clip.y, scale: clip.scale, rotation: clip.rotation });
+  const pixelFields = async (x, y) => {
+    for (const [axis, expected] of [['x', x], ['y', y]]) {
+      const input = page.locator(`#prop-${axis}`);
+      close(Number(await input.inputValue()), expected, `${axis} center in sequence pixels`, .011);
+      assert.equal(await input.locator('..').locator('span').textContent(), 'px');
+      assert.equal(await input.getAttribute('step'), '1');
+    }
+  };
   const target = id => page.locator(`.media-drag-target[data-media-clip-id="${id}"]`);
   const handle = (id, corner) => page.locator(`.media-resize-handle[data-media-clip-id="${id}"][data-media-corner="${corner}"]`);
   const center = async locator => { const r = await locator.boundingBox(); assert.ok(r, 'visible transform control'); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; };
@@ -83,6 +91,7 @@ async function verify() {
     assert.ok(audio && video.linkId === audio.linkId, 'fixture is a real linked AV pair');
     project = await open({ ...project, clips: project.clips.map(c => c.id === video.id ? { ...c, x: 0, y: 0, scale: .55, fadeIn: 0, fadeOut: 0 } : c) });
     await target(video.id).waitFor(); await target(video.id).click();
+    await pixelFields(320, 180);
     assert.equal(await page.getByRole('button', { name: /^元に戻す \(/, exact: true }).isDisabled(), true); assert.equal(await page.locator('.unsaved-dot').count(), 0);
     await page.locator(`.media-card[data-asset-id="${video.assetId}"] .media-card-info`).click();
     assert.equal(await page.evaluate(() => !!document.activeElement.closest('.library-panel')), true);
@@ -93,7 +102,7 @@ async function verify() {
     assert.equal(deleted.clips.length, 0, 'Delete removes the selected linked timeline clips');
     assert.deepEqual(deleted.assets, beforeDelete.assets, 'monitor Delete preserves project media');
     await page.keyboard.press('Control+z'); await save(); await target(video.id).click();
-    await page.locator('#prop-x').fill('3'); await drag(target(video.id), 32, 0, project);
+    await page.locator('#prop-x').fill('339.2'); await drag(target(video.id), 32, 0, project);
     close((await save()).clips.find(c => c.id === video.id).x, 8, 'drag starts from the committed inspector value');
     assert.equal(await page.evaluate(() => !!document.activeElement.closest('.media-drag-layer')), true);
     await page.keyboard.press('Control+z');
@@ -102,9 +111,10 @@ async function verify() {
     checks.push('monitor focus routes Delete to timeline clips and commits inspector edits before starting a gesture');
     await drag(target(video.id), 80, 36, project); let moved = await save(), changed = moved.clips.find(c => c.id === video.id);
     close(changed.x, 12.5, 'horizontal movement'); close(changed.y, 10, 'vertical movement'); assert.deepEqual(moved.clips.find(c => c.id === audio.id), audio);
+    await pixelFields(400, 216);
     await page.keyboard.press('Control+z'); let undone = await save(); close(undone.clips.find(c => c.id === video.id).x, 0, 'single undo');
     await page.keyboard.press('Control+Shift+z'); close((await save()).clips.find(c => c.id === video.id).x, changed.x, 'single redo');
-    checks.push('clicking is clean; video drag updates percentage fields in one Undo/Redo and preserves linked audio');
+    checks.push('video center uses sequence pixels; dragging updates pixel fields in one Undo/Redo while retaining legacy saved coordinates and linked audio');
 
     const fixed = await center(handle(video.id, '左上')); await drag(handle(video.id, '右下'), 64, 36, project);
     const resized = await save(), resizedVideo = resized.clips.find(c => c.id === video.id), fixedAfter = await center(handle(video.id, '左上'));
@@ -126,7 +136,27 @@ async function verify() {
     await page.getByRole('button', { name: track.name + ' ロック解除', exact: true }).click(); await save();
     await page.getByRole('button', { name: '位置・大きさを戻す', exact: true }).click(); const reset = await save();
     assert.deepEqual(fields(reset.clips.find(c => c.id === video.id)), { x: 0, y: 0, scale: 1, rotation: 0 });
+    await pixelFields(320, 180);
     checks.push('locked video cannot move; reset restores position and scale without altering other properties');
+
+    await page.locator('#prop-x').fill('-64'); await page.locator('#prop-x').press('Enter');
+    await page.locator('#prop-y').fill('400'); await page.locator('#prop-y').press('Enter');
+    const outside = await save(); await pixelFields(-64, 400);
+    close(outside.clips.find(c => c.id === video.id).x, -60, 'negative pixel coordinate');
+    close(outside.clips.find(c => c.id === video.id).y, (400 - 180) / 360 * 100, 'coordinate beyond frame');
+    assert.equal(await page.locator('#prop-x').getAttribute('min'), '-960');
+    assert.equal(await page.locator('#prop-x').getAttribute('max'), '1600');
+    await page.getByRole('button', { name: '位置・大きさを戻す', exact: true }).click(); await save();
+    for (const [width, height, x, y] of [[1920, 1080, 960, 540], [1080, 1920, 540, 960]]) {
+      await open({ ...reset, width, height }); await target(video.id).waitFor(); await target(video.id).click();
+      await pixelFields(x, y);
+      assert.deepEqual(fields((await save()).clips.find(c => c.id === video.id)), { x: 0, y: 0, scale: 1, rotation: 0 });
+      if (width === 1920) {
+        await page.locator('.inspector-section').filter({ has: page.locator('#prop-x') }).evaluate(element => element.scrollIntoView({ block: 'start' }));
+        await page.screenshot({ path: path.join(results, 'property-pixels-collapsed.png') });
+      }
+    }
+    checks.push('negative and off-screen pixel input preserves the limits; landscape and portrait use sequence centers without rewriting saved transforms');
 
     for (const scale of [1.5, 3]) {
       project = await open({ ...reset, clips: reset.clips.map(c => c.id === video.id ? { ...c, scale } : c) });
@@ -156,6 +186,7 @@ async function verify() {
 
     project = await open({ ...project, width: 360, height: 640, clips: [ { ...picture, scale: .45, rotation: 31 }, { ...audio, linkId: undefined } ] });
     await target(picture.id).waitFor(); await target(picture.id).click();
+    await pixelFields(180, 320);
     const portraitAnchor = await center(handle(picture.id, '右下')); await drag(handle(picture.id, '左上'), -25, -25, project);
     const afterPortrait = await center(handle(picture.id, '右下')), portraitSaved = await save();
     close(afterPortrait.x, portraitAnchor.x, 'rotated portrait anchor X', 1); close(afterPortrait.y, portraitAnchor.y, 'rotated portrait anchor Y', 1);
@@ -165,6 +196,8 @@ async function verify() {
     await page.waitForFunction(() => document.querySelector('.canvas-wrap canvas').width === 90);
     await drag(target(picture.id), 36, -32, project); const quarter = await save();
     close(quarter.clips.find(c => c.id === picture.id).x - portraitSaved.clips.find(c => c.id === picture.id).x, 10, 'quarter-quality coordinates');
+    const quarterImage = quarter.clips.find(c => c.id === picture.id);
+    await pixelFields(180 + quarterImage.x * 3.6, 320 + quarterImage.y * 6.4);
     checks.push('rotated images resize with a fixed corner in portrait sequences; quarter preview quality preserves project coordinates');
 
     await page.keyboard.press('l'); await page.waitForFunction(() => document.querySelector('[aria-label="シャトル状態"]').textContent.includes('再生'));
@@ -194,6 +227,11 @@ async function verify() {
     checks.push('an unrelated video becoming ready during image dragging does not cancel the gesture');
     await open(persisted); await target(finalImage.id).waitFor();
     assert.deepEqual((await save()).clips.map(fields), persisted.clips.map(fields));
+    await target(finalImage.id).click(); await pixelFields(403.2, 154.8);
+    await page.locator('#prop-x').fill('411'); await page.locator('#prop-x').press('Enter');
+    await page.locator('#prop-y').fill('158'); await page.locator('#prop-y').press('Enter');
+    const pixelSaved = await save(); await open(pixelSaved); await target(finalImage.id).waitFor(); await target(finalImage.id).click();
+    await pixelFields(411, 158);
     await page.getByLabel('プレビュー画質', { exact: true }).selectOption('1');
     await page.waitForFunction(() => document.querySelector('.canvas-wrap canvas').width === 640);
     await target(finalVideo.id).waitFor();

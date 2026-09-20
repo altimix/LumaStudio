@@ -37,6 +37,16 @@ const root = path.join(__dirname, '..');
     let project=JSON.parse(await fs.readFile(file,'utf8')),clip=project.clips.find(item=>item.kind==='video');assert.ok(clip,'video clip');
     await page.locator(`.media-drag-target[data-media-clip-id="${clip.id}"]`).click();const rotation=page.locator('#prop-rotation');await rotation.waitFor();
     const initial=value(project,clip.id,'rotation');assert.equal(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),true);
+    assert.equal(await page.locator('.inspector-content').getByRole('slider').count(),0,'property sliders start collapsed');
+    const rotationToggle=page.getByRole('button',{name:'回転のスライダー',exact:true}),rotationSlider=page.getByRole('slider',{name:'回転スライダー',exact:true});
+    assert.equal(await rotationToggle.getAttribute('aria-expanded'),'false');
+    await rotationToggle.focus();await rotationToggle.press('Enter');await rotationSlider.waitFor();
+    assert.equal(await rotationToggle.getAttribute('aria-expanded'),'true');
+    await rotationToggle.press('Space');await rotationSlider.waitFor({state:'hidden'});assert.equal(await rotationSlider.count(),0);
+    await rotationToggle.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement?.id),'prop-opacity','Tab skips the collapsed slider');
+    assert.equal(await rotation.isVisible(),true);assert.equal(await page.locator('.unsaved-dot').count(),0);
+    assert.equal(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),true);
+    checks.push('sliders toggle with Enter/Space while numeric inputs stay visible, with no dirty state or history');
     await scrub(rotation,2);project=await save();assert.equal(value(project,clip.id,'rotation'),initial);assert.equal(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),true);
     await rotation.click();await rotation.press('Control+a');await rotation.fill('7');await rotation.press('Enter');project=await save();assert.equal(value(project,clip.id,'rotation'),7);
     await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),initial);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),7);
@@ -56,10 +66,23 @@ const root = path.join(__dirname, '..');
     await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),17);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),12);
     checks.push('Escape, focus loss and pointer cancellation restore both value and history');
 
+    await rotationToggle.click();await rotationSlider.focus();await rotationSlider.press('ArrowRight');project=await save();assert.equal(value(project,clip.id,'rotation'),13);
+    await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),12);
+    await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),13);
+    await page.keyboard.press('Control+z');await save();await rotationToggle.click();
+    checks.push('an expanded slider remains keyboard-editable with Undo/Redo');
+
     const opacity=page.locator('#prop-opacity');await opacity.click();await opacity.press('Control+a');await opacity.fill('99');await opacity.press('Enter');assert.ok(Math.abs(value(await save(),clip.id,'opacity')-.99)<1e-9);
     await scrub(opacity,20);assert.equal(value(await save(),clip.id,'opacity'),1);await page.keyboard.press('Control+z');assert.ok(Math.abs(value(await save(),clip.id,'opacity')-.99)<1e-9);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'opacity'),1);
     await scrub(opacity,20);assert.equal(value(await save(),clip.id,'opacity'),1);await page.keyboard.press('Control+z');assert.ok(Math.abs(value(await save(),clip.id,'opacity')-.99)<1e-9);await page.keyboard.press('Control+Shift+z');await save();
     checks.push('limits are clamped and a no-op drag at the limit creates no Undo entry');
+
+    const positionX=page.locator('#prop-x');assert.equal(Number(await positionX.inputValue()),320);
+    await scrub(positionX,20);project=await save();assert.equal(Number(await positionX.inputValue()),330);assert.equal(value(project,clip.id,'x'),1.5625);
+    await page.keyboard.press('Control+z');project=await save();assert.equal(value(project,clip.id,'x'),0);assert.equal(Number(await positionX.inputValue()),320);
+    await page.keyboard.press('Control+Shift+z');await save();assert.equal(Number(await positionX.inputValue()),330);
+    await scrub(positionX,20,'escape');await save();assert.equal(Number(await positionX.inputValue()),330);
+    checks.push('center position scrubs in sequence pixels with a single Undo/Redo and Escape cancellation');
 
     const start=page.locator('#prop-start');await scrub(start,20);project=await save();const linkedVideo=project.clips.find(item=>item.id===clip.id),linkedAudio=project.clips.find(item=>item.id==='audio');assert.ok(linkedVideo.start>.25,`linked video start ${linkedVideo.start}`);assert.ok(Math.abs(linkedVideo.start-linkedAudio.start)<1e-9,`linked timing ${linkedVideo.start} / ${linkedAudio.start}`);
     await page.keyboard.press('Control+z');project=await save();assert.equal(project.clips.find(item=>item.id===clip.id).start,0);assert.equal(project.clips.find(item=>item.id==='audio').start,0);await page.keyboard.press('Control+Shift+z');project=await save();assert.ok(Math.abs(project.clips.find(item=>item.id===clip.id).start-project.clips.find(item=>item.id==='audio').start)<1e-9);
