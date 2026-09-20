@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Captions, Copy, Download, ImagePlus, KeyRound, LoaderCircle, Sparkles, Youtube } from 'lucide-react';
 import { useEditor } from '../store';
 import { endTime } from '../model';
-import { applySubtitles, emptyYoutube } from '../youtube';
+import { applySubtitles, emptyYoutube, resolveThumbnailReference } from '../youtube';
 import { chapterTime, descriptionWithChapters, parseHashtags, timelineKey, validateYoutube, validateYoutubeProject, validChapters, youtubeText } from '../../shared/youtube.mjs';
 import type { AIProgress, AIStatus, Project, SubtitleCue, YoutubeData } from '../types';
 import { Modal } from './UI';
@@ -148,7 +148,7 @@ export default function YouTubeStudio({ onClose }: { onClose: () => void }) {
             <strong>取り込みたい人物・商品など（任意・1枚）</strong>
             {reference && !referenceMissing ? <div className="yt-reference-preview"><img src={reference.thumbnail || reference.url} alt="サムネイルに取り込む参考画像"/><span>{reference.name}</span></div> : null}
             {referenceMissing ? <p className="yt-notice">参考画像が見つかりません。素材を再リンクするか、選び直す・解除することで生成できます。</p> : null}
-            <div className="yt-actions"><button type="button" className="secondary-button" disabled={!window.luma} onClick={() => void task(async current => { const asset = await window.luma!.aiChooseThumbnailReference(); if (asset) accept(current, { ...(current.youtube || emptyYoutube(current)), thumbnailReferenceAssetId: asset.id }, [asset], 'サムネイルの参考画像を選択'); })}><ImagePlus size={14}/>{y.thumbnailReferenceAssetId ? '参考画像を差し替える' : '参考画像を1枚選ぶ'}</button>{y.thumbnailReferenceAssetId ? <button type="button" className="text-button" onClick={() => update({ thumbnailReferenceAssetId: undefined })}>参考画像を解除</button> : null}</div>
+            <div className="yt-actions"><button type="button" className="secondary-button" disabled={!window.luma} onClick={() => void task(async current => { const selected = await window.luma!.aiChooseThumbnailReference(); if (selected) { const asset = resolveThumbnailReference(current, selected); accept(current, { ...(current.youtube || emptyYoutube(current)), thumbnailReferenceAssetId: asset.id }, [asset], 'サムネイルの参考画像を選択'); } })}><ImagePlus size={14}/>{y.thumbnailReferenceAssetId ? '参考画像を差し替える' : '参考画像を1枚選ぶ'}</button>{y.thumbnailReferenceAssetId ? <button type="button" className="text-button" onClick={() => update({ thumbnailReferenceAssetId: undefined })}>参考画像を解除</button> : null}</div>
             <p className="yt-hint">PNG・JPEG・WebP、20MB以下。人物や商品の特徴を参考にして取り込みます。画像なしでも作成できます。</p>
           </div>
           <label>強調したい内容・見出し（任意）<textarea aria-label="サムネイルの生成指示" rows={6} maxLength={6000} placeholder="例：完成した料理を大きく。「たった10分」を見出しにして、手軽さとおいしさを伝える。空欄なら動画の内容から構成します。" defaultValue={y.thumbnailPrompt} key={y.thumbnailPrompt} onChange={e => checkDraft({ thumbnailPrompt: e.target.value })} onBlur={e => commitDraft({ thumbnailPrompt: e.target.value }, e.currentTarget, y.thumbnailPrompt)}/></label>

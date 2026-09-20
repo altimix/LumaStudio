@@ -5,6 +5,7 @@ const fs=require('node:fs/promises'),path=require('node:path'),assert=require('n
 const {ffmpeg,run,inspectMedia,probe}=require('../electron/media.cjs');
 const {thumbnailReferenceJpeg}=require('../electron/thumbnail-reference.cjs');
 const {createHash}=require('node:crypto');
+const saveProject=require('./verify-save-project.cjs');
 const root=path.join(__dirname,'..');
 (async()=>{
  const results=path.join(root,'test-results','thumbnails');await fs.mkdir(results,{recursive:true});
@@ -31,7 +32,7 @@ const root=path.join(__dirname,'..');
   await page.evaluate(()=>window.luma.aiSetKey('sk-fake-key-for-isolated-tests-only'));
   for(const scenario of ['landscape','portrait','text-only']){
    const portrait=scenario==='portrait',p={...project,id:scenario,width:portrait?1080:1920,height:portrait?1920:1080,...(scenario==='text-only'?{clips:[],assets:[]}:{} )};
-   const file=path.join(results,`${p.id}.luma`),saved=path.join(results,`${p.id}.jpg`);await fs.writeFile(file,JSON.stringify(p));
+   const file=path.join(results,`${p.id}.luma`),saved=path.join(results,`${p.id}.jpg`);let activeProjectFile=file;await fs.writeFile(file,JSON.stringify(p));
    await app.evaluate(({dialog},files)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[files.file]});dialog.showSaveDialog=async()=>({canceled:false,filePath:files.saved});}, {file,saved});
    await page.keyboard.press('Control+o');await page.getByRole('button',{name:p.name,exact:true}).waitFor();
    await page.getByRole('button',{name:'YouTube',exact:true}).click();await page.getByRole('button',{name:'サムネイル',exact:true}).click();
@@ -47,19 +48,28 @@ const root=path.join(__dirname,'..');
     await choose(invalid);await page.locator('.yt-error').waitFor();assert.equal(await page.locator('.yt-reference-preview span').innerText(),path.basename(replacement));
     await app.evaluate(({dialog})=>{dialog.showOpenDialog=async()=>({canceled:true,filePaths:[]});});await page.getByRole('button',{name:'参考画像を差し替える',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.yt-content').disabled);assert.equal(await page.locator('.yt-reference-preview img').count(),1);
     await page.getByRole('button',{name:'参考画像を解除',exact:true}).click();assert.equal(await page.locator('.yt-reference-preview img').count(),0);await choose(replacement);
-    await page.getByRole('button',{name:'編集に戻る',exact:true}).click();await page.keyboard.press('Control+z');await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));assert.equal(JSON.parse(await fs.readFile(file,'utf8')).youtube.thumbnailReferenceAssetId,undefined);
-    await page.keyboard.press('Control+Shift+z');await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));const reloaded=JSON.parse(await fs.readFile(file,'utf8'));assert.ok(reloaded.youtube.thumbnailReferenceAssetId);reloaded.name='参考画像を保存して再読込';await fs.writeFile(file,JSON.stringify(reloaded));
+    await page.getByRole('button',{name:'編集に戻る',exact:true}).click();await page.keyboard.press('Control+z');assert.equal((await saveProject(page,file)).youtube.thumbnailReferenceAssetId,undefined);
+    await page.keyboard.press('Control+Shift+z');const reloaded=await saveProject(page,file);assert.ok(reloaded.youtube.thumbnailReferenceAssetId);reloaded.name='参考画像を保存して再読込';await fs.writeFile(file,JSON.stringify(reloaded));
     const disconnected=replacement+'.disconnected';await fs.rename(replacement,disconnected);
     try{
       await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},file);await page.keyboard.press('Control+o');await page.getByRole('button',{name:reloaded.name,exact:true}).waitFor();
     }finally{await fs.rename(disconnected,replacement);}
     await page.getByRole('button',{name:'YouTube',exact:true}).click();await page.getByRole('button',{name:'サムネイル',exact:true}).click();assert.equal(await page.getByRole('button',{name:'サムネイルを1枚生成',exact:true}).isDisabled(),true);assert.match(await page.locator('.yt-thumbnail-reference').innerText(),/参考画像が見つかりません/);
     await choose(replacement);await page.getByAltText('サムネイルに取り込む参考画像',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'サムネイルを1枚生成',exact:true}).isEnabled(),true);
-    await page.getByRole('button',{name:'編集に戻る',exact:true}).click();await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));const restored=JSON.parse(await fs.readFile(file,'utf8'));assert.equal(restored.youtube.thumbnailReferenceAssetId,reloaded.youtube.thumbnailReferenceAssetId);assert.equal(restored.assets.filter(asset=>asset.id===restored.youtube.thumbnailReferenceAssetId).length,1);reloaded.assets=restored.assets;
+    await page.getByRole('button',{name:'編集に戻る',exact:true}).click();const restored=await saveProject(page,file);assert.equal(restored.youtube.thumbnailReferenceAssetId,reloaded.youtube.thumbnailReferenceAssetId);assert.equal(restored.assets.filter(asset=>asset.id===restored.youtube.thumbnailReferenceAssetId).length,1);reloaded.assets=restored.assets;
     const collection=await fs.mkdtemp(path.join(results,'collected-'));await app.evaluate(({dialog},directory)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[directory]});},collection);
     const collectedFile=await page.evaluate(project=>window.luma.collectProject(project),reloaded),moved=path.join(collection,'移動した素材付きプロジェクト');await fs.rename(path.dirname(collectedFile),moved);const movedFile=path.join(moved,'project.luma');
     const collected=JSON.parse(await fs.readFile(movedFile,'utf8')),collectedReference=collected.assets.find(asset=>asset.id===collected.youtube.thumbnailReferenceAssetId);assert.ok(collectedReference?.relativePath);assert.deepEqual(await fs.readFile(path.join(moved,collectedReference.relativePath)),originalPhoto);
     await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},movedFile);await page.keyboard.press('Control+o');await page.getByRole('button',{name:reloaded.name,exact:true}).waitFor();await page.getByRole('button',{name:'YouTube',exact:true}).click();await page.getByRole('button',{name:'サムネイル',exact:true}).click();await page.getByAltText('サムネイルに取り込む参考画像',{exact:true}).waitFor();assert.equal(await page.locator('.yt-reference-preview span').innerText(),path.basename(replacement));
+    activeProjectFile=movedFile;await page.getByRole('button',{name:'編集に戻る',exact:true}).click();const hydrated=await saveProject(page,movedFile),stableId=hydrated.youtube.thumbnailReferenceAssetId,hydratedReference=hydrated.assets.find(asset=>asset.id===stableId);
+    assert.ok(hydratedReference.revision);assert.notEqual(hydratedReference.revision,stableId,'portable edit ID differs from the current file identity');
+    hydrated.name='持ち運び画像の再接続';await fs.writeFile(movedFile,JSON.stringify(hydrated));const movedReference=path.join(moved,collectedReference.relativePath),disconnectedPortable=movedReference+'.disconnected';await fs.rename(movedReference,disconnectedPortable);
+    try{await page.keyboard.press('Control+o');await page.getByRole('button',{name:hydrated.name,exact:true}).waitFor();}finally{await fs.rename(disconnectedPortable,movedReference);}
+    await page.getByRole('button',{name:'YouTube',exact:true}).click();await page.getByRole('button',{name:'サムネイル',exact:true}).click();assert.equal(await page.getByRole('button',{name:'サムネイルを1枚生成',exact:true}).isDisabled(),true);
+    await choose(movedReference);await page.getByAltText('サムネイルに取り込む参考画像',{exact:true}).waitFor();await page.getByRole('button',{name:'編集に戻る',exact:true}).click();const reconnected=await saveProject(page,movedFile);
+    assert.equal(reconnected.youtube.thumbnailReferenceAssetId,stableId);assert.equal(reconnected.assets.length,hydrated.assets.length);assert.equal(reconnected.assets.find(asset=>asset.id===stableId).revision,hydratedReference.revision);assert.equal(!!reconnected.assets.find(asset=>asset.id===stableId).offline,false);
+    await page.keyboard.press('Control+z');await page.getByRole('button',{name:'YouTube',exact:true}).click();await page.getByRole('button',{name:'サムネイル',exact:true}).click();assert.equal(await page.getByRole('button',{name:'サムネイルを1枚生成',exact:true}).isDisabled(),true);
+    await page.getByRole('button',{name:'編集に戻る',exact:true}).click();await page.keyboard.press('Control+Shift+z');assert.equal((await saveProject(page,movedFile)).youtube.thumbnailReferenceAssetId,stableId);await page.getByRole('button',{name:'YouTube',exact:true}).click();await page.getByRole('button',{name:'サムネイル',exact:true}).click();await page.getByAltText('サムネイルに取り込む参考画像',{exact:true}).waitFor();
    }
    if(scenario==='text-only'){await page.getByLabel('サムネイルの生成指示').fill('パスタの作り方。見出しは「たった10分」');await page.getByLabel('サムネイルの生成指示').blur();}
    await page.getByRole('button',{name:'サムネイルを1枚生成',exact:true}).click();
@@ -74,11 +84,11 @@ const root=path.join(__dirname,'..');
    await app.evaluate(()=>{globalThis.__thumbnailFailure=false;});await page.screenshot({path:path.join(results,`${p.id}-error.png`)});
    await page.getByRole('button',{name:'編集に戻る',exact:true}).click();
    // Save before the next project switch so the prompt does not interrupt this test.
-   await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},file);await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
+   await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},activeProjectFile);await saveProject(page,activeProjectFile);
   }
   const calls=await app.evaluate(()=>globalThis.__thumbnailRequests);assert.equal(calls.length,3);assert.ok(calls.every(c=>c.model==='gpt-image-2.5-sunburst'&&c.quality==='high'));
   for(const call of calls){if(call.firstReference)call.firstReferenceHash=createHash('sha256').update(Buffer.from(call.firstReference,'base64')).digest('hex');delete call.firstReference;}
   assert.equal(calls[0].references,3);assert.equal(calls[1].references,4);assert.equal(calls[1].firstReferenceHash,expectedReferenceHash);assert.match(calls[1].prompt,/1枚目はユーザー/);assert.equal(calls[2].references,0);assert.equal(calls[2].route,'generations');assert.deepEqual(await fs.readFile(replacement),originalPhoto);
-  await fs.writeFile(path.join(results,'requests.json'),JSON.stringify(calls,null,2));console.log('GPT Image 2.5: optional reference selection/replacement/removal, offline same-file reselection, Undo/Redo/reload, project collection/relocation, unregistered file rejection, first-image fidelity, no-reference generation, both orientations, JPEG under 2 MB, and failure retention verified (API mocked).');
+  await fs.writeFile(path.join(results,'requests.json'),JSON.stringify(calls,null,2));console.log('GPT Image 2.5: optional reference selection/replacement/removal, offline same-file and portable revision reselection without duplicate IDs, Undo/Redo/reload, project collection/relocation, unregistered file rejection, first-image fidelity, no-reference generation, both orientations, JPEG under 2 MB, and failure retention verified (API mocked).');
  }catch(error){const page=await app.firstWindow();await page.screenshot({path:path.join(results,'failure.png')}).catch(()=>{});throw error;}finally{await app.close();await fs.rm(profile,{recursive:true,force:true});}
 })().catch(e=>{console.error(e);process.exitCode=1;});

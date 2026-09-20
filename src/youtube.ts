@@ -1,9 +1,17 @@
 import { separateOverlappingClips } from './track-placement';
 import { captionStyle } from './caption-style';
 import { endTime, makeClip, makeTrack, roundFrame } from './model';
-import type { Project, SubtitleCue, YoutubeData } from './types';
+import type { Asset, Project, SubtitleCue, YoutubeData } from './types';
 import { timelineKey, validateCues } from '../shared/youtube.mjs';
 export const emptyYoutube = (p: Project): YoutubeData => ({ sourceKey: timelineKey(p), cues: [], titles: [], description: '', chapters: [], keywords: [], thumbnailPrompt: '' });
+export function resolveThumbnailReference(p: Project, imported: Asset): Asset {
+  const matches = (asset: Asset) => asset.kind === 'image' && (asset.id === imported.id || asset.revision === imported.id);
+  const selected = p.assets.find(asset => asset.id === p.youtube?.thumbnailReferenceAssetId && matches(asset));
+  const existing = selected || p.assets.find(matches);
+  // Portable, startup and relinked projects keep their edit IDs while revision
+  // records the inspected file identity. Keep that stable ID when choosing it.
+  return existing ? { ...imported, id: existing.id, name: existing.name, revision: imported.id } : imported;
+}
 export function captionPlaybackRange(cue: SubtitleCue | undefined, fps: number, duration: number) {
   if (!cue) return null;
   const start = roundFrame(cue.start, fps), end = Math.min(duration, roundFrame(cue.end, fps));
