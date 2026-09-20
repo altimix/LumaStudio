@@ -32,6 +32,20 @@ async function verify(){
       await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===0);
     }
     checks.push('centered drawing completes its own gesture with and without sound and remains undoable');
+    const originalDuration=await page.getByRole('spinbutton',{name:'表示時間',exact:true}).inputValue();
+    for(const [label,value] of [['追加する図形の不透明度','37'],['追加する図形の不透明度','0'],['表示時間','4.5']]){
+      await page.getByRole('button',{name:'四角で囲む',exact:true}).click();
+      const input=page.getByRole('spinbutton',{name:label,exact:true});await input.fill(value);
+      const box=await page.locator('.draw-layer').boundingBox();await page.mouse.move(box.x+box.width*.15,box.y+box.height*.2);await page.mouse.down();await page.mouse.move(box.x+box.width*.65,box.y+box.height*.7,{steps:6});
+      const ghostOpacity=Number(await page.locator('.draw-layer svg g').getAttribute('opacity'));await page.mouse.up();await page.locator('.timeline-clip.title').waitFor();
+      const committed=(await save()).clips.find(clip=>clip.graphic);
+      if(label==='表示時間')assert.equal(committed.duration,Number(value),'duration typed immediately before drawing is committed');
+      else assert.equal(committed.opacity,Number(value)/100,'opacity typed immediately before drawing is committed');
+      assert.equal(committed.opacity,ghostOpacity,'inserted opacity matches the drag preview');
+      await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===0);
+    }
+    await setNumber('追加する図形の不透明度',100);await setNumber('表示時間',Number(originalDuration));
+    checks.push('typing opacity, fully transparent opacity or duration then drawing without Enter uses the pending value and matching ghost');
     await page.getByRole('button',{name:'四角で囲む',exact:true}).click();
     assert.equal(await page.getByRole('slider',{name:'追加する図形の不透明度スライダー',exact:true}).isVisible(),false);
     await page.getByLabel('追加する図形を塗りつぶす',{exact:true}).check();await color('追加する塗りつぶしの色','#00ccff');await setNumber('追加する図形の不透明度',50);
