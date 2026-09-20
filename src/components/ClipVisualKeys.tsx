@@ -7,7 +7,7 @@ import { addVisualPoint, moveVisualPoint, removeVisualPoint } from '../visual-ed
 import type { Clip } from '../types';
 import './visual-keyframes.css';
 
-export default function ClipVisualKeys({ clip, locked }: { clip: Clip; locked: boolean }) {
+export default function ClipVisualKeys({ clip, locked, zoom }: { clip: Clip; locked: boolean; zoom: number }) {
   const project = useEditor(state => state.project), playhead = useEditor(state => state.playhead), selected = useEditor(state => state.visualChannel);
   const root = useRef<HTMLDivElement>(null), cleanup = useRef<(() => void) | null>(null);
   useEffect(() => () => cleanup.current?.(), []);
@@ -24,6 +24,7 @@ export default function ClipVisualKeys({ clip, locked }: { clip: Clip; locked: b
     const initial = useEditor.getState(); initial.stop(); initial.select([clip.id]); initial.seek(clip.start + from);
     const before = useEditor.getState(), original = before.project.clips.find(item => item.id === clip.id)!;
     const rect = root.current!.getBoundingClientRect(), target = event.currentTarget, pointer = event.pointerId, origin = { x: event.clientX, y: event.clientY }, owner = {};
+    const scroller = root.current!.closest('.timeline-scroll'), scrollStart = scroller?.scrollLeft ?? 0;
     const originalValue = channelValue(visualClipAt(original, from), channel.path);
     let changed = false, closed = false, writing = false, expected = before.project,latestTime=from;
     const detach = () => {
@@ -43,7 +44,7 @@ export default function ClipVisualKeys({ clip, locked }: { clip: Clip; locked: b
       if (e.pointerId !== pointer || closed) return;
       const state = useEditor.getState(); if (state.gestureOwner !== owner || state.project !== expected) { finish(); return; }
       if (!changed && Math.hypot(e.clientX - origin.x, e.clientY - origin.y) < 3) return;
-      const at = clamp(roundFrame(from + (e.clientX - origin.x) / rect.width * original.duration, before.project.fps), 0, original.duration);
+      const at = clamp(roundFrame(from + (e.clientX - origin.x + (scroller?.scrollLeft ?? 0) - scrollStart) / zoom, before.project.fps), 0, original.duration);
       try {
         let next = moveVisualPoint(original, from, at);
         if (next === original && at !== from) return;
@@ -66,15 +67,15 @@ export default function ClipVisualKeys({ clip, locked }: { clip: Clip; locked: b
     const cancelPointer = (e: PointerEvent) => { if (e.pointerId === pointer) cancel(); };
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); } };
     const visibility=()=>{if(document.hidden)cancel();};
-    const unsubscribe = useEditor.subscribe((state,previous) => { if(writing||closed)return;if(state.project!==expected){finish();return;}if(state.playing||!state.selected.includes(clip.id)||state.playhead!==previous.playhead||state.seekRevision!==previous.seekRevision||state.visualChannel!==previous.visualChannel)cancel(); });
+    const unsubscribe = useEditor.subscribe((state,previous) => { if(writing||closed)return;if(state.project!==expected){finish();return;}if(state.playing||!state.selected.includes(clip.id)||state.playhead!==previous.playhead||state.seekRevision!==previous.seekRevision||state.visualChannel!==previous.visualChannel||state.zoom!==previous.zoom)cancel(); });
     if (!before.beginGesture(owner, cancel)) { unsubscribe(); return; }
     cleanup.current = cancel;
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancelPointer); window.addEventListener('keydown', key); window.addEventListener('blur', cancel);window.addEventListener('resize',cancel);document.addEventListener('visibilitychange',visibility);
     target.addEventListener('lostpointercapture', cancelPointer); target.setPointerCapture(pointer);
   };
   if (!keys.length) return null;
-  return <div ref={root} className={`clip-visual-keys ${locked ? 'locked' : ''}`} role="group" aria-label={`${clip.name}のキーフレーム`} onPointerDown={event => event.stopPropagation()} onDoubleClick={event => { event.preventDefault(); event.stopPropagation(); if (!locked && !(event.target as HTMLElement).closest('.clip-visual-key')) { const rect = root.current!.getBoundingClientRect(); addVisualPoint(clip.id, (event.clientX - rect.left) / rect.width * clip.duration); } }}>
-    <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d={path}/></svg>
+  return <div ref={root} className={`clip-visual-keys ${locked ? 'locked' : ''}`} style={{ width: clip.duration * zoom }} role="group" aria-label={`${clip.name}のキーフレーム`} onPointerDown={event => event.stopPropagation()} onDoubleClick={event => { event.preventDefault(); event.stopPropagation(); if (!locked && !(event.target as Element).closest('.clip-visual-key')) { const rect = root.current!.getBoundingClientRect(); addVisualPoint(clip.id, (event.clientX - rect.left) / zoom); } }}>
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path className="clip-keyframe-curve" d={path}/><path className="clip-keyframe-hit" d={path}/></svg>
     <span className="clip-keyframe-label">{channel.label}</span>
     {keys.map((point, index) => <button type="button" key={index} className="clip-visual-key" data-key-time={point.time} disabled={locked}
       style={{ left: `${point.time / clip.duration * 100}%`, top: `${y(point.time)}%` }} aria-label={`キーフレーム ${point.time.toFixed(2)} 秒 ${channel.label}`} aria-pressed={Math.abs(playhead - clip.start - point.time) < 1e-7}

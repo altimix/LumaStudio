@@ -6,12 +6,18 @@
 .visual-keyframe-actions button:nth-child(2){flex:1}
 .visual-keyframe-list summary{font-size:11px;color:#b9c6aa;cursor:pointer;padding:5px 0}
 .visual-keyframe-list .keyframe-row button[aria-pressed=true]{background:#39482f;color:#e0efcd}
-.clip-visual-keys{position:absolute;left:5px;right:5px;top:25px;bottom:7px;z-index:4;touch-action:none;cursor:crosshair}
+/* Focusing a clipped endpoint must not scroll the clip's contents. */
+.timeline-clip:has(.clip-visual-keys){overflow:clip;overflow-clip-margin:border-box}
+/* Offset the clip's 1px border; width comes from duration * timeline zoom,
+   independently of the minimum width used to keep short clips selectable. */
+.clip-visual-keys{position:absolute;left:-1px;top:25px;bottom:7px;z-index:6;touch-action:none;pointer-events:none;cursor:crosshair}
 .clip-visual-keys svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
 .clip-visual-keys path{fill:none;stroke:#d6edb5;stroke-width:1.5;vector-effect:non-scaling-stroke}
-.clip-visual-key{position:absolute;width:10px;height:10px;padding:0;border:1px solid #253020;background:#c5dda2;border-radius:1px;transform:translate(-50%,-50%) rotate(45deg);touch-action:none;cursor:ew-resize}
+.clip-visual-keys .clip-keyframe-hit{stroke:transparent;stroke-width:10;pointer-events:stroke}
+.clip-visual-key{position:absolute;width:10px;height:10px;padding:0;border:1px solid #253020;background:#c5dda2;border-radius:1px;transform:translate(-50%,-50%) rotate(45deg);touch-action:none;pointer-events:auto;cursor:ew-resize}
 .clip-visual-key[aria-pressed=true]{background:#fff3c4;border-color:#705d28;box-shadow:0 0 0 2px #faf1c144}
 .clip-visual-key:focus-visible{outline:2px solid #fff;outline-offset:3px}
 .clip-keyframe-label{position:absolute;right:3px;top:0;max-width:80%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e0edcb;background:#1c241abf;font-size:9px;padding:1px 3px;pointer-events:none}
 .clip-visual-keys.locked{pointer-events:none;opacity:.6}
+.clip-visual-keys.locked .clip-visual-key,.clip-visual-keys.locked .clip-keyframe-hit{pointer-events:none}
 .clip-add-visual-key{position:absolute;right:8px;bottom:8px;z-index:5;padding:2px 5px;border:1px solid #7d9268;border-radius:3px;background:#263320;color:#e0edcb;font-size:12px}
