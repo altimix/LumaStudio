@@ -26,6 +26,7 @@ export function channelPatch(clip: Clip, path: string, value: number): Partial<C
 }
 export function channelText(clip: Clip, channel: VisualChannel) {
   const value = channelValue(clip, channel.path);
+  if (value == null && channel.min !== undefined) return '未設定';
   if (typeof value === 'number') return `${Number((value * (channel.factor ?? 1) + (channel.offset ?? 0)).toFixed(2))}${channel.suffix ?? ''}`;
   if (typeof value === 'boolean') return value ? 'オン' : 'オフ';
   if (typeof value === 'string') return ({hero:'シネマタイトル',minimal:'ミニマル',subtitle:'字幕'} as Record<string,string>)[value]??value;

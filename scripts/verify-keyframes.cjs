@@ -2,6 +2,8 @@ const {_electron:electron}=require('playwright');
 const fs=require('node:fs/promises'),path=require('node:path'),assert=require('node:assert/strict');
 const {ffmpeg,run,inspectMedia}=require('../electron/media.cjs');
 const {setVisualKey}=require('../shared/visual-keyframes.mjs');
+const {DEFAULT_VIDEO_MASK}=require('../shared/video-mask.mjs');
+const {DEFAULT_CHROMA_KEY}=require('../shared/chroma-key.mjs');
 const root=path.join(__dirname,'..');
 async function verify(){
   const results=path.join(root,'test-results');await fs.mkdir(results,{recursive:true});await fs.mkdir(path.join(root,'.local'),{recursive:true});
@@ -138,7 +140,7 @@ async function verify(){
     await channelSelect.selectOption('exposure');assert.deepEqual(await highlighted(),[]);assert.match(await page.locator('.visual-channel-help').innerText(),/「カラー」タブ/);
     await page.getByRole('button',{name:'「カラー」タブで設定を表示',exact:true}).click();assert.deepEqual(await highlighted(),['prop-exposure']);assert.equal(await channelSelect.inputValue(),'exposure');
     for(const channel of ['contrast','saturation']){await channelSelect.selectOption(channel);assert.deepEqual(await highlighted(),[`prop-${channel}`]);assert.equal(await page.getByRole('button',{name:'「カラー」タブで設定を表示',exact:true}).count(),0);}
-    await channelSelect.selectOption('crop.left');assert.match(await page.locator('.visual-channel-help').innerText(),/「ビデオ」タブ/);await page.getByRole('button',{name:'「ビデオ」タブで設定を表示',exact:true}).click();
+    await channelSelect.selectOption('crop.left');assert.match(await page.locator('.visual-channel-help').innerText(),/数値が未設定/);await page.getByRole('button',{name:'「ビデオ」タブで設定を表示',exact:true}).click();
     checks.push('対象設定が別タブにある場合は移動先を案内し、表示項目を保って対応欄へ移動');
     await channelSelect.selectOption('crop.left');await page.locator('.inspector-section').filter({has:page.locator('summary').filter({hasText:'クロップ'})}).locator('summary').click();assert.equal(await page.locator('.property-field.line-active label').innerText(),'左');assert.match(await page.locator('.visual-channel-status').innerText(),/クロップ \/ 左/);
     checks.push('別素材で存在しない項目は不透明度へ揃え、入れ子のクロップ設定も対応欄を強調');
@@ -146,6 +148,12 @@ async function verify(){
     const target=page.locator('.media-drag-target');await target.waitFor();const box=await target.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+35,box.y+box.height/2+20,{steps:5});await page.mouse.up();saved=await save();assert.equal(saved.clips[0].visualKeyframes.length,3);await undo();
     const videoError=await exportAndCompare('映像の共通キーフレーム',[0,.5,1]);checks.push('映像の位置・サイズ・回転・不透明度・色・モニター操作・実MP4一致');
     await save();const bezier={...video,id:'bezier-channel',name:'ベジェ座標の表示',clips:[setVisualKey({...video.clips[0],visualKeyframes:undefined,videoMask:{type:'bezier',closed:false,feather:0,inverted:false,points:[{kind:'curve',x:.2,y:.3,inX:.1,inY:.3,outX:.3,outY:.3}]}},0)]};await open(bezier);await channelSelect.selectOption('videoMask.points.0.x');assert.deepEqual(await highlighted(),[]);assert.match(await page.locator('.visual-channel-help').innerText(),/モニターの点・ハンドル/);assert.doesNotMatch(await page.locator('.visual-channel-help').innerText(),/数値欄/);checks.push('数値欄のないベジェ座標はモニターでの調整を案内');
+    const changing={...bezier,id:'changing-effects',name:'効果の切り替え',clips:[setVisualKey(setVisualKey(bezier.clips[0],1,{videoMask:{...DEFAULT_VIDEO_MASK},chromaKey:{...DEFAULT_CHROMA_KEY}}),1.5,{videoMask:undefined,chromaKey:undefined})]};await open(changing);
+    const unset=async()=>{assert.match(await page.locator('.visual-channel-help').innerText(),/数値が未設定.*中央/);assert.doesNotMatch(await page.locator('.visual-channel-help').innerText(),/上ほど|黄緑/);assert.equal(await page.locator('.keyframe-readout strong').innerText(),'未設定');assert.deepEqual(await highlighted(),[]);};
+    await channelSelect.selectOption('videoMask.x');await unset();await seek(10);assert.match(await page.locator('.visual-channel-help').innerText(),/上ほど/);assert.equal(await page.locator('.property-field.line-active label').innerText(),'位置 X');await seek(15);await unset();
+    await channelSelect.selectOption('chromaKey.tolerance');await unset();await page.getByRole('button',{name:'「カラー」タブで設定を表示',exact:true}).click();await seek(10);assert.equal(await page.locator('.property-field.line-active label').innerText(),'色の許容範囲');await seek(15);await unset();
+    await channelSelect.selectOption('videoMask.points.0.x');await unset();await page.getByRole('button',{name:'「ビデオ」タブで設定を表示',exact:true}).click();await seek(0);assert.match(await page.locator('.visual-channel-help').innerText(),/モニターの点・ハンドル/);
+    checks.push('時刻ごとのマスク形状・有効状態とクロマキーの有無に合わせ、未設定値と中央の仮表示を説明');
     assert.deepEqual(errors,[]);await fs.writeFile(path.join(results,'keyframe-verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,checks,maxAlignmentError,alignmentScenarios:geometry.length,textError,videoError,consoleErrors:errors},null,2));console.log('Visual keyframes verified:',{checks,maxAlignmentError,textError,videoError});
   }catch(error){await page.screenshot({path:path.join(results,'keyframes-failure.png')}).catch(()=>{});throw error;}finally{await app.close();}
 }
