@@ -11,7 +11,11 @@ export default function DrawLayer(){
   useEffect(()=>useEditor.subscribe((state,previous)=>{if(state.project!==previous.project||state.drawTool!==previous.drawTool||state.panel!==previous.panel)cleanup.current?.();}),[]);
   useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==='Escape'){cleanup.current?.();useEditor.setState({drawTool:null});}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
   const draw=(e:ReactPointerEvent<HTMLDivElement>)=>{
-    if(e.button!==0||!tool||cleanup.current||useEditor.getState().gestureActive)return;e.preventDefault();e.stopPropagation();const s=useEditor.getState(),snapshot=s.project;
+    if(e.button!==0||!tool||cleanup.current||useEditor.getState().gestureActive)return;e.preventDefault();e.stopPropagation();
+    // Commit a typed draft before disabling the panel and capturing the gesture.
+    const focused=document.activeElement;
+    if(focused instanceof HTMLInputElement&&focused.closest('.drawing-panel'))focused.blur();
+    const s=useEditor.getState(),snapshot=s.project,drawSettings=s.drawSettings;
     if(!snapshot.tracks.some(t=>!t.locked&&!t.hidden)){s.notify('図形を置くトラックを表示し、ロックを解除してください。');return;}
     const owner={};if(!s.beginGesture(owner,()=>cancel()))return;s.stop();const target=e.currentTarget,rect=target.getBoundingClientRect(),pointer=e.pointerId;
     const point=(event:PointerEvent|ReactPointerEvent)=>({x:Math.max(0,Math.min(p.width,(event.clientX-rect.left)/rect.width*p.width)),y:Math.max(0,Math.min(p.height,(event.clientY-rect.top)/rect.height*p.height))});
@@ -23,7 +27,7 @@ export default function DrawLayer(){
     const up=async(event:PointerEvent)=>{
       if(event.pointerId!==pointer)return;to=point(event);detach();
       if(Math.hypot((to.x-from.x)/p.width*rect.width,(to.y-from.y)/p.height*rect.height)<4){finish();return;}
-      try{const sound=settings.sound==='none'?undefined:await loadSoundForTimeline(settings.sound,p.fps);if(!closed&&useEditor.getState().gestureOwner===owner&&useEditor.getState().project===snapshot){s.endGesture(owner);s.addDrawing({...styledDrawing(tool,from,to,p,settings),start:s.playhead},sound,settings.volume);}}catch(error){if(!closed)s.notify((error as Error).message);}finally{finish();}
+      try{const sound=drawSettings.sound==='none'?undefined:await loadSoundForTimeline(drawSettings.sound,p.fps);if(!closed&&useEditor.getState().gestureOwner===owner&&useEditor.getState().project===snapshot){s.endGesture(owner);s.addDrawing({...styledDrawing(tool,from,to,p,drawSettings),start:s.playhead},sound,drawSettings.volume);}}catch(error){if(!closed)s.notify((error as Error).message);}finally{finish();}
     };
     cleanup.current=cancel;window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',cancel);window.addEventListener('blur',cancel);target.addEventListener('lostpointercapture',cancel);
   };
