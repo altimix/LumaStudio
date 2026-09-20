@@ -133,6 +133,13 @@ async function verify(){
     const source=path.join(results,'映像キーフレーム素材.mp4');await run(ffmpeg,['-v','error','-y','-f','lavfi','-i','color=c=0x095bd8:s=640x360:r=10:d=2','-c:v','libx264','-pix_fmt','yuv420p',source]);
     const asset=await inspectMedia(source,path.join(profile,'cache')),video=base();video.assets=[asset];video.clips=[{...clip,id:'video',kind:'video',name:'動く映像',assetId:asset.id,x:-20,scale:.5}];video.clips[0]=setVisualKey(setVisualKey(video.clips[0],0),1,{x:20,rotation:25,opacity:.5,scale:.8,exposure:.4});await open(video);await seek(5);
     assert.equal(await channelSelect.inputValue(),'opacity');assert.deepEqual(await highlighted(),['prop-opacity']);
+    await page.getByRole('button',{name:'カラー',exact:true}).click();assert.deepEqual(await highlighted(),[]);assert.match(await page.locator('.visual-channel-help').innerText(),/「ビデオ」タブ/);assert.doesNotMatch(await page.locator('.visual-channel-help').innerText(),/黄緑/);
+    await page.getByRole('button',{name:'「ビデオ」タブで設定を表示',exact:true}).click();assert.deepEqual(await highlighted(),['prop-opacity']);assert.equal(await channelSelect.inputValue(),'opacity');
+    await channelSelect.selectOption('exposure');assert.deepEqual(await highlighted(),[]);assert.match(await page.locator('.visual-channel-help').innerText(),/「カラー」タブ/);
+    await page.getByRole('button',{name:'「カラー」タブで設定を表示',exact:true}).click();assert.deepEqual(await highlighted(),['prop-exposure']);assert.equal(await channelSelect.inputValue(),'exposure');
+    for(const channel of ['contrast','saturation']){await channelSelect.selectOption(channel);assert.deepEqual(await highlighted(),[`prop-${channel}`]);assert.equal(await page.getByRole('button',{name:'「カラー」タブで設定を表示',exact:true}).count(),0);}
+    await channelSelect.selectOption('crop.left');assert.match(await page.locator('.visual-channel-help').innerText(),/「ビデオ」タブ/);await page.getByRole('button',{name:'「ビデオ」タブで設定を表示',exact:true}).click();
+    checks.push('対象設定が別タブにある場合は移動先を案内し、表示項目を保って対応欄へ移動');
     await channelSelect.selectOption('crop.left');await page.locator('.inspector-section').filter({has:page.locator('summary').filter({hasText:'クロップ'})}).locator('summary').click();assert.equal(await page.locator('.property-field.line-active label').innerText(),'左');assert.match(await page.locator('.visual-channel-status').innerText(),/クロップ \/ 左/);
     checks.push('別素材で存在しない項目は不透明度へ揃え、入れ子のクロップ設定も対応欄を強調');
     assert.equal(await page.getByRole('spinbutton',{name:'位置 X',exact:true}).inputValue(),'320');await input('位置 X',300);saved=await save();assert.equal(saved.clips[0].visualKeyframes.length,3);assert.equal(saved.clips[0].visualKeyframes[1].values.x,-3.125);await undo();
