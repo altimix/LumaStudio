@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { clampCropEdge, DEFAULT_VIDEO_MASK, ffmpegMaskExpression, flattenBezierMask, hasVideoMask, maskAlphaAt, MAX_BEZIER_MASK_POINTS, moveBezierAnchor, moveBezierHandle, rasterizeBezierMask, resizeMaskAxis, validateVideoMask } = require('../shared/video-mask.mjs');
+const { clampCropEdge, DEFAULT_VIDEO_MASK, ffmpegMaskExpression, flattenBezierMask, hasVideoMask, maskAlphaAt, MAX_BEZIER_COORD, MIN_BEZIER_COORD, MAX_BEZIER_MASK_POINTS, moveBezierAnchor, moveBezierHandle, rasterizeBezierMask, resizeMaskAxis, validateVideoMask } = require('../shared/video-mask.mjs');
 
 const clip = patch => ({ kind: 'video', ...patch });
 test('validates backward-compatible crop and shape mask metadata', () => {
@@ -51,13 +51,13 @@ test('validates bounded editable and closed Bezier point lists', () => {
   const closed={...open,points:[...open.points,point(.5,.8,'curve')],closed:true};
   assert.doesNotThrow(()=>validateVideoMask(clip({videoMask:closed})));
   assert.throws(()=>validateVideoMask(clip({videoMask:{...closed,points:Array.from({length:MAX_BEZIER_MASK_POINTS+1},()=>point(.5,.5))}})),/点列/);
-  for(const bad of [{...point(.5,.5),x:NaN},{...point(.5,.5),outX:3},{...point(.5,.5),kind:'other'}])assert.throws(()=>validateVideoMask(clip({videoMask:{...closed,points:[point(.2,.2),point(.8,.2),bad]}})),/ベジェマスク/);
+  for(const bad of [{...point(.5,.5),x:NaN},{...point(.5,.5),outX:MAX_BEZIER_COORD+1},{...point(.5,.5),kind:'other'}])assert.throws(()=>validateVideoMask(clip({videoMask:{...closed,points:[point(.2,.2),point(.8,.2),bad]}})),/ベジェマスク/);
 });
 
 test('keeps dragged Bezier anchors and mirrored handles inside persisted bounds', () => {
   const point={x:.9,y:.1,inX:-.9,inY:.1,outX:1.9,outY:.1,kind:'curve'};
-  const anchor=moveBezierAnchor(point,1,-1);assert.equal(anchor.x,1);assert.equal(anchor.y,0);assert.equal(anchor.inX,-.8);assert.equal(anchor.outX,2);
-  const outgoing=moveBezierHandle(anchor,'out',5,-5);assert.ok(outgoing.outX<=2&&outgoing.outY>=-1);assert.ok(outgoing.inX>=-1&&outgoing.inY<=2);
+  const anchor=moveBezierAnchor(point,20,-20);assert.equal(anchor.outX,MAX_BEZIER_COORD);assert.equal(anchor.y,MIN_BEZIER_COORD);assert.ok(Math.abs(anchor.x-10)<1e-10);assert.ok(Math.abs(anchor.inX-8.2)<1e-10);
+  const outgoing=moveBezierHandle(anchor,'out',5,-5);assert.ok(outgoing.outX<=MAX_BEZIER_COORD&&outgoing.outY>=MIN_BEZIER_COORD);assert.ok(outgoing.inX>=MIN_BEZIER_COORD&&outgoing.inY<=MAX_BEZIER_COORD);
   assert.ok(Math.abs((outgoing.outX-outgoing.x)+(outgoing.inX-outgoing.x))<1e-10);assert.ok(Math.abs((outgoing.outY-outgoing.y)+(outgoing.inY-outgoing.y))<1e-10);
 });
 
@@ -92,4 +92,16 @@ test('builds bounded FFmpeg expressions only when an effect is active', () => {
   assert.equal(hasVideoMask(effect), true);
   assert.match(ffmpegMaskExpression(effect), /between/); assert.match(ffmpegMaskExpression(effect), /sqrt/); assert.match(ffmpegMaskExpression(effect), /clip/);
   assert.doesNotMatch(ffmpegMaskExpression(effect), /NaN|Infinity/);
+});
+
+test('accepts off-frame paths, clips raster work to the image and rejects unbounded coordinates', () => {
+  const point=(x,y)=>({x,y,inX:x,inY:y,outX:x,outY:y,kind:'line'});
+  const videoMask={type:'bezier',points:[point(-.25,-.25),point(.6,-.25),point(.6,1.25),point(-.25,1.25)],closed:true,feather:0,inverted:false};
+  assert.doesNotThrow(()=>validateVideoMask(clip({videoMask})));
+  const raster=rasterizeBezierMask(clip({videoMask}),100,50);
+  assert.equal(raster.length,5000); assert.equal(raster[0],255); assert.equal(raster[49*100+59],255); assert.equal(raster[49*100+60],0);
+  for(const value of [Infinity,-Infinity,NaN,MAX_BEZIER_COORD+.001,MIN_BEZIER_COORD-.001]) for(const axis of ['x','y','inX','inY','outX','outY']) {
+    const invalid={...videoMask,points:videoMask.points.map((p,i)=>i? p:{...p,[axis]:value})};
+    assert.throws(()=>validateVideoMask(clip({videoMask:invalid})),/ベジェマスク.*範囲外/);
+  }
 });

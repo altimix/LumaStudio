@@ -204,7 +204,7 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
     if(editMode==='mask'&&clip.videoMask?.type==='bezier') return <BezierMaskEditor key={clip.id} clip={clip} mask={clip.videoMask} source={source} project={project} viewport={root} actions={actions} z={z}/>;
     return null;
   };
-  return <><div className="media-drag-layer" ref={root}>{editMode==='transform'&&!playing && active.map(({ clip, asset, locked }) => {
+  return <><div className={`media-drag-layer${editMode==='mask'?' mask-editing':''}`} ref={root}>{editMode==='transform'&&!playing && active.map(({ clip, asset, locked }) => {
     if (sizes[clip.id]?.source !== mediaSourceKey(project, asset)) return null;
     const size = sourceSize(clip, asset), bounds = mediaBounds(clip, size, project), chosen = selected.includes(clip.id), z = order.get(clip.id) || 1;
     return <Fragment key={clip.id}>

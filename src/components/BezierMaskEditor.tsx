@@ -4,7 +4,7 @@ import { useEditor } from '../store';
 import type { BezierVideoMask, Clip, Project } from '../types';
 import { mediaNormalizedPoint, mediaPoint, type Position, type SourceSize } from '../media-transform';
 import { constrainBezierVector, editBezierHandle, newBezierPoint, translateBezierPoints } from '../bezier-editing';
-import { MAX_BEZIER_MASK_POINTS } from '../../shared/video-mask.mjs';
+import { MAX_BEZIER_MASK_POINTS, MIN_BEZIER_COORD, MAX_BEZIER_COORD } from '../../shared/video-mask.mjs';
 import { patchVisualClip, visualClipAt } from '../../shared/visual-keyframes.mjs';
 import { localVisualTime } from '../visual-editing';
 
@@ -62,7 +62,7 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
     if (operation.part === 'add' && !isDirect && !event.shiftKey && originalMask.points.length >= 3 && nearStart(event)) {
       initial.updateClip(clip.id, { videoMask: { ...originalMask, closed: true } }); setCloseCandidate(false); return;
     }
-    if (operation.part === 'add' && (originalMask.closed || originalMask.points.length >= MAX_BEZIER_MASK_POINTS || startPoint.x < 0 || startPoint.x > 1 || startPoint.y < 0 || startPoint.y > 1)) return;
+    if (operation.part === 'add' && (originalMask.closed || originalMask.points.length >= MAX_BEZIER_MASK_POINTS || startPoint.x < MIN_BEZIER_COORD || startPoint.x > MAX_BEZIER_COORD || startPoint.y < MIN_BEZIER_COORD || startPoint.y > MAX_BEZIER_COORD)) return;
     if (operation.part !== 'add' && !originalMask.points[operation.index]) return;
     if (operation.part === 'anchor' && !isDirect && !event.shiftKey && operation.index === 0 && originalMask.points.length >= 3) {
       initial.updateClip(clip.id, { videoMask: { ...originalMask, closed: true } }); setCloseCandidate(false); return;
@@ -188,7 +188,7 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
     target.addEventListener('lostpointercapture', pointerCancel); target.setPointerCapture(pointer);
     if (operation.part === 'add') {
       const previous = originalMask.points.at(-1);
-      // Clamp along the constrained ray so clipping at the source edge cannot bend a 45° line.
+      // Clamp along the constrained ray so reaching the coordinate limit cannot bend a 45° line.
       const point = previous && event.shiftKey ? translateBezierPoints([newBezierPoint(previous)], [0], constrain({ x: startPoint.x - previous.x, y: startPoint.y - previous.y }, true))[0] : newBezierPoint(startPoint);
       baseMask = { ...originalMask, points: [...originalMask.points, newBezierPoint(point)] };
       heldOpposite = baseMask.points[index];
@@ -209,7 +209,7 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
   }
   const positionStyle = (point: Position, layer: number) => ({ left: point.x / project.width * 100 + '%', top: point.y / project.height * 100 + '%', zIndex: z + layer });
   return <>
-    <button className={`bezier-add-target ${direct ? 'direct' : ''}`} aria-label={direct ? 'ベジェマスクの選択を解除' : 'ベジェマスクの点を追加'} title={direct ? '空白をクリックして点の選択を解除' : 'クリックで点を追加・ドラッグで曲線・Ctrl / ⌘でポイント編集'} style={{ inset: 0, zIndex: z }} onPointerMove={event => { if (!gestureActive) setCloseCandidate(!direct && !event.shiftKey && mask.points.length >= 3 && nearStart(event)); }} onPointerLeave={() => { if (!gestureActive) setCloseCandidate(false); }} onPointerDown={event => begin(event, { part: 'add' })}/>
+    <button className={`bezier-add-target ${direct ? 'direct' : ''}`} aria-label={direct ? 'ベジェマスクの選択を解除' : 'ベジェマスクの点を追加'} title={direct ? '空白をクリックして点の選択を解除' : 'クリックで点を追加・ドラッグで曲線・Ctrl / ⌘でポイント編集'} style={{ zIndex: z }} onPointerMove={event => { if (!gestureActive) setCloseCandidate(!direct && !event.shiftKey && mask.points.length >= 3 && nearStart(event)); }} onPointerLeave={() => { if (!gestureActive) setCloseCandidate(false); }} onPointerDown={event => begin(event, { part: 'add' })}/>
     <svg className="bezier-mask-path" viewBox={`0 0 ${project.width} ${project.height}`} preserveAspectRatio="none" style={{ zIndex: z + 1 }} aria-hidden="true"><path d={path}/>{screen.flatMap((point, index) => point.kind === 'curve' ? [<line key={`in-${index}`} x1={point.anchor.x} y1={point.anchor.y} x2={point.incoming.x} y2={point.incoming.y}/>, <line key={`out-${index}`} x1={point.anchor.x} y1={point.anchor.y} x2={point.outgoing.x} y2={point.outgoing.y}/>] : [])}</svg>
     {screen.map((point, index) => <Fragment key={index}>
       <button className={`bezier-mask-anchor ${index === 0 && closeCandidate && !mask.closed ? 'close-candidate' : ''}`} title={index === 0 && !direct && mask.points.length >= 3 ? 'クリックしてパスを閉じる' : 'ドラッグで移動・Shiftクリックで追加選択'} onPointerEnter={() => { if (!gestureActive && index === 0 && !direct && mask.points.length >= 3) setCloseCandidate(true); }} onPointerLeave={() => { if (!gestureActive) setCloseCandidate(false); }} aria-label={`ベジェマスクの点 ${index + 1}を移動`} aria-pressed={selected.includes(index)} style={positionStyle(point.anchor, 3)} onPointerDown={event => begin(event, { part: 'anchor', index })}/>

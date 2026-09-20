@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { constrainBezierVector, editBezierHandle, newBezierPoint, translateBezierPoints } from './bezier-editing';
 import { mediaPoint } from './media-transform';
 import type { Clip } from './types';
-import { validateVideoMask } from '../shared/video-mask.mjs';
+import { MAX_BEZIER_COORD, MIN_BEZIER_COORD, validateVideoMask } from '../shared/video-mask.mjs';
 
 const project = { width: 1920, height: 1080 };
 const clip = { x: 0, y: 0, scale: .85, rotation: 0 } as Clip;
@@ -20,12 +20,12 @@ describe('Bezier modifier geometry', () => {
     }
   });
   it('translates a group and its handles rigidly at the first boundary', () => {
-    const points = [newBezierPoint({ x: .2, y: .3 }), { ...newBezierPoint({ x: .8, y: .4 }), inX: .7, outX: 1.9 }];
+    const points = [newBezierPoint({ x: .2, y: .3 }), { ...newBezierPoint({ x: .8, y: .4 }), inX: .7, outX: MAX_BEZIER_COORD - .1 }];
     const result = translateBezierPoints(points, [0, 1], { x: .4, y: .2 });
-    expect(result[1].outX).toBe(2);
+    expect(result[1].outX).toBe(MAX_BEZIER_COORD);
     expect(result[1].x - result[0].x).toBeCloseTo(.6);
     expect(result[1].y - result[0].y).toBeCloseTo(.1);
-    expect(result[1].outX - result[1].x).toBeCloseTo(1.1);
+    expect(result[1].outX - result[1].x).toBeCloseTo(MAX_BEZIER_COORD - .9);
     expect((result[0].x - points[0].x) / (result[0].y - points[0].y)).toBeCloseTo(2);
   });
   it('preserves the opposite handle under Alt and restores symmetry without Alt', () => {
@@ -38,9 +38,24 @@ describe('Bezier modifier geometry', () => {
   });
   it('keeps constrained handles on their ray at bounds and persists asymmetric points', () => {
     for (const independent of [true, false]) {
-      const point = editBezierHandle(newBezierPoint({ x: .9, y: .2 }), 'out', { x: 4, y: 4 }, independent);
+      const point = editBezierHandle(newBezierPoint({ x: .9, y: .2 }), 'out', { x: 40, y: 40 }, independent);
       expect(point.outX - point.x).toBeCloseTo(point.outY - point.y);
       expect(() => validateVideoMask({ kind: 'video', videoMask: { type: 'bezier', points: [point], closed: false, feather: 0, inverted: false } })).not.toThrow();
     }
   });
+});
+
+it('moves anchors and handles beyond every source edge without clipping the curve', () => {
+  for (const x of [-.2, 1.2]) for (const y of [-.1, 1.1]) {
+    const original = newBezierPoint({ x: .5, y: .5 });
+    const [point] = translateBezierPoints([original], [0], { x: x - .5, y: y - .5 });
+    expect(point.x).toBeCloseTo(x); expect(point.y).toBeCloseTo(y);
+    const edited = editBezierHandle(point, 'out', { x: .25, y: .1 }, false);
+    expect(edited.inX + edited.outX).toBeCloseTo(2 * x);
+    expect(() => validateVideoMask({ kind: 'image', videoMask: { type: 'bezier', points: [edited], closed: false, feather: 0, inverted: false } })).not.toThrow();
+  }
+  for (const x of [MIN_BEZIER_COORD, MAX_BEZIER_COORD]) {
+    const point = editBezierHandle(newBezierPoint({ x, y: .5 }), 'out', { x: .08, y: 0 }, false);
+    expect(point.inX).toBe(x); expect(point.outX).toBe(x);
+  }
 });

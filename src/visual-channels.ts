@@ -1,5 +1,6 @@
 import type { Clip, Project } from './types';
 import { visualKeys, visualSnapshot } from '../shared/visual-keyframes.mjs';
+import { MIN_BEZIER_COORD, MAX_BEZIER_COORD } from '../shared/video-mask.mjs';
 
 export interface VisualChannel { path: string; label: string; min?: number; max?: number; step?: number; factor?: number; offset?: number; suffix?: string }
 export function channelValue(clip: Clip, path: string): unknown {
@@ -66,8 +67,7 @@ export function visualChannels(clip: Clip, project: Pick<Project, 'width' | 'hei
     const masks = [clip.videoMask, ...visualKeys(clip).map(key => key.values.videoMask)];
     const count = Math.max(0, ...masks.map(mask => mask?.type === 'bezier' ? mask.points.length : 0));
     for (let index = 0; index < count; index++) for (const [field, label] of [['x', 'X'], ['y', 'Y'], ['inX', '入力ハンドル X'], ['inY', '入力ハンドル Y'], ['outX', '出力ハンドル X'], ['outY', '出力ハンドル Y']]) {
-      const anchor = field === 'x' || field === 'y';
-      channels.push({ path: `videoMask.points.${index}.${field}`, label: `マスク / 点${index + 1} / ${label}`, min: anchor ? 0 : -1, max: anchor ? 1 : 2, step: .001, factor: 100, suffix: '%' });
+      channels.push({ path: `videoMask.points.${index}.${field}`, label: `マスク / 点${index + 1} / ${label}`, min: MIN_BEZIER_COORD, max: MAX_BEZIER_COORD, step: .001, factor: 100, suffix: '%' });
     }
   }
   return channels;
