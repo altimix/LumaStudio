@@ -74,10 +74,9 @@ async function verify() {
     await page.locator('.inspector-section').filter({ has: page.locator('#video-mask-type') }).locator('summary').click();
     await page.locator('#video-mask-type').selectOption('bezier');
     await page.getByRole('button', { name:'モニターでマスクを編集', exact:true }).click();
-    const addTarget = page.getByRole('button', { name:'ベジェマスクの点を追加', exact:true });
     let added = 0;
     for (const [x, y] of [[.2,.2],[.8,.2],[.8,.8],[.2,.8]]) {
-      const box = await addTarget.boundingBox(); assert.ok(box);
+      const box = await page.locator('.canvas-wrap').boundingBox(); assert.ok(box);
       await page.mouse.click(box.x + box.width * x, box.y + box.height * y);
       added += 1;
       await page.waitForFunction(count => document.querySelectorAll('.bezier-mask-anchor').length === count, added);

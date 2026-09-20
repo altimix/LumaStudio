@@ -1,5 +1,6 @@
 import type { BezierMaskPoint, Clip, Project } from './types';
 import { mediaNormalizedPoint, mediaPoint, type Position, type SourceSize } from './media-transform';
+import { MIN_BEZIER_COORD as MIN, MAX_BEZIER_COORD as MAX } from '../shared/video-mask.mjs';
 
 /** Snap in monitor pixels, not normalized coordinates (which distort 45° on wide sources). */
 export function constrainBezierVector(clip: Clip, source: SourceSize, project: Pick<Project, 'width' | 'height'>, vector: Position): Position {
@@ -20,8 +21,8 @@ export function translateBezierPoints(points: BezierMaskPoint[], selected: reado
   let amount = 1;
   for (const [index, point] of points.entries()) {
     if (!indices.has(index)) continue;
-    for (const [x, y, min, max] of [[point.x, point.y, 0, 1], [point.inX, point.inY, -1, 2], [point.outX, point.outY, -1, 2]]) {
-      amount = Math.min(amount, fraction(x, delta.x, min, max), fraction(y, delta.y, min, max));
+    for (const [x, y] of [[point.x, point.y], [point.inX, point.inY], [point.outX, point.outY]]) {
+      amount = Math.min(amount, fraction(x, delta.x, MIN, MAX), fraction(y, delta.y, MIN, MAX));
     }
   }
   amount = Math.max(0, amount);
@@ -30,8 +31,8 @@ export function translateBezierPoints(points: BezierMaskPoint[], selected: reado
 }
 
 export function editBezierHandle(point: BezierMaskPoint, part: 'in' | 'out', vector: Position, independent: boolean): BezierMaskPoint {
-  let amount = Math.min(1, fraction(point.x, vector.x, -1, 2), fraction(point.y, vector.y, -1, 2));
-  if (!independent) amount = Math.min(amount, fraction(point.x, -vector.x, -1, 2), fraction(point.y, -vector.y, -1, 2));
+  let amount = Math.min(1, fraction(point.x, vector.x, MIN, MAX), fraction(point.y, vector.y, MIN, MAX));
+  if (!independent) amount = Math.min(amount, fraction(point.x, -vector.x, MIN, MAX), fraction(point.y, -vector.y, MIN, MAX));
   amount = Math.max(0, amount);
   const dx = vector.x * amount, dy = vector.y * amount;
   const handle = part === 'in' ? { inX: point.x + dx, inY: point.y + dy } : { outX: point.x + dx, outY: point.y + dy };

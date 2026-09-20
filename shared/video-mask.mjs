@@ -6,6 +6,10 @@ const finite = (value, min, max, label) => {
 export const EMPTY_CROP = Object.freeze({ top: 0, right: 0, bottom: 0, left: 0 });
 export const DEFAULT_VIDEO_MASK = Object.freeze({ type: 'rectangle', x: .5, y: .5, width: .7, height: .7, feather: 0, inverted: false });
 export const MAX_BEZIER_MASK_POINTS = 32;
+// Normalized source coordinates. Keep off-frame paths bounded without clipping
+// their geometry to the image; raster allocation still uses output dimensions.
+export const MIN_BEZIER_COORD = -10;
+export const MAX_BEZIER_COORD = 11;
 export const DEFAULT_BEZIER_MASK = Object.freeze({ type: 'bezier', points: Object.freeze([]), closed: false, feather: 0, inverted: false });
 
 export function effectiveCrop(clip) { return clip?.crop || EMPTY_CROP; }
@@ -38,9 +42,9 @@ export function validateVideoMask(clip) {
       if (!Array.isArray(mask.points) || mask.points.length > MAX_BEZIER_MASK_POINTS || typeof mask.closed !== 'boolean' || (mask.closed && mask.points.length < 3)) throw new Error('ベジェマスクの点列が不正です。');
       for (const [index, point] of mask.points.entries()) {
         if (!point || typeof point !== 'object' || Array.isArray(point) || !['line', 'curve'].includes(point.kind)) throw new Error(`ベジェマスクの点${index + 1}が不正です。`);
-        finite(point.x, 0, 1, `ベジェマスクの点${index + 1}のX座標`); finite(point.y, 0, 1, `ベジェマスクの点${index + 1}のY座標`);
-        finite(point.inX, -1, 2, `ベジェマスクの点${index + 1}の入力ハンドルX`); finite(point.inY, -1, 2, `ベジェマスクの点${index + 1}の入力ハンドルY`);
-        finite(point.outX, -1, 2, `ベジェマスクの点${index + 1}の出力ハンドルX`); finite(point.outY, -1, 2, `ベジェマスクの点${index + 1}の出力ハンドルY`);
+        finite(point.x, MIN_BEZIER_COORD, MAX_BEZIER_COORD, `ベジェマスクの点${index + 1}のX座標`); finite(point.y, MIN_BEZIER_COORD, MAX_BEZIER_COORD, `ベジェマスクの点${index + 1}のY座標`);
+        finite(point.inX, MIN_BEZIER_COORD, MAX_BEZIER_COORD, `ベジェマスクの点${index + 1}の入力ハンドルX`); finite(point.inY, MIN_BEZIER_COORD, MAX_BEZIER_COORD, `ベジェマスクの点${index + 1}の入力ハンドルY`);
+        finite(point.outX, MIN_BEZIER_COORD, MAX_BEZIER_COORD, `ベジェマスクの点${index + 1}の出力ハンドルX`); finite(point.outY, MIN_BEZIER_COORD, MAX_BEZIER_COORD, `ベジェマスクの点${index + 1}の出力ハンドルY`);
       }
     } else {
       finite(mask.x, 0, 1, 'マスクのX座標'); finite(mask.y, 0, 1, 'マスクのY座標');
@@ -59,15 +63,15 @@ export function resizeMaskAxis(opposite, desired, direction) {
 }
 
 export function moveBezierAnchor(point, dx, dy) {
-  const movedX = Math.max(Math.max(-point.x, -1 - point.inX, -1 - point.outX), Math.min(Math.min(1 - point.x, 2 - point.inX, 2 - point.outX), dx));
-  const movedY = Math.max(Math.max(-point.y, -1 - point.inY, -1 - point.outY), Math.min(Math.min(1 - point.y, 2 - point.inY, 2 - point.outY), dy));
+  const movedX = Math.max(Math.max(MIN_BEZIER_COORD - point.x, MIN_BEZIER_COORD - point.inX, MIN_BEZIER_COORD - point.outX), Math.min(Math.min(MAX_BEZIER_COORD - point.x, MAX_BEZIER_COORD - point.inX, MAX_BEZIER_COORD - point.outX), dx));
+  const movedY = Math.max(Math.max(MIN_BEZIER_COORD - point.y, MIN_BEZIER_COORD - point.inY, MIN_BEZIER_COORD - point.outY), Math.min(Math.min(MAX_BEZIER_COORD - point.y, MAX_BEZIER_COORD - point.inY, MAX_BEZIER_COORD - point.outY), dy));
   return { ...point, x: point.x + movedX, y: point.y + movedY, inX: point.inX + movedX, inY: point.inY + movedY, outX: point.outX + movedX, outY: point.outY + movedY };
 }
 
 export function moveBezierHandle(point, part, dx, dy) {
   const incoming = part === 'in', xKey = incoming ? 'inX' : 'outX', yKey = incoming ? 'inY' : 'outY', oppositeX = incoming ? 'outX' : 'inX', oppositeY = incoming ? 'outY' : 'inY';
-  const vectorX = Math.max(Math.max(-1 - point.x, point.x - 2), Math.min(Math.min(2 - point.x, point.x + 1), point[xKey] + dx - point.x));
-  const vectorY = Math.max(Math.max(-1 - point.y, point.y - 2), Math.min(Math.min(2 - point.y, point.y + 1), point[yKey] + dy - point.y));
+  const vectorX = Math.max(Math.max(MIN_BEZIER_COORD - point.x, point.x - MAX_BEZIER_COORD), Math.min(Math.min(MAX_BEZIER_COORD - point.x, point.x - MIN_BEZIER_COORD), point[xKey] + dx - point.x));
+  const vectorY = Math.max(Math.max(MIN_BEZIER_COORD - point.y, point.y - MAX_BEZIER_COORD), Math.min(Math.min(MAX_BEZIER_COORD - point.y, point.y - MIN_BEZIER_COORD), point[yKey] + dy - point.y));
   return { ...point, [xKey]: point.x + vectorX, [yKey]: point.y + vectorY, [oppositeX]: point.x - vectorX, [oppositeY]: point.y - vectorY };
 }
 

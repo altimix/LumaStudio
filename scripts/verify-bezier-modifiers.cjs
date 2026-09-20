@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { MIN_BEZIER_COORD, MAX_BEZIER_COORD } = require('../shared/video-mask.mjs');
 
 // Runs in both development and the Windows/macOS packaged Bezier suite.
 module.exports = async function verifyBezierModifiers({ page, save, checks, loadMask }) {
@@ -113,7 +114,7 @@ module.exports = async function verifyBezierModifiers({ page, save, checks, load
   assert.equal((await read()).closed, true);
   checks.push('overlapping end/start merges the endpoints, closes with one undo and shows a close hint near the start');
 
-  const blocked = { ...openPath, points: openPath.points.map((point, index) => index === 3 ? { ...point, kind: 'curve', inX: openPath.points[0].x > point.x ? 2 : -1, inY: openPath.points[0].y > point.y ? 2 : -1, outX: point.x, outY: point.y } : point) };
+  const blocked = { ...openPath, points: openPath.points.map((point, index) => index === 3 ? { ...point, kind: 'curve', inX: openPath.points[0].x > point.x ? MAX_BEZIER_COORD : MIN_BEZIER_COORD, inY: openPath.points[0].y > point.y ? MAX_BEZIER_COORD : MIN_BEZIER_COORD, outX: point.x, outY: point.y } : point) };
   await loadMask(blocked);
   await page.getByRole('button', { name: 'モニターでマスクを編集', exact: true }).click();
   await direct.click(); start = await center(anchor(4)); const blockedFirst = await center(anchor(1));

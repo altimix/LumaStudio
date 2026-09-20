@@ -3,6 +3,8 @@ export const EMPTY_CROP: Readonly<Crop>;
 export const DEFAULT_VIDEO_MASK: Readonly<BasicVideoMask>;
 export const DEFAULT_BEZIER_MASK: Readonly<BezierVideoMask>;
 export const MAX_BEZIER_MASK_POINTS: number;
+export const MIN_BEZIER_COORD: number;
+export const MAX_BEZIER_COORD: number;
 export function effectiveCrop(clip: Partial<Clip> | undefined): Readonly<Crop>;
 export function hasCrop(clip: Partial<Clip> | undefined): boolean;
 export function hasVideoMask(clip: Partial<Clip> | undefined): boolean;

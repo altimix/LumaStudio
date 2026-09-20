@@ -47,7 +47,9 @@ export default function ClipVisualKeys({ clip, locked }: { clip: Clip; locked: b
       try {
         let next = moveVisualPoint(original, from, at);
         if (next === original && at !== from) return;
-        if (typeof originalValue === 'number' && channel.min !== undefined && channel.max !== undefined && channel.step) {
+        // Moving only in time must preserve the exact value, including coordinates
+        // created by monitor gestures that are finer than the numeric control step.
+        if (e.clientY !== origin.y && typeof originalValue === 'number' && channel.min !== undefined && channel.max !== undefined && channel.step) {
           const requested = originalValue - (e.clientY - origin.y) / (rect.height * .8) * (channel.max - channel.min);
           const value = clamp(Math.round(requested / channel.step) * channel.step, channel.min, channel.max);
           next = setVisualKey(next, at, channelPatch(visualClipAt(next, at), channel.path, value));
