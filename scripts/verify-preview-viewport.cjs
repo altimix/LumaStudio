@@ -111,6 +111,24 @@ async function verify() {
     }
     check('text and shapes remain directly draggable at fixed zoom and pan offsets');
 
+    for(const rotation of [0,35]) {
+      const tinyTitle={...clip,assetId:undefined,kind:'title',audioMuted:undefined,text:'文字',name:'小さな文字',fontSize:16,textBox:{width:80,height:32},rotation};
+      await open({...project,clips:[tinyTitle]});await page.locator('.timeline-clip.title').click();await zoom.selectOption('0.25');await frames();
+      const target=page.locator('.title-drag-target'),t=await box(target),canvasBox=await box(wrap),center={x:Math.round(t.x+t.width/2),y:Math.round(t.y+t.height/2)},before=await save();
+      assert.equal(await target.evaluate((el,point)=>document.elementFromPoint(point.x,point.y)===el,center),true,'small text center must remain a move target');
+      await page.keyboard.down('Alt');await pointerDrag(center.x,center.y,18,9);await page.keyboard.up('Alt');saved=await save();
+      close(saved.clips[0].x,18/canvasBox.width*100,'small title drag x',.1);close(saved.clips[0].y,9/canvasBox.height*100,'small title drag y',.1);
+      assert.deepEqual(saved.clips[0].textBox,before.clips[0].textBox,'moving small text must not resize its frame');assert.equal(saved.clips[0].fontSize,16);
+      await page.keyboard.press('Control+z');assert.deepEqual((await save()).clips,before.clips);
+      if(rotation===0){
+        const handle=await box(page.getByRole('button',{name:'テキスト枠の下を変更',exact:true}));
+        await pointerDrag(Math.round(handle.x+handle.width/2),Math.round(handle.y+handle.height/2),0,8);saved=await save();
+        close(saved.clips[0].textBox.height,64,'small title resize uses source dimensions',.1);assert.equal(saved.clips[0].fontSize,16);
+        await page.keyboard.press('Control+z');assert.deepEqual((await save()).clips,before.clips);
+      }
+    }
+    check('zoomed-out and rotated small text retains separate move/resize targets without changing font size or Undo behavior');
+
     await open(project);await page.locator('.media-drag-target').waitFor();await page.locator('.media-drag-target').click();
     const section=page.locator('.inspector-section').filter({has:page.locator('#video-mask-type')});if(!await section.evaluate(el=>el.open))await section.locator('summary').click();
     await page.locator('#video-mask-type').selectOption('bezier');await page.getByRole('button',{name:'モニターでマスクを編集',exact:true}).click();
