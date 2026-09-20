@@ -21,10 +21,10 @@ function animatedChromaFilter(clip, offset) {
 
 // Fixed output dimensions avoid filter reinitialization when scale or rotation
 // changes. Inverse sampling preserves the clip center and transparent bounds.
-function animatedTransformFilter(clip, offset) {
+function animatedTransformFilter(clip, offset, sourceScale = 1) {
   const ex=field=>`(${visualExpression(clip,field,'T',offset)})`,opacity=ex('opacity');
   if(clip.graphic)return `geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*${opacity}'`;
-  const prefix=`st(2,${ex('rotation')}*PI/180);st(3,${ex('scale')});st(4,X-W/2-W*${ex('x')}/100);st(5,Y-H/2-H*${ex('y')}/100);st(0,(ld(4)*cos(ld(2))+ld(5)*sin(ld(2)))/ld(3)+W/2);st(1,(-ld(4)*sin(ld(2))+ld(5)*cos(ld(2)))/ld(3)+H/2);`;
+  const prefix=`st(2,${ex('rotation')}*PI/180);st(3,${ex('scale')}/${sourceScale});st(4,X-W/2-W/${sourceScale}*${ex('x')}/100);st(5,Y-H/2-H/${sourceScale}*${ex('y')}/100);st(0,(ld(4)*cos(ld(2))+ld(5)*sin(ld(2)))/ld(3)+W/2);st(1,(-ld(4)*sin(ld(2))+ld(5)*cos(ld(2)))/ld(3)+H/2);`;
   const inside='between(ld(0),0,W-1)*between(ld(1),0,H-1)';
   return `geq=${['r','g','b'].map(channel=>`${channel}='${prefix}if(${inside},${channel}(ld(0),ld(1)),0)'`).join(':')}:a='${prefix}if(${inside},alpha(ld(0),ld(1))*${opacity},0)':interpolation=bilinear`;
 }

@@ -161,7 +161,11 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
         args.push('-i',typeof maskPath==='string'?maskPath:maskPath.path);
         maskIndex = input++;
       }
-      const fitW = Math.max(2, Math.round(width * (c.graphic||moving?1:c.scale) / 2) * 2); const fitH = Math.max(2, Math.round(height * (c.graphic||moving?1:c.scale) / 2) * 2);
+      // Keep enough source detail for the largest animated zoom. Transform on
+      // this fixed grid, then crop the output viewport without downsampling it.
+      const sourceScale = moving && c.kind !== 'title' ? Math.max(1, Math.ceil(Math.max(c.scale, ...values.map(value => value.scale)))) : 1;
+      const fitScale = moving ? sourceScale : c.graphic ? 1 : c.scale;
+      const fitW = Math.max(2, Math.round(width * fitScale / 2) * 2); const fitH = Math.max(2, Math.round(height * fitScale / 2) * 2);
       const f = [`[${index}:v]setpts=(PTS-STARTPTS)/${number(sequence?1:c.speed)}`, `fps=${fps}:eof_action=pass`];
       f.push(`tpad=start_mode=clone:start_duration=${number(videoWindow.padBefore)}:stop_mode=clone:stop_duration=${number(videoWindow.padAfter+1/fps)}`,`trim=duration=${number(videoWindow.duration)}`,'setpts=PTS-STARTPTS');
       // Match the preview: calculate the key from decoded source pixels before
@@ -185,7 +189,10 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
         filters.push(`[maskcolor${index}][combinedalpha${index}]alphamerge[masked${index}]`);
         f.length = 0; f.push(`[masked${index}]null`);
       } else if (hasVideoMask(c)) f.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${ffmpegMaskExpression(c)})'`);
-      if(moving)f.push(`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black@0`,animatedTransformFilter(rawClip,offset));
+      if(moving){
+        f.push(`pad=${width*sourceScale}:${height*sourceScale}:(ow-iw)/2:(oh-ih)/2:color=black@0`,animatedTransformFilter(rawClip,offset,sourceScale));
+        if(sourceScale>1)f.push(`crop=${width}:${height}:(iw-ow)/2:(ih-oh)/2`);
+      }
       else {
         if (c.rotation&&!c.graphic) { const angle = number(c.rotation * Math.PI / 180); f.push(`rotate=${angle}:ow=rotw(${angle}):oh=roth(${angle}):c=none`); }
         if(animated&&values.some(value=>value.opacity!==c.opacity))f.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${visualExpression(rawClip,'opacity','T',offset)})'`);
