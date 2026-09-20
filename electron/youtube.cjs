@@ -68,7 +68,7 @@ async function runAudio(args, signal) {
 }
 function finalizeTranscription(p, cues, transcriptionStats) {
   if (!cues.length) throw new Error('認識できる発話がありませんでした。音声・言語設定を確認してください。');
-  const result = { sourceKey: timelineKey(p), cues, transcriptionStats, titles: [], description: '', chapters: [], keywords: [], thumbnailPrompt: '' };
+  const result = { sourceKey: timelineKey(p), cues, transcriptionStats, titles: [], description: '', chapters: [], keywords: [], thumbnailPrompt: '', ...(p.youtube?.thumbnailReferenceAssetId ? { thumbnailReferenceAssetId: p.youtube.thumbnailReferenceAssetId } : {}) };
   validateYoutube(result);
   // Use the exact persisted representation, including all other project data,
   // before returning a result that the renderer can commit over existing captions.
