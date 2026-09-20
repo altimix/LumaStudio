@@ -1,5 +1,5 @@
 /* Larger hit targets for ranges and ordinary panel scrollbars. */
-input[type=range]{height:24px!important;background:linear-gradient(#454c57,#454c57) center/100% 6px no-repeat!important;min-width:48px;touch-action:none}
+input[type=range]:not(.monitor-pan){height:24px!important;background:linear-gradient(#454c57,#454c57) center/100% 6px no-repeat!important;min-width:48px;touch-action:none}
 input.property-slider[type=range]{background:linear-gradient(to right,#839374 var(--fill),#343a43 var(--fill)) center/100% 6px no-repeat!important}
 input[type=range]::-webkit-slider-thumb{width:20px;height:20px;border:2px solid #20242a;box-shadow:0 0 0 1px #aebacd}
 ::-webkit-scrollbar{width:16px;height:16px}

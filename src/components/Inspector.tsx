@@ -8,6 +8,7 @@ import type { BezierVideoMask, ChromaKey, Clip, VideoMask } from '../types';
 import VisualKeyframes from './VisualKeyframes';
 import { visualClipAt, hasVisualKeys } from '../../shared/visual-keyframes.mjs';
 import { localVisualTime } from '../visual-editing';
+import { editBezierHandle } from '../bezier-editing';
 import AudioEnhancement from './AudioEnhancement';
 import TextEffects from './TextEffects';
 import GraphicEffects from './GraphicEffects';
@@ -44,7 +45,7 @@ function CropMaskEffects({clip}:{clip:Clip}){
     if(type==='none'&&state.mediaEditMode==='mask')state.setMediaEditMode('transform');
   };
   const setPointKind=(index:number,kind:'line'|'curve')=>updateBezier(current=>{
-    const points=current.points.map((point,pointIndex)=>pointIndex!==index?point:kind==='line'?{...point,kind,inX:point.x,inY:point.y,outX:point.x,outY:point.y}:{...point,kind,inX:point.x-.08,inY:point.y,outX:point.x+.08,outY:point.y});
+    const points=current.points.map((point,pointIndex)=>pointIndex!==index?point:kind==='line'?{...point,kind,inX:point.x,inY:point.y,outX:point.x,outY:point.y}:editBezierHandle(point,'out',{x:.08,y:0},false));
     return {...current,points};
   });
   return <>
