@@ -208,13 +208,15 @@ function installIPC() {
     await credentials.get(); return transcribeTimeline(p, vocabulary, ai, signal, progress, await preparedAudioPaths(p, signal));
   }));
   handle('ai-metadata', p => job(signal => { progress({ progress: 0, message: 'タイトル・概要欄・検索ワードを生成中' }); return generateMetadata(p, ai, signal); }));
-  handle('ai-choose-thumbnail-reference', async () => {
+  handle('ai-choose-thumbnail-reference', async p => {
+    validateProject(p);
     const result = await dialog.showOpenDialog(window, { title: 'サムネイルに取り込む参考画像を1枚選択', properties: ['openFile'], filters: [{ name: '参考画像（PNG・JPEG・WebP）', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
     if (result.canceled || !result.filePaths.length) return null;
     if (result.filePaths.length !== 1) throw new Error('参考画像は1枚だけ選んでください。');
     const file = result.filePaths[0];
     await require('./thumbnail-reference.cjs').validateThumbnailReference(file);
-    return present(await inspectMedia(file, cacheDir()));
+    const asset = await inspectMedia(file, cacheDir());
+    return present(require('../shared/youtube-thumbnail.mjs').resolveThumbnailReference(p, asset));
   });
   handle('ai-thumbnail', (p, prompt) => job(async signal => {
     validateProject(p);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { emptyProject } from './model';
-import { emptyYoutube, resolveThumbnailReference } from './youtube';
+import { emptyYoutube } from './youtube';
+import { resolveThumbnailReference } from '../shared/youtube-thumbnail.mjs';
 import type { Asset } from './types';
 
 const photo: Asset = { id: 'current-file', name: 'photo.jpg', path: '/moved/photo.jpg', url: 'media://photo', thumbnail: 'media://thumbnail', kind: 'image', duration: 0, width: 120, height: 160, fps: 0, hasAudio: false, waveform: [], size: 1024, codec: 'mjpeg' };

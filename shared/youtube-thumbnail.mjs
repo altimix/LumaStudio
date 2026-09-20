@@ -5,6 +5,14 @@ function everVisible(clip){const keys=visualKeys(clip);return keys.length?keys.s
 export function thumbnailFormat(p) {
   return p.height>p.width?{width:864,height:1536,ratio:'9:16',portrait:true}:{width:1536,height:864,ratio:'16:9',portrait:false};
 }
+export function resolveThumbnailReference(p, imported) {
+  const matches = asset => asset.kind === 'image' && (asset.id === imported.id || asset.revision === imported.id);
+  const selected = p.assets.find(asset => asset.id === p.youtube?.thumbnailReferenceAssetId && matches(asset));
+  const existing = selected || p.assets.find(matches);
+  // Call this in main before registering the asset: saved edit IDs can differ
+  // from inspected file identities after collection, startup or relinking.
+  return existing ? { ...imported, id: existing.id, name: existing.name, revision: imported.id } : imported;
+}
 function sample(items,limit){return items.length<=limit?items:Array.from({length:limit},(_,i)=>items[Math.round(i*(items.length-1)/(limit-1))]);}
 export function thumbnailReference(p) {
   const id = p.youtube?.thumbnailReferenceAssetId;

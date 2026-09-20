@@ -18,18 +18,18 @@ const root=path.join(__dirname,'..');
  const clip={id:'c',assetId:asset.id,trackId:'v',name:'料理',kind:'video',start:100,in:0,duration:4,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,contrast:1,saturation:1,volume:1,fadeIn:0,fadeOut:0};
  const project={version:1,id:'thumbnail-test',name:'10分で作るパスタ',width:1920,height:1080,fps:30,assets:[asset],markers:[],tracks:[{id:'v',name:'映像',kind:'video',muted:false,hidden:false,locked:false,solo:false}],clips:[clip]};
  const profile=await fs.mkdtemp(path.join(results,'profile-')),env={...process.env,LUMA_TEST_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;delete env.OPENAI_API_KEY;delete env.LUMA_ENV_FILE;
- const executablePath=process.env.LUMA_VERIFY_EXE,app=await electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000});
+ const executablePath=process.env.LUMA_VERIFY_EXE,launch=()=>electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000});let app=await launch();
  try{
-  const page=await app.firstWindow();await page.locator('.app-titlebar').waitFor({timeout:60000});await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});
-  await app.evaluate((_,responses)=>{globalThis.__thumbnailRequests=[];globalThis.fetch=async(url,options)=>{
+  let page=await app.firstWindow();await page.locator('.app-titlebar').waitFor({timeout:60000});await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});
+  const configure=async requests=>{await app.evaluate((_,{responses,requests})=>{globalThis.__thumbnailRequests=requests;globalThis.fetch=async(url,options)=>{
    if(!/\/images\/(edits|generations)$/.test(url))throw new Error('Unexpected endpoint');
    if(globalThis.__thumbnailFailure)return new Response('',{status:500});
    const form=typeof options.body==='string'?null:options.body,data=form?Object.fromEntries(form):JSON.parse(options.body),images=form?.getAll('image[]')||[];
    const firstReference=images.length?Buffer.from(await images[0].arrayBuffer()).toString('base64'):undefined;
    globalThis.__thumbnailRequests.push({route:url.split('/').at(-1),model:data.model,size:data.size,quality:data.quality,prompt:data.prompt,references:images.length,firstReference});
    return Response.json({data:[{b64_json:responses[data.size==='864x1536'?'portrait':'landscape']}]});
-  };},responses);
-  await page.evaluate(()=>window.luma.aiSetKey('sk-fake-key-for-isolated-tests-only'));
+  };},{responses,requests});await page.evaluate(()=>window.luma.aiSetKey('sk-fake-key-for-isolated-tests-only'));};
+  await configure([]);
   for(const scenario of ['landscape','portrait','text-only']){
    const portrait=scenario==='portrait',p={...project,id:scenario,width:portrait?1080:1920,height:portrait?1920:1080,...(scenario==='text-only'?{clips:[],assets:[]}:{} )};
    const file=path.join(results,`${p.id}.luma`),saved=path.join(results,`${p.id}.jpg`);let activeProjectFile=file;await fs.writeFile(file,JSON.stringify(p));
@@ -64,8 +64,12 @@ const root=path.join(__dirname,'..');
     activeProjectFile=movedFile;await page.getByRole('button',{name:'編集に戻る',exact:true}).click();const hydrated=await saveProject(page,movedFile),stableId=hydrated.youtube.thumbnailReferenceAssetId,hydratedReference=hydrated.assets.find(asset=>asset.id===stableId);
     assert.ok(hydratedReference.revision);assert.notEqual(hydratedReference.revision,stableId,'portable edit ID differs from the current file identity');
     hydrated.name='持ち運び画像の再接続';await fs.writeFile(movedFile,JSON.stringify(hydrated));const movedReference=path.join(moved,collectedReference.relativePath),disconnectedPortable=movedReference+'.disconnected';await fs.rename(movedReference,disconnectedPortable);
-    try{await page.keyboard.press('Control+o');await page.getByRole('button',{name:hydrated.name,exact:true}).waitFor();}finally{await fs.rename(disconnectedPortable,movedReference);}
+    try{
+      const requests=await app.evaluate(()=>globalThis.__thumbnailRequests);await app.close();app=await launch();page=await app.firstWindow();await page.locator('.app-titlebar').waitFor({timeout:60000});await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});await configure(requests);
+      await app.evaluate(({dialog},{file,saved})=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});dialog.showSaveDialog=async()=>({canceled:false,filePath:saved});},{file:movedFile,saved});await page.keyboard.press('Control+o');await page.getByRole('button',{name:hydrated.name,exact:true}).waitFor();
+    }finally{await fs.rename(disconnectedPortable,movedReference);}
     await page.getByRole('button',{name:'YouTube',exact:true}).click();await page.getByRole('button',{name:'サムネイル',exact:true}).click();assert.equal(await page.getByRole('button',{name:'サムネイルを1枚生成',exact:true}).isDisabled(),true);
+    const unregistered=await page.evaluate(async project=>{try{await window.luma.aiThumbnail(project,'');return '';}catch(error){return String(error);}},hydrated);assert.match(unregistered,/未登録/,'the new main process has not registered the missing stable reference');
     await choose(movedReference);await page.getByAltText('サムネイルに取り込む参考画像',{exact:true}).waitFor();await page.getByRole('button',{name:'編集に戻る',exact:true}).click();const reconnected=await saveProject(page,movedFile);
     assert.equal(reconnected.youtube.thumbnailReferenceAssetId,stableId);assert.equal(reconnected.assets.length,hydrated.assets.length);assert.equal(reconnected.assets.find(asset=>asset.id===stableId).revision,hydratedReference.revision);assert.equal(!!reconnected.assets.find(asset=>asset.id===stableId).offline,false);
     await page.keyboard.press('Control+z');await page.getByRole('button',{name:'YouTube',exact:true}).click();await page.getByRole('button',{name:'サムネイル',exact:true}).click();assert.equal(await page.getByRole('button',{name:'サムネイルを1枚生成',exact:true}).isDisabled(),true);
@@ -89,6 +93,6 @@ const root=path.join(__dirname,'..');
   const calls=await app.evaluate(()=>globalThis.__thumbnailRequests);assert.equal(calls.length,3);assert.ok(calls.every(c=>c.model==='gpt-image-2.5-sunburst'&&c.quality==='high'));
   for(const call of calls){if(call.firstReference)call.firstReferenceHash=createHash('sha256').update(Buffer.from(call.firstReference,'base64')).digest('hex');delete call.firstReference;}
   assert.equal(calls[0].references,3);assert.equal(calls[1].references,4);assert.equal(calls[1].firstReferenceHash,expectedReferenceHash);assert.match(calls[1].prompt,/1枚目はユーザー/);assert.equal(calls[2].references,0);assert.equal(calls[2].route,'generations');assert.deepEqual(await fs.readFile(replacement),originalPhoto);
-  await fs.writeFile(path.join(results,'requests.json'),JSON.stringify(calls,null,2));console.log('GPT Image 2.5: optional reference selection/replacement/removal, offline same-file and portable revision reselection without duplicate IDs, Undo/Redo/reload, project collection/relocation, unregistered file rejection, first-image fidelity, no-reference generation, both orientations, JPEG under 2 MB, and failure retention verified (API mocked).');
+  await fs.writeFile(path.join(results,'requests.json'),JSON.stringify(calls,null,2));console.log('GPT Image 2.5: optional reference selection/replacement/removal, offline same-file and portable revision reselection after a cold restart without duplicate IDs, Undo/Redo/reload, project collection/relocation, unregistered file rejection and stable-ID registration before generation, first-image fidelity, no-reference generation, both orientations, JPEG under 2 MB, and failure retention verified (API mocked).');
  }catch(error){const page=await app.firstWindow();await page.screenshot({path:path.join(results,'failure.png')}).catch(()=>{});throw error;}finally{await app.close();await fs.rm(profile,{recursive:true,force:true});}
 })().catch(e=>{console.error(e);process.exitCode=1;});

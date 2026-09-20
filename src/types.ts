@@ -75,7 +75,7 @@ export interface DesktopAPI {
   aiTranscribe(project: Project, vocabulary: string): Promise<YoutubeData>;
   aiMetadata(project: Project): Promise<YoutubeData>;
   aiThumbnail(project: Project, prompt: string): Promise<Asset>;
-  aiChooseThumbnailReference(): Promise<Asset | null>;
+  aiChooseThumbnailReference(project: Project): Promise<Asset | null>;
   aiSaveOutput(project: Project, format: 'srt' | 'vtt' | 'txt' | 'jpg'): Promise<string | null>;
   aiCancel(): Promise<void>;
   onAIProgress(cb: (progress: AIProgress) => void): () => void;
