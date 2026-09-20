@@ -56,7 +56,12 @@ export default function YouTubeStudio({ onClose }: { onClose: () => void }) {
     if (current.id !== snapshot.id || current.width !== snapshot.width || current.height !== snapshot.height || timelineKey(current) !== timelineKey(snapshot)) throw new Error('処理中にタイムラインが変わりました。現在の内容で再実行してください。');
     const fresh = assets?.filter(a => !current.assets.some(known => known.id === a.id)) || [];
     if (current.assets.length + fresh.length > 2000) throw new Error('素材が2000個を超えます。');
-    const next = { ...current, youtube: result, assets: [...current.assets, ...fresh] };
+    const imported = new Map(assets?.map(asset => [asset.id, asset]));
+    const restored = current.assets.map(known => {
+      const replacement = imported.get(known.id);
+      return known.offline && replacement && !replacement.offline ? replacement : known;
+    });
+    const next = { ...current, youtube: result, assets: [...restored, ...fresh] };
     validateYoutubeProject(next);
     useEditor.getState().commit(next, action);
   };
