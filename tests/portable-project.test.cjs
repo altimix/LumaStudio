@@ -5,8 +5,8 @@ const path = require('node:path');
 const os = require('node:os');
 const { createHash } = require('node:crypto');
 const { collectProject, resolveProjectMedia, serializeAt, relinkFolder } = require('../electron/portable-project.cjs');
-async function fixture(dir) {
-  const file = path.join(dir, '日本語 &素材..png'); await fs.writeFile(file, 'original media bytes');
+async function fixture(dir, filename = '日本語 &素材..png') {
+  const file = path.join(dir, filename); await fs.writeFile(file, 'original media bytes');
   const stat = await fs.stat(file), id = createHash('sha256').update(path.resolve(file) + stat.size + stat.mtimeMs).digest('hex').slice(0,24);
   const asset = { id, path:file, name:'表示名', kind:'image', duration:5, width:100, height:100, fps:0, hasAudio:false, codec:'png', waveform:[], size:stat.size };
   const clip = { id:'c', assetId:id,trackId:'v',name:'image',kind:'image',start:0,in:0,duration:3,speed:1,scale:1,x:0,y:0,rotation:0,opacity:1,volume:1,exposure:0,contrast:1,saturation:1,fadeIn:0,fadeOut:0 };
@@ -28,6 +28,23 @@ test('collected projects survive moving their folder and save-as recalculates re
 test('failed collection removes only its temporary folder and never replaces original files',async()=>{
   const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-portable-'));
   try {const p=await fixture(dir);await fs.writeFile(p.assets[0].path,'changed');await assert.rejects(collectProject(p,dir),/変更/);assert.deepEqual(await fs.readdir(dir),['日本語 &素材..png']);}finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+test('collection keeps a thumbnail reference that is not on the timeline and survives relocation',async()=>{
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-reference-portable-'));
+  try {
+    const p=await fixture(dir), reference=(await fixture(dir,'人物の参考写真.png')).assets[0];
+    p.assets.push(reference,{...reference,id:'unused',path:path.join(dir,'not-present.png')});
+    p.youtube={sourceKey:'',cues:[],titles:[],description:'',chapters:[],keywords:[],thumbnailPrompt:'',thumbnailReferenceAssetId:reference.id};
+    const file=await collectProject(p,dir), moved=path.join(dir,'別の場所');await fs.rename(path.dirname(file),moved);
+    assert.equal(await fs.readFile(reference.path,'utf8'),'original media bytes');await fs.unlink(reference.path);
+    const destination=path.join(moved,'project.luma'), resolved=resolveProjectMedia(JSON.parse(await fs.readFile(destination,'utf8')),destination);
+    assert.equal(resolved.assets.length,2);assert.equal(resolved.youtube.thumbnailReferenceAssetId,reference.id);
+    const copied=resolved.assets.find(asset=>asset.id===resolved.youtube.thumbnailReferenceAssetId);
+    assert.equal(await fs.readFile(copied.path,'utf8'),'original media bytes');assert.equal(path.dirname(copied.path),path.join(moved,'media'));
+    await assert.rejects(collectProject({...p,assets:p.assets.filter(asset=>asset.id!==reference.id)},dir),/参考画像が見つかりません/);
+    await assert.rejects(collectProject({...p,assets:p.assets.map(asset=>asset.id===reference.id?{...asset,offline:true}:asset)},dir),/素材が見つかりません/);
+    assert.ok(!(await fs.readdir(dir)).some(name=>name.startsWith('.luma-collect-')));
+  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
 test('malformed asset entries have a concrete Japanese error',()=>{
  for(const asset of [null,undefined,1,'file',[]])assert.throws(()=>resolveProjectMedia({assets:[asset]},'/tmp/project.luma'),/素材の形式が不正/);
