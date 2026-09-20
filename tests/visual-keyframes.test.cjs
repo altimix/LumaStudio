@@ -5,7 +5,9 @@ const {ffmpeg,run,inspectMedia}=require('../electron/media.cjs');
 const {exportProject,validateProject}=require('../electron/export.cjs');
 const {setVisualKey,visualClipAt}=require('../shared/visual-keyframes.mjs');
 const {DEFAULT_CHROMA_KEY}=require('../shared/chroma-key.mjs');
-const {createTitleFrameBroker,pngFrame}=require('../electron/frame-sequence.cjs');
+const {createTitleFrameBroker,pngFrame,writeFrameSequence}=require('../electron/frame-sequence.cjs');
+const {EventEmitter}=require('node:events');
+const {PassThrough,Writable}=require('node:stream');
 let dir,asset,red,blue;
 before(async()=>{
   dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-visual-keys-'));
@@ -38,6 +40,25 @@ test('rotation and negative placement retain transparent outside bounds',async()
   assert.ok(pixel(start,78,64)[2]>100);assert.ok(pixel(start,64,78)[2]<10);
   assert.ok(pixel(end,13,78)[2]>100);assert.ok(pixel(end,28,64)[2]<10);
 });
+test('animated zooms retain the same fine source detail as static image and video transforms',async()=>{
+  const source=path.join(dir,'細線.ppm'),width=256,height=128,rgb=Buffer.alloc(width*height*3);
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++)rgb.fill(x%2?235:20,(y*width+x)*3,(y*width+x+1)*3);
+  await fs.writeFile(source,Buffer.concat([Buffer.from(`P6\n${width} ${height}\n255\n`),rgb]));
+  for(const kind of ['image','video']){
+    const file=path.join(dir,kind==='image'?'fine-detail.png':'fine-detail.mkv');
+    await run(ffmpeg,['-v','error','-y','-loop','1','-framerate','10','-i',source,...(kind==='image'?['-frames:v','1']:['-t','1.2','-c:v','ffv1','-pix_fmt','gbrp']),file]);
+    const sourceAsset=await inspectMedia(file,path.join(dir,'cache'));
+    for(const [label,transform,start] of [['zoom',{scale:2,rotation:0},{scale:1}],['rotate',{scale:2,rotation:90},{scale:2,rotation:0}],['move',{scale:2,rotation:0,x:25,y:-25},{scale:2,x:-25,y:25}]]){
+      const still=project({assetId:sourceAsset.id,kind,...transform,volume:0});still.assets=[sourceAsset];
+      const animated=structuredClone(still);animated.clips[0]=setVisualKey(setVisualKey(animated.clips[0],0,start),1,transform);
+      const staticFrame=await pixels(await render(`detail-static-${kind}-${label}`,still),1);
+      const movingFrame=await pixels(await render(`detail-moving-${kind}-${label}`,animated),1);
+      let error=0,count=0;
+      for(let y=16;y<112;y++)for(let x=16;x<112;x++)for(let c=0;c<3;c++){error+=Math.abs(staticFrame[(y*128+x)*3+c]-movingFrame[(y*128+x)*3+c]);count++;}
+      assert.ok(error/count<8,`${kind} ${label}: animated/static mean pixel difference ${error/count}`);
+    }
+  }
+});
 test('RGB exposure, contrast and saturation use the same smooth appearance',async()=>{
   const p=project();p.clips[0]=setVisualKey(setVisualKey(p.clips[0],0),1,{exposure:1,contrast:.7,saturation:0});
   const out=await render('color',p),start=pixel(await pixels(out,0),64,64),middle=pixel(await pixels(out,.5),64,64),end=pixel(await pixels(out,1),64,64);
@@ -67,6 +88,19 @@ test('canceling frame preparation preserves the prior output and removes tempora
   const output=path.join(dir,'existing.mp4');await fs.writeFile(output,'original');
   await assert.rejects(exportProject(p,settings,output,{signal:controller.signal,titleFrameProvider:async()=>{controller.abort();return red;}}),/キャンセル/);
   assert.equal(await fs.readFile(output,'utf8'),'original');assert.equal((await fs.readdir(dir)).filter(name=>name.startsWith('.luma-')).length,0);
+});
+test('canceling while preparing or piping a frame reports cancellation instead of EPIPE',async()=>{
+  for(const when of ['prepare','write']){
+    const controller=new AbortController(),child=new EventEmitter();let writes=0,requests=0;
+    child.exitCode=null;child.stderr=new PassThrough();
+    child.stdin=new Writable({write(_bytes,_encoding,done){writes++;controller.abort();done(Object.assign(new Error('write EPIPE'),{code:'EPIPE'}));}});
+    child.kill=()=>{setImmediate(()=>{child.exitCode=0;child.emit('close',0);});return true;};
+    await assert.rejects(writeFrameSequence(path.join(dir,'canceled.mov'),{
+      fps:10,frames:3,signal:controller.signal,spawnProcess:()=>child,
+      frame:async()=>{requests++;if(when==='prepare')controller.abort();return red;},
+    }),/キャンセル/);
+    assert.equal(requests,1);assert.equal(writes,when==='prepare'?0:1);
+  }
 });
 test('invalid export frame rates fail before requesting any animated frames',async()=>{
   const p=project({kind:'title',assetId:undefined});p.clips[0]=setVisualKey(setVisualKey(p.clips[0],0),1,{fontSize:80});let requested=false;
