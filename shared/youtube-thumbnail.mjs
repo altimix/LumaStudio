@@ -6,6 +6,14 @@ export function thumbnailFormat(p) {
   return p.height>p.width?{width:864,height:1536,ratio:'9:16',portrait:true}:{width:1536,height:864,ratio:'16:9',portrait:false};
 }
 function sample(items,limit){return items.length<=limit?items:Array.from({length:limit},(_,i)=>items[Math.round(i*(items.length-1)/(limit-1))]);}
+export function thumbnailReference(p) {
+  const id = p.youtube?.thumbnailReferenceAssetId;
+  if (id === undefined) return undefined;
+  const asset = p.assets.find(item => item.id === id);
+  if (!asset || asset.kind !== 'image') throw new Error('サムネイルの参考画像が見つかりません。画像を選び直すか解除してください。');
+  if (asset.offline) throw new Error('サムネイルの参考画像がオフラインです。素材を再リンクするか、画像を選び直してください。');
+  return asset;
+}
 export function thumbnailFrames(p){
   const tracks=p.tracks.filter(t=>!t.hidden);
   const assets=new Map(p.assets.map(a=>[a.id,a]));
@@ -43,7 +51,8 @@ export function thumbnailBrief(p,prompt){
     direction:prompt.trim()};
   return `YouTubeのフィードで小さく表示されても内容と魅力が一瞬で伝わる、完成したサムネイルを1枚制作する。\n`+
     `出力は${format.width}×${format.height}、${format.ratio}。余白帯やモックアップ枠なしで全面を使う。\n`+
-    `添付画像はこの動画の実素材。人物・商品・場所・特徴を正確に保ちながら、最も伝わる主役を1つ選び大胆に拡大する。元動画にない成果・数値・人物・比較結果を作らない。画像がない場合は下記の動画内容に即した具体的なビジュアルを描く。\n`+
+    (p.youtube?.thumbnailReferenceAssetId ? `添付の1枚目はユーザーが指定した参考画像。人物が写っている場合はその人物をサムネイルの主役に取り込み、顔立ち・髪型・特徴を保ち、別人に置き換えない。商品などの場合も形や特徴を保って取り込む。参考画像そのものの背景や構図をコピーする必要はない。2枚目以降は動画の実素材で、内容・場面の参考にする。参考画像の主役を優先し、動画の人物と顔や特徴を混ぜない。\n` : `添付画像はこの動画の実素材。人物・商品・場所・特徴を正確に保ちながら、最も伝わる主役を1つ選び大胆に拡大する。画像がない場合は下記の動画内容に即した具体的なビジュアルを描く。\n`)+
+    `動画の内容やユーザーの参考画像にない成果・数値・人物・比較結果を作らない。\n`+
     `内容から視聴者の興味を引く見せ場、意外性、得られることを1つ絞る。見出しは日本語の短い一言、目安6〜14文字、最大2行。ユーザーが指定した見出しがあれば正確に使う。動画タイトル全文や長い説明文は載せない。\n`+
     `主役・見出し・補助要素の順に明確な大小差。太く読みやすい日本語文字、必要な縁取り、背景と強い明暗差。配色は内容に合う2〜3色に絞る。光と奥行きを整え、安価なクリップアート、雑なコラージュ、細かい装飾、過剰な矢印、無意味な集中線を避ける。比較は内容に根拠がある場合だけ。\n`+
     (format.portrait?'縦専用の構図。主役を中央に大きく、見出しは上〜中央に配置。上下端各10%・右端12%に顔や重要文字を置かない。横画像を切り抜いたような窮屈な構図にしない。\n':'横専用の構図。主役と見出しを左右などに分け、顔や商品を文字で覆わない。外周5%と右下には重要文字を置かない。\n')+

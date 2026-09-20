@@ -1,6 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
-const {thumbnailFormat,thumbnailFrames,thumbnailBrief}=require('../shared/youtube-thumbnail.mjs');
+const {thumbnailFormat,thumbnailFrames,thumbnailBrief,thumbnailReference}=require('../shared/youtube-thumbnail.mjs');
+const {validateThumbnailReference,thumbnailReferenceJpeg,MAX_REFERENCE_BYTES}=require('../electron/thumbnail-reference.cjs');
 const {timelineKey}=require('../shared/youtube.mjs');
 const {thumbnailJpeg,MAX_THUMBNAIL_BYTES}=require('../electron/thumbnail-jpeg.cjs');
 const {generateThumbnail}=require('../electron/youtube.cjs');
@@ -62,6 +63,7 @@ test('image API sends reference scenes as multipart at high quality in both aspe
   const client=createOpenAI(async()=> 'sk-test-key-for-isolated-tests',async(url,options)=>{request={url,options};return Response.json({data:[{b64_json:image.toString('base64')}]});});
   assert.deepEqual(await client.image('主役を強調',portrait,undefined,[image]),image);
   assert.ok(request.url.endsWith('/images/edits'));const body=request.options.body;
+  assert.equal(body.get('model'),'gpt-image-2.5-sunburst');
   assert.equal(body.get('quality'),'high');assert.equal(body.get('size'),portrait?'864x1536':'1536x864');assert.equal(body.get('output_format'),'jpeg');assert.equal(body.getAll('image[]').length,1);assert.equal(body.get('input_fidelity'),null);
  }
 });
@@ -72,6 +74,25 @@ test('generation without metadata uses actual frames and verifies final dimensio
  assert.equal(calls[0].refs.length,3);assert.match(calls[0].prompt,/10分で作るパスタ/);
  const before=(await fs.readdir(dir)).sort();await assert.rejects(generateThumbnail(p,'画像',{image:()=>jpeg(1024,1024)},undefined,dir),/指定サイズ/);assert.deepEqual((await fs.readdir(dir)).sort(),before);
  const controller=new AbortController();await assert.rejects(generateThumbnail(p,'画像',{image:async()=>{controller.abort();return jpeg(864,1536);}},controller.signal,dir));assert.deepEqual((await fs.readdir(dir)).sort(),before);
+}));
+test('optional user reference precedes video scenes, preserves its source and works alone',async()=>temporary(async dir=>{
+ const source=path.join(dir,'動画.mp4'),photo=path.join(dir,'人物 写真.png');await run(ffmpeg,['-v','error','-f','lavfi','-i','color=c=blue:s=320x180:r=30:d=10','-c:v','libx264',source]);
+ await run(ffmpeg,['-v','error','-f','lavfi','-i','color=c=red:s=192x256','-frames:v','1',photo]);const original=await fs.readFile(photo);
+ const {inspectMedia}=require('../electron/media.cjs'),asset=await inspectMedia(photo,path.join(dir,'cache')),p=project(source);p.assets.push(asset);p.youtube={sourceKey:'',cues:[],titles:[],description:'',chapters:[],keywords:[],thumbnailPrompt:'',thumbnailReferenceAssetId:asset.id};
+ const calls=[],client={image:async(prompt,portrait,signal,refs)=>{calls.push({prompt,refs});return jpeg(1536,864);}};
+ const reference=await thumbnailReferenceJpeg(photo);await generateThumbnail(p,'人物を主役に',client,undefined,dir);
+ assert.equal(calls[0].refs.length,4);assert.deepEqual(calls[0].refs[0],reference);assert.match(calls[0].prompt,/1枚目はユーザー/);assert.match(calls[0].prompt,/別人に置き換えない/);assert.ok(!calls[0].prompt.includes(photo));assert.deepEqual(await fs.readFile(photo),original);
+ p.clips=[];await generateThumbnail(p,'',client,undefined,dir);assert.equal(calls[1].refs.length,1);
+ const before=calls.length;p.assets.find(a=>a.id===asset.id).offline=true;await assert.rejects(generateThumbnail(p,'',client,undefined,dir),/オフライン/);assert.equal(calls.length,before);
+ p.youtube.thumbnailReferenceAssetId='missing';assert.throws(()=>thumbnailReference(p),/見つかりません/);
+ delete p.youtube.thumbnailReferenceAssetId;assert.equal(thumbnailReference(p),undefined);await generateThumbnail(p,'パスタのサムネイル',client,undefined,dir);assert.equal(calls.at(-1).refs.length,0);assert.doesNotMatch(calls.at(-1).prompt,/1枚目はユーザー/);
+}));
+test('reference image validation rejects oversized, disguised and non-image files before upload',async()=>temporary(async dir=>{
+ const tooBig=path.join(dir,'large.jpg'),handle=await fs.open(tooBig,'w');await handle.truncate(MAX_REFERENCE_BYTES+1);await handle.close();await assert.rejects(validateThumbnailReference(tooBig),/20MB/);
+ const video=path.join(dir,'disguised.png');await run(ffmpeg,['-v','error','-f','lavfi','-i','color=c=blue:s=64x64:r=1:d=1','-c:v','libx264','-f','mp4',video]);await assert.rejects(validateThumbnailReference(video),/読み取れません/);
+ await assert.rejects(validateThumbnailReference(path.join(dir,'file.txt')),/PNG/);
+ for(const extension of ['png','jpg','webp']){const file=path.join(dir,`valid.${extension}`);if(extension==='webp')await fs.writeFile(file,Buffer.from('UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAfQ//73v/+BiOh/AAA=','base64'));else await run(ffmpeg,['-v','error','-f','lavfi','-i','color=c=red:s=64x80','-frames:v','1',file]);await validateThumbnailReference(file);const bytes=await thumbnailReferenceJpeg(file);assert.equal(bytes[0],255);assert.equal(bytes[1],216);}
+ const controller=new AbortController();controller.abort();await assert.rejects(thumbnailReferenceJpeg(path.join(dir,'valid.png'),controller.signal));
 }));
 test('JPEG stays below 2 MB without changing dimensions; PNG and oversized JPEG are converted',async()=>temporary(async dir=>{
  for(const portrait of [false,true]){

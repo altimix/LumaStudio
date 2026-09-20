@@ -180,7 +180,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (used.some(c => s.project.tracks.find(t => t.id === c.trackId)?.locked)) { s.notify('この素材を使用しているトラックのロックを解除してください。'); return; }
     if (used.length && !removeUsed) { s.notify('使用中の素材です。使用クリップを確認してから削除してください。'); return; }
     const clips = s.project.clips.filter(c => c.assetId !== id);
-    const youtube = s.project.youtube?.thumbnailAssetId === id ? { ...s.project.youtube, thumbnailAssetId: undefined } : s.project.youtube;
+    const youtube = s.project.youtube ? { ...s.project.youtube, ...(s.project.youtube.thumbnailAssetId === id ? { thumbnailAssetId: undefined } : {}), ...(s.project.youtube.thumbnailReferenceAssetId === id ? { thumbnailReferenceAssetId: undefined } : {}) } : undefined;
     const project = { ...s.project, assets: s.project.assets.filter(a => a.id !== id), clips, ...(youtube ? { youtube } : {}) };
     s.commit(project, '素材をプロジェクトから削除');
     set(state => ({ activeVolumePoint:null, selected: state.selected.filter(id => clips.some(c => c.id === id)), clipboard: state.clipboard.filter(c => c.assetId !== id), sourceId: state.sourceId === id ? null : state.sourceId, playing: false, shuttleRate: 1, playhead: Math.min(state.playhead, endTime(project)), zoom: boundedZoom(state.zoom, endTime(project)), seekRevision: state.seekRevision + 1 }));

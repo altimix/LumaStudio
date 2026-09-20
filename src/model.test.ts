@@ -48,10 +48,11 @@ describe('media removal preserves a valid editable project', () => {
   });
   it('removes an unused thumbnail reference without affecting unrelated clips or disk metadata', () => {
     const p = fixture(), image = { ...asset, id: 'thumbnail', kind: 'image' as const, hasAudio: false };
-    p.assets.push(image); p.youtube = { sourceKey: '', cues: [], titles: [], description: '', chapters: [], keywords: [], thumbnailPrompt: '', thumbnailAssetId: image.id };
+    p.assets.push(image); p.youtube = { sourceKey: '', cues: [], titles: [], description: '', chapters: [], keywords: [], thumbnailPrompt: '', thumbnailAssetId: image.id, thumbnailReferenceAssetId: image.id };
     useEditor.getState().load(p); useEditor.getState().removeAsset(image.id);
     expect(useEditor.getState().project.clips).toEqual(p.clips); expect(useEditor.getState().project.assets).toEqual([asset]);
     expect(useEditor.getState().project.youtube?.thumbnailAssetId).toBeUndefined();
+    expect(useEditor.getState().project.youtube?.thumbnailReferenceAssetId).toBeUndefined();
     useEditor.getState().undo(); expect(useEditor.getState().project).toBe(p);
   });
 });
