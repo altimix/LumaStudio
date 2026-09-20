@@ -42,7 +42,7 @@ export function usePreviewViewport(stage: RefObject<HTMLDivElement | null>, sour
     const element = stage.current; if (!element) return;
     const wheel = (event: WheelEvent) => {
       event.preventDefault(); event.stopPropagation();
-      if (useEditor.getState().gestureActive || navigation.current || !Number.isFinite(event.deltaY)) return;
+      if (useEditor.getState().gestureActive || navigation.current || !Number.isFinite(event.deltaY) || event.deltaY === 0) return;
       const state = current.current, bounds = element.getBoundingClientRect();
       const anchor = { x: event.clientX - bounds.left - bounds.width / 2, y: event.clientY - bounds.top - bounds.height / 2 };
       apply(zoomMonitor(state.view, wheelMonitorScale(state.view.scale, event.deltaY, event.deltaMode, event.ctrlKey, bounds.height), anchor));
@@ -72,7 +72,9 @@ export function usePreviewViewport(stage: RefObject<HTMLDivElement | null>, sour
   const pointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const session = navigation.current; if (!session?.pointers.has(event.pointerId)) return;
     event.preventDefault(); event.stopPropagation(); session.pointers.set(event.pointerId, pointerPosition(event));
-    const now = geometry(session.pointers), next = session.distance > 0 ? zoomMonitor(session.base, session.base.scale * now.distance / session.distance, session.center) : { ...session.base, fit: false };
+    const now = geometry(session.pointers);
+    if (now.center.x === session.center.x && now.center.y === session.center.y && now.distance === session.distance) { apply(session.base); return; }
+    const next = session.distance > 0 ? zoomMonitor(session.base, session.base.scale * now.distance / session.distance, session.center) : { ...session.base, fit: false };
     apply({ ...next, x: next.x + now.center.x - session.center.x, y: next.y + now.center.y - session.center.y });
   };
   const pointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {

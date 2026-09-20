@@ -45,6 +45,9 @@ async function verify() {
     await page.locator('.app-titlebar').waitFor({timeout:60000});await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});
     await open(project);await page.locator('.media-drag-target').waitFor();const baseline=await save();
     await fit();
+    let initialStage=await box(stage);
+    await pointerDrag(initialStage.x+initialStage.width/2,initialStage.y+initialStage.height/2,0,0,'middle');assert.equal(await zoom.inputValue(),'fit','middle click without movement keeps Fit');
+    await stage.dispatchEvent('wheel',{deltaX:20,deltaY:0});assert.equal(await zoom.inputValue(),'fit','horizontal wheel does not disable Fit');
     for(const scale of [.25,.5,.75,1,2]) {
       await zoom.selectOption(String(scale));await frames();const w=await box(wrap);close(w.width,640*scale,'preset width');close(w.height,360*scale,'preset height');
     }
@@ -59,6 +62,7 @@ async function verify() {
       const after=await box(wrap);assert.ok(after[axis]<before[axis]-5,`${axis} slider reveals the positive frame direction`);
       close(Number(await slider.inputValue()),(await box(stage))[axis]+(await box(stage))[axis==='x'?'width':'height']/2-(after[axis]+after[axis==='x'?'width':'height']/2),'slider value follows viewport');
     }
+    const beforeKey=await box(wrap),timeBefore=await page.locator('.preview-meta .timecode').first().textContent();await vertical.focus();await page.keyboard.press('ArrowDown');await frames();assert.ok((await box(wrap)).y<beforeKey.y,'vertical slider supports keyboard');assert.equal(await page.locator('.preview-meta .timecode').first().textContent(),timeBefore,'slider arrows do not seek');
     await fit();await zoom.selectOption('2');await frames();let s=await box(stage),before=await box(wrap);
     await pointerDrag(s.x+s.width/2,s.y+s.height/2,35,20,'middle');let after=await box(wrap);close(after.x-before.x,35,'middle pan x');close(after.y-before.y,20,'middle pan y');
     close(Number(await horizontal.inputValue()),-35,'horizontal slider follows drag');close(Number(await vertical.inputValue()),-20,'vertical slider follows drag');
@@ -87,7 +91,9 @@ async function verify() {
 
     await zoom.selectOption('1');await frames();s=await box(stage);
     await pointerDrag(s.x+s.width/2,s.y+s.height/2,18,8,'middle');before=await box(wrap);
-    await page.keyboard.down('Alt');await pointerDrag(s.x+s.width/2,s.y+s.height/2,40,20);await page.keyboard.up('Alt');
+    await page.keyboard.down('Alt');await page.mouse.move(s.x+s.width/2,s.y+s.height/2);await page.mouse.down();
+    await page.mouse.move(s.x+s.width/2+20,s.y+s.height/2+10,{steps:3});assert.ok(await zoom.isDisabled());await page.mouse.wheel(0,-80);await frames();close((await box(wrap)).width,before.width,'wheel is blocked during an edit');
+    await page.mouse.move(s.x+s.width/2+40,s.y+s.height/2+20,{steps:3});await page.mouse.up();await page.keyboard.up('Alt');
     let saved=await save();close(saved.clips[0].x,40/640*100,'zoomed video x',.1);close(saved.clips[0].y,20/360*100,'zoomed video y',.1);
     await page.keyboard.press('Control+z');saved=await save();close(saved.clips[0].x,0,'undo video');assert.equal(await redo.isDisabled(),false);
     await fit();await zoom.selectOption('0.75');assert.equal(await redo.isDisabled(),false);await page.keyboard.press('Control+Shift+z');saved=await save();close(saved.clips[0].x,40/640*100,'redo survives view navigation',.1);
