@@ -44,7 +44,7 @@ async function verify() {
     await drag(left,64,0);let saved=await save();assert.ok(Math.abs(saved.clips[0].crop.left-.1)<.015,`left crop ${saved.clips[0].crop.left}`);
     await page.keyboard.press('Control+z');let undone=await save();assert.ok(!undone.clips[0].crop||undone.clips[0].crop.left===0);assert.equal(await page.getByRole('button',{name:'モニターでクロップ',exact:true}).isVisible(),true);await page.keyboard.press('Control+Shift+z');saved=await save();assert.ok(saved.clips[0].crop.left>.08);
     checks.push('monitor crop edge is one Undo/Redo edit and persists');
-    const cropButton=page.getByRole('button',{name:'モニターでクロップ',exact:true});
+    const cropButton=page.getByRole('button',{name:'モニターでクロップ',exact:true,includeHidden:true});
     await page.keyboard.press('Control+z');const beforeEscape=await save();
     await drag(left,50,0,true);await page.locator('.media-drag-target[data-media-clip-id="clip"]').waitFor();assert.equal(await cropButton.getAttribute('aria-pressed'),'false');assert.deepEqual((await save()).clips,beforeEscape.clips);assert.equal(await page.getByRole('button',{name:/^やり直す \(/}).isEnabled(),true);
     await page.keyboard.press('Control+Shift+z');saved=await save();assert.ok(saved.clips[0].crop.left>.08);
