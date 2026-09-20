@@ -113,6 +113,7 @@ async function verify() {
     const beforeCancel = JSON.stringify(saved.clips[0].videoMask.points[0]);
     await drag(outHandle, 30, -24, 'escape');
     saved = await save(); assert.equal(JSON.stringify(saved.clips[0].videoMask.points[0]), beforeCancel);
+    assert.equal(await page.locator('.bezier-mask-anchor').count(),0);assert.equal(await page.getByRole('button',{name:'モニターでマスクを編集',exact:true}).getAttribute('aria-pressed'),'false');await page.getByRole('button',{name:'モニターでマスクを編集',exact:true}).click();
     await drag(outHandle, 24, 18, 'resize');
     saved = await save(); assert.equal(JSON.stringify(saved.clips[0].videoMask.points[0]), beforeCancel);
     await drag(outHandle, 20, -18);

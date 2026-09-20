@@ -44,6 +44,14 @@ async function verify() {
     await drag(left,64,0);let saved=await save();assert.ok(Math.abs(saved.clips[0].crop.left-.1)<.015,`left crop ${saved.clips[0].crop.left}`);
     await page.keyboard.press('Control+z');let undone=await save();assert.ok(!undone.clips[0].crop||undone.clips[0].crop.left===0);assert.equal(await page.getByRole('button',{name:'モニターでクロップ',exact:true}).isVisible(),true);await page.keyboard.press('Control+Shift+z');saved=await save();assert.ok(saved.clips[0].crop.left>.08);
     checks.push('monitor crop edge is one Undo/Redo edit and persists');
+    const cropButton=page.getByRole('button',{name:'モニターでクロップ',exact:true});
+    await page.keyboard.press('Control+z');const beforeEscape=await save();
+    await drag(left,50,0,true);await page.locator('.media-drag-target[data-media-clip-id="clip"]').waitFor();assert.equal(await cropButton.getAttribute('aria-pressed'),'false');assert.deepEqual((await save()).clips,beforeEscape.clips);assert.equal(await page.getByRole('button',{name:/^やり直す \(/}).isEnabled(),true);
+    await page.keyboard.press('Control+Shift+z');saved=await save();assert.ok(saved.clips[0].crop.left>.08);
+    await cropButton.click();await cropButton.press('Escape');assert.equal(await cropButton.getAttribute('aria-pressed'),'false');assert.deepEqual((await save()).clips,saved.clips);await cropButton.click();
+    const cancelInput=page.getByLabel('下',{exact:true});await cancelInput.fill('12');await cancelInput.press('Escape');assert.equal(await cropButton.getAttribute('aria-pressed'),'true');assert.equal(await cancelInput.inputValue(),'0');
+    await page.getByRole('button',{name:'シーケンス',exact:true}).click();await page.keyboard.press('Escape');assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await cropButton.getAttribute('aria-pressed'),'true');
+    checks.push('Escape exits crop editing, cancels only the current drag, preserves Redo and prioritizes numeric input and dialogs');
     const bottomInput=page.getByLabel('下',{exact:true});await bottomInput.fill('0.1');await bottomInput.press('Enter');
     await page.getByRole('button',{name:'上のスライダー',exact:true}).click();
     const topSlider=page.getByRole('slider',{name:'上スライダー',exact:true}),sliderBox=await topSlider.boundingBox();assert.ok(sliderBox);await page.mouse.move(sliderBox.x+2,sliderBox.y+sliderBox.height/2);await page.mouse.down();await page.mouse.move(sliderBox.x+sliderBox.width-2,sliderBox.y+sliderBox.height/2,{steps:12});await page.mouse.up();await topSlider.dispatchEvent('pointerup',{button:0});await topSlider.evaluate(element=>element.blur());
@@ -57,6 +65,7 @@ async function verify() {
     const body=page.getByRole('button',{name:'マスクを移動',exact:true});await body.waitFor();assert.equal(await page.locator('.media-effect-handle:not(.edge)').count(),4);
     await drag(body,32,-18);saved=await save();assert.ok(Math.hypot(saved.clips[0].videoMask.x-.5,saved.clips[0].videoMask.y-.5)>.04);assert.ok(saved.clips[0].videoMask.x>=0&&saved.clips[0].videoMask.x<=1&&saved.clips[0].videoMask.y>=0&&saved.clips[0].videoMask.y<=1);
     const beforeCancel=JSON.stringify(saved.clips[0].videoMask);await drag(body,40,20,true);assert.equal(JSON.stringify((await save()).clips[0].videoMask),beforeCancel);
+    assert.equal(await body.count(),0);assert.equal(await page.getByRole('button',{name:'モニターでマスクを編集',exact:true}).getAttribute('aria-pressed'),'false');await page.getByRole('button',{name:'モニターでマスクを編集',exact:true}).click();
     const corner=page.getByRole('button',{name:'マスクの右下を変更',exact:true});await drag(corner,32,18);saved=await save();assert.ok(saved.clips[0].videoMask.width>.7&&saved.clips[0].videoMask.height>.7);
     const resized={...saved.clips[0].videoMask};await page.locator('#video-mask-type').selectOption('rectangle');await page.locator('#video-mask-type').selectOption('ellipse');saved=await save();assert.ok(Math.abs(saved.clips[0].videoMask.width-resized.width)<1e-8&&Math.abs(saved.clips[0].videoMask.height-resized.height)<1e-8);
     await page.locator('#video-mask-type').selectOption('none');await page.locator('.media-drag-target[data-media-clip-id="clip"]').waitFor();await page.keyboard.press('Control+z');await page.locator('#video-mask-type').waitFor();assert.equal(await page.locator('#video-mask-type').inputValue(),'ellipse');await page.getByRole('button',{name:'モニターでマスクを編集',exact:true}).click();

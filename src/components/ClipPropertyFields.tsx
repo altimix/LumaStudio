@@ -5,17 +5,22 @@ import { useEditor } from '../store';
 import { normalizeClip } from '../model';
 import type { Clip } from '../types';
 import { linkedIds, clipsLocked } from '../../shared/clip-links.mjs';
-import { patchVisualClip, visualClipAt, visualFields } from '../../shared/visual-keyframes.mjs';
+import { patchVisualClip, visualClipAt, visualFields, hasVisualKeys } from '../../shared/visual-keyframes.mjs';
 import { localVisualTime } from '../visual-editing';
+import { resolveVisualChannel, visualChannels } from '../visual-channels';
 import ScrubbableNumberInput from './ScrubbableNumberInput';
 import PropertyNumberField from './PropertyNumberField';
 
 type EditorState = ReturnType<typeof useEditor.getState>;
+function useLineActive(clip: Clip, path: string) {
+  return useEditor(state => hasVisualKeys(clip) && resolveVisualChannel(visualChannels(clip, state.project), state.visualChannel).path === path);
+}
 function restoreGesture(before: EditorState) {
   useEditor.setState({ project:before.project, history:before.history, future:before.future, historyPlayheads:before.historyPlayheads, futurePlayheads:before.futurePlayheads, historyLabels:before.historyLabels, futureLabels:before.futureLabels, currentAction:before.currentAction, dirty:before.dirty, activeVolumePoint:before.activeVolumePoint, zoom:before.zoom });
 }
 
 export function NumericField({ clip, property, label, min, max, step = 1, factor = 1, offset = 0, suffix = '', slider = true, fallback=0 }: { clip: Clip; property: keyof Clip; label: string; min: number; max: number; step?: number; factor?: number; offset?: number; suffix?: string; slider?: boolean; fallback?:number }) {
+  const lineActive = useLineActive(clip, property);
   const playhead=useEditor(s=>s.playhead);
   const active=useEditor(s=>property==='volume'?s.activeVolumePoint:null);
   const local=active?.clipId===clip.id?active.time:Math.max(0,Math.min(clip.duration,playhead-clip.start));
@@ -59,11 +64,12 @@ export function NumericField({ clip, property, label, min, max, step = 1, factor
       now.transient({...baseline,clips},baseline);
     } else s.updateClip(clip.id, patch);
   };
-  return <PropertyNumberField inputId={`prop-${property}`} label={label} suffix={suffix} onFocus={()=>{useEditor.getState().stop();if(visualFields(clip).some(field=>field===property))useEditor.setState({visualChannel:property});}}
+  return <PropertyNumberField inputId={`prop-${property}`} label={label} suffix={suffix} lineActive={lineActive} onFocus={()=>{useEditor.getState().stop();if(visualFields(clip).some(field=>field===property))useEditor.setState({visualChannel:property});}}
     input={<ScrubbableNumberInput id={`prop-${property}`} value={value} min={min} max={max} step={step} onCommit={apply} onScrubStart={beginDrag} onScrubChange={apply} onScrubEnd={()=>{finishDrag();const current=useEditor.getState().project.clips.find(c=>c.id===clip.id);return current?displayValue(current):value;}} onScrubCancel={()=>finishDrag(true)}/>}
     slider={slider ? <input className="property-slider" type="range" aria-label={`${label}スライダー`} min={min} max={max} step={step} value={value} style={{ '--fill': `${(value - min) / (max - min) * 100}%` } as React.CSSProperties} onPointerDown={e=>{if(e.button===0)beginDrag();}} onPointerUp={()=>finishDrag()} onPointerCancel={()=>finishDrag(true)} onLostPointerCapture={()=>finishDrag(true)} onChange={e=>apply(Number(e.target.value))}/> : null}/>;
 }
 export function EffectField({ clip, label, value, min, max, step = 1, suffix = '', slider=true, channel, patch }: { clip: Clip; label: string; value: number; min: number; max: number; step?: number; suffix?: string; slider?:boolean; channel:string; patch: (clip: Clip, value: number) => Partial<Clip> }) {
+  const lineActive = useLineActive(clip, channel);
   const dragging=useRef(false),changed=useRef(false);
   const dragStart=useRef<{state:EditorState;clip:Clip;time:number;value:number;owner:object}|null>(null),inputId=`effect-${clip.id}-${label.replace(/\s/g,'-')}`;
   const finish=(cancel=false)=>{
@@ -86,7 +92,7 @@ export function EffectField({ clip, label, value, min, max, step = 1, suffix = '
     if(dragging.current){if(!changed.current){state.checkpoint(`${label}を変更`);changed.current=true;}const now=useEditor.getState(),project=start?.state.project||now.project;now.transient({...project,clips:project.clips.map(c=>c.id===current.id?normalizeClip(candidate,project):c)},project);}
     else state.updateClip(current.id,values);
   };
-  return <PropertyNumberField inputId={inputId} label={label} suffix={suffix} onFocus={()=>{useEditor.getState().stop();useEditor.setState({visualChannel:channel});}}
+  return <PropertyNumberField inputId={inputId} label={label} suffix={suffix} lineActive={lineActive} onFocus={()=>{useEditor.getState().stop();useEditor.setState({visualChannel:channel});}}
     input={<ScrubbableNumberInput id={inputId} value={value} min={min} max={max} step={step} onCommit={apply} onScrubStart={begin} onScrubChange={apply} onScrubEnd={()=>{finish();return value;}} onScrubCancel={()=>finish(true)}/>}
     slider={slider?<input className="property-slider" type="range" aria-label={`${label}スライダー`} min={min} max={max} step={step} value={value} style={{'--fill':`${max>min?(value-min)/(max-min)*100:100}%`} as React.CSSProperties} onPointerDown={e=>{if(e.button===0)begin();}} onPointerUp={()=>finish()} onPointerCancel={()=>finish(true)} onLostPointerCapture={()=>finish(true)} onChange={e=>apply(Number(e.target.value))}/>:null}/>;
 }

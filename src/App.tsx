@@ -260,8 +260,13 @@ export default function App() {
       if (!ready || modal || pending || removeAssetId || sourceId || fileMenu || windowMenu || trackMenuOpen) {
         if (e.key === 'Escape' && !rendering && modal !== 'youtube') { setModal(null); setPending(null); setRemoveAssetId(null); setFileMenu(false); setWindowMenu(false); useEditor.setState({ sourceId: null, trackMenuOpen: false }); } return;
       }
+      const s = useEditor.getState();
+      if (e.key === 'Escape' && s.mediaEditMode !== 'transform') {
+        if (s.gestureActive) return;
+        e.preventDefault(); s.setMediaEditMode('transform'); return;
+      }
       const command = shortcutCommand(e); if (!command) { if (e.repeat && shortcutCommand(e, false)) e.preventDefault(); return; }
-      const s = useEditor.getState(); if (s.gestureActive) return;
+      if (s.gestureActive) return;
       const step = (frames: number) => { s.stop(); s.seek(Math.min(endTime(s.project), s.playhead + frames / s.project.fps)); };
       const actions: Record<EditorCommand, () => void> = {
         play: s.togglePlay, splitAll: () => s.split(s.playhead, s.project.clips.map(c => c.id)), trimPrevious: () => s.rippleTrim('previous'), trimNext: () => s.rippleTrim('next'),

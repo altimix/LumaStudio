@@ -20,12 +20,19 @@ const corners: (Corner & { name: string; cursor: string })[] = [
 export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { sizes: Record<string, MediaSize>; actions: HTMLElement | null; onSampleChroma:(clipId:string,point:{x:number;y:number})=>string|Promise<string> }) {
   const project = useEditor(s => s.project), time = useEditor(s => s.playhead), playing = useEditor(s => s.playing), selected = useEditor(s => s.selected), editMode = useEditor(s => s.mediaEditMode);
   const root = useRef<HTMLDivElement>(null), cleanup = useRef<(() => void) | null>(null);
+  const sampleRevision = useRef(0);
   const dragSize = useRef<(MediaSize & { clipId: string }) | null>(null);
   const [guides, setGuides] = useState(NO_SNAP);
   const order = useMemo(() => visualOrder(project), [project]);
   const assets = useMemo(() => new Map(project.assets.map(asset => [asset.id, asset])), [project.assets]);
   const tracks = useMemo(() => new Map(project.tracks.map(track => [track.id, track])), [project.tracks]);
   useEffect(() => () => cleanup.current?.(), []);
+  useEffect(() => {
+    const unsubscribe = useEditor.subscribe((next, previous) => {
+      if (next.mediaEditMode !== previous.mediaEditMode || next.project !== previous.project || next.playhead !== previous.playhead || next.playing !== previous.playing || next.selected !== previous.selected) sampleRevision.current++;
+    });
+    return () => { sampleRevision.current++; unsubscribe(); };
+  }, []);
   useEffect(() => {
     const before = dragSize.current;
     if (!before) return;
@@ -163,7 +170,7 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
       }
       writing=true;try{const next=patchVisualClip(raw!,patch,at);if(!changed){before=current;current.checkpoint(action);changed=true;}const now=useEditor.getState();now.transient({...now.project,clips:now.project.clips.map(c=>c.id===clip.id?next:c)});expected=useEditor.getState().project;}catch(error){current.notify((error as Error).message);}finally{writing=false;}
     };
-    const up=(e:PointerEvent)=>{if(e.pointerId===pointer)finish();},cancelPointer=(e:PointerEvent)=>{if(e.pointerId===pointer)cancel();},key=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();cancel();}};
+    const up=(e:PointerEvent)=>{if(e.pointerId===pointer)finish();},cancelPointer=(e:PointerEvent)=>{if(e.pointerId===pointer)cancel();},key=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();cancel();useEditor.getState().setMediaEditMode('transform');}};
     cleanup.current=cancel;window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',cancelPointer);window.addEventListener('keydown',key);window.addEventListener('blur',cancel);target.addEventListener('lostpointercapture',cancelPointer);target.setPointerCapture(pointer);
     unsubscribe=useEditor.subscribe((current)=>{if(writing||closed)return;if(current.gestureOwner!==owner){finish();return;}if(current.project!==expected||current.playing||current.mediaEditMode!==editMode||!current.selected.includes(clip.id))cancel();});
   };
@@ -176,11 +183,12 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
     const rect=viewport.getBoundingClientRect();if(!rect.width||!rect.height)return;
     const point=mediaNormalizedPoint(clip,source,state.project,{x:(event.clientX-rect.left)/rect.width*state.project.width,y:(event.clientY-rect.top)/rect.height*state.project.height});
     if(point.x<0||point.x>1||point.y<0||point.y>1){state.notify('素材の内側をクリックしてください。');return;}
+    const revision = ++sampleRevision.current;
     try{
       const color=await onSampleChroma(clip.id,point),current=useEditor.getState(),latest=current.project.clips.find(item=>item.id===clip.id);
-      if(!latest||current.project!==state.project||current.playhead!==state.playhead||current.playing||current.mediaEditMode!=='chroma'||current.project.tracks.find(track=>track.id===latest.trackId)?.locked)return;
+      if(revision!==sampleRevision.current||!latest||current.project!==state.project||current.playhead!==state.playhead||current.playing||current.mediaEditMode!=='chroma'||current.project.tracks.find(track=>track.id===latest.trackId)?.locked)return;
       current.updateClip(latest.id,{chromaKey:{...clip.chromaKey,color}});current.notify(`背景色 ${color.toUpperCase()} を取得しました。`);
-    }catch(error){useEditor.getState().notify((error as Error).message);}
+    }catch(error){if(revision===sampleRevision.current)useEditor.getState().notify((error as Error).message);}
   };
   const current = active.find(item => selected.includes(item.clip.id));
   const selectedRaw=selected.length===1?project.clips.find(clip=>clip.id===selected[0]):undefined,selectedClip=selectedRaw&&visualClipAt(selectedRaw,time-selectedRaw.start),selectedAsset=assets.get(selectedClip?.assetId||''),selectedTrack=tracks.get(selectedClip?.trackId||'');
@@ -217,5 +225,6 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
         style={{ left: `clamp(6px,${point.x / project.width * 100}%,calc(100% - 6px))`, top: `clamp(6px,${point.y / project.height * 100}%,calc(100% - 6px))`, cursor: corner.cursor, zIndex: 900000 + z }} onPointerDown={e => start(e, clip, size, corner)}/>; })}
     </Fragment>;
   })}{!playing&&editMode!=='transform'?effectOverlay():null}<MonitorSnapGuides guides={guides}/></div>
+    {!playing && editMode!=='transform' && actions ? createPortal(<button className="media-transform-reset media-edit-exit" aria-label="モニター編集を終了 (Esc)" title="モニター編集を終了して移動・変形に戻る" onClick={() => { const state=useEditor.getState();state.gestureCancel?.();state.setMediaEditMode('transform'); }}>終了 <kbd>Esc</kbd></button>, actions) : null}
     {!playing && editMode==='transform' && current && !current.locked && actions ? createPortal(<button className="media-transform-reset" disabled={current.clip.x === 0 && current.clip.y === 0 && current.clip.scale === 1} onClick={() => { cleanup.current?.(); useEditor.getState().updateClip(current.clip.id, { x: 0, y: 0, scale: 1 }); }}>位置・大きさを戻す</button>, actions) : null}</>;
 }

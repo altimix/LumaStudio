@@ -4,3 +4,7 @@
 .number-slider-toggle svg{transform:rotate(-90deg)}
 .number-slider-toggle[aria-expanded=true] svg{transform:rotate(0)}
 .number-slider-panel{padding:0 0 3px}
+.property-field-name{display:flex;flex-direction:column;gap:3px;min-width:0}
+.property-line-status{font-size:10px;line-height:1.3;color:#d6edb5;white-space:nowrap}
+.property-field.line-active .number-wrap{border-color:#c5dda2;box-shadow:0 0 0 1px #c5dda255;background:#283224}
+.property-field.line-active .property-field-name label{color:#d6edb5}

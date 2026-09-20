@@ -50,7 +50,8 @@ function CropMaskEffects({clip}:{clip:Clip}){
   });
   return <>
     <Section title="クロップ" icon={Scan} open={!!clip.crop || mode==='crop'} onReset={()=>{const state=useEditor.getState();state.updateClip(clip.id,{crop:undefined});if(state.mediaEditMode==='crop')state.setMediaEditMode('transform');}}>
-      <div className="mask-edit-buttons"><button className={'secondary-button '+(mode==='crop'?'active':'')} onClick={()=>useEditor.getState().setMediaEditMode(mode==='crop'?'transform':'crop')}>モニターでクロップ</button></div>
+      <div className="mask-edit-buttons"><button aria-pressed={mode==='crop'} className={'secondary-button '+(mode==='crop'?'active':'')} onClick={()=>useEditor.getState().setMediaEditMode(mode==='crop'?'transform':'crop')}>モニターでクロップ</button></div>
+      {mode==='crop'?<p className="field-help">クロップ編集中 · Escで終了。ドラッグ中は、その操作を取り消します。</p>:null}
       <EffectField clip={clip} label="上" value={crop.top*100} min={0} max={(0.99-crop.bottom)*100} step={.1} suffix="%" channel="crop.top" patch={cropPatch('top')}/>
       <EffectField clip={clip} label="右" value={crop.right*100} min={0} max={(0.99-crop.left)*100} step={.1} suffix="%" channel="crop.right" patch={cropPatch('right')}/>
       <EffectField clip={clip} label="下" value={crop.bottom*100} min={0} max={(0.99-crop.top)*100} step={.1} suffix="%" channel="crop.bottom" patch={cropPatch('bottom')}/>
@@ -59,7 +60,8 @@ function CropMaskEffects({clip}:{clip:Clip}){
     <Section title="マスク" icon={Scan} open={!!mask} onReset={()=>{const state=useEditor.getState();state.updateClip(clip.id,{videoMask:undefined});if(state.mediaEditMode==='mask')state.setMediaEditMode('transform');}}>
       <div className="property-label"><label htmlFor="video-mask-type">形</label><select id="video-mask-type" value={mask?.type||'none'} onChange={e=>changeMaskType(e.target.value)}><option value="none">なし</option><option value="rectangle">長方形</option><option value="ellipse">楕円</option><option value="bezier">ベジェペン</option></select></div>
       {mask?<>
-        <div className="mask-edit-buttons"><button className={'secondary-button '+(mode==='mask'?'active':'')} onClick={()=>useEditor.getState().setMediaEditMode(mode==='mask'?'transform':'mask')}>モニターでマスクを編集</button></div>
+        <div className="mask-edit-buttons"><button aria-pressed={mode==='mask'} className={'secondary-button '+(mode==='mask'?'active':'')} onClick={()=>useEditor.getState().setMediaEditMode(mode==='mask'?'transform':'mask')}>モニターでマスクを編集</button></div>
+        {mode==='mask'?<p className="field-help">マスク編集中 · Escで終了。ドラッグ中は、その操作を取り消します。</p>:null}
         {mask.type==='bezier'?<div className="bezier-mask-settings">
           <div className="bezier-mask-status"><span>{mask.closed?'閉じたパス':'作成中の開いたパス'}</span><span>{mask.points.length}/{MAX_BEZIER_MASK_POINTS} 点</span></div>
           <p className="field-help">{mask.closed?'点とハンドルをドラッグして形を調整できます。':'モニターをクリックして点を追加してください。閉じるまでは映像を切り抜きません。'}</p>
@@ -91,7 +93,7 @@ function ChromaKeyEffects({clip}:{clip:Clip}){
     {!key?<><p className="field-help">背景色を透明にして、下の映像や画像と合成します。</p><button type="button" className="secondary-button chroma-enable" onClick={()=>useEditor.getState().updateClip(clip.id,{chromaKey:{...DEFAULT_CHROMA_KEY}})}>クロマキーを有効にする</button></>:<>
       <ColorField id={`chroma-color-${clip.id}`} label="背景色" value={key.color} onChange={color=>update({color})}/>
       <button type="button" aria-pressed={mode==='chroma'} className={'secondary-button chroma-eyedropper '+(mode==='chroma'?'active':'')} onClick={()=>{const state=useEditor.getState();state.stop();state.setMediaEditMode(state.mediaEditMode==='chroma'?'transform':'chroma');}}><Pipette size={13}/>{mode==='chroma'?'スポイトを終了':'モニターから背景色を採る'}</button>
-      <p className="field-help">{mode==='chroma'?'プログラムモニターの背景をクリックしてください。':'キー処理前の素材を5×5画素で平均して採色します。'}</p>
+      <p className="field-help">{mode==='chroma'?'プログラムモニターの背景をクリックしてください。Escでスポイトを終了します。':'キー処理前の素材を5×5画素で平均して採色します。'}</p>
       <EffectField clip={clip} label="色の許容範囲" value={key.tolerance*100} min={0} max={50} step={.1} suffix="%" channel="chromaKey.tolerance" patch={change('tolerance')}/>
       <EffectField clip={clip} label="境界のなめらかさ" value={key.softness*100} min={0} max={50} step={.1} suffix="%" channel="chromaKey.softness" patch={change('softness')}/>
       <EffectField clip={clip} label="緑の色かぶり除去" value={key.greenSpill*100} min={0} max={100} step={1} suffix="%" channel="chromaKey.greenSpill" patch={change('greenSpill')}/>

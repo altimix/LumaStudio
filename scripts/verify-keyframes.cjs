@@ -105,6 +105,15 @@ async function verify(){
     const p=base();p.clips[0].opacityKeyframes=[{time:0,value:0},{time:1,value:1}];await open(p);
     await timelineZoom(40);
     assert.equal(await page.locator('.clip-visual-key').count(),2);assert.equal(await page.locator('.clip-keyframe-curve').count(),1);
+    const channelSelect=page.getByRole('combobox',{name:'キーフレームの表示項目',exact:true});
+    const highlighted=()=>page.locator('.property-field.line-active input[type="number"]').evaluateAll(elements=>elements.map(element=>element.id));
+    await channelSelect.selectOption('opacity');assert.deepEqual(await highlighted(),['prop-opacity']);
+    await channelSelect.selectOption('scale');assert.deepEqual(await highlighted(),['prop-scale']);
+    await page.getByRole('spinbutton',{name:'文字サイズ',exact:true}).focus();assert.equal(await channelSelect.inputValue(),'fontSize');assert.deepEqual(await highlighted(),['prop-fontSize']);assert.match(await page.locator('.clip-keyframe-label').innerText(),/文字サイズ/);assert.match(await page.locator('.keyframe-readout strong').innerText(),/px$/);
+    await page.getByRole('spinbutton',{name:'開始時間',exact:true}).focus();assert.equal(await channelSelect.inputValue(),'fontSize');assert.deepEqual(await highlighted(),['prop-fontSize']);
+    await channelSelect.selectOption('color');assert.deepEqual(await highlighted(),[]);assert.match(await page.locator('.visual-channel-help').innerText(),/一定の高さ/);
+    await channelSelect.selectOption('fontSize');await page.locator('.property-field.line-active').scrollIntoViewIfNeeded();await page.locator('.inspector-panel').screenshot({path:path.join(results,'keyframe-active-property.png')});
+    checks.push('表示項目・数値欄のフォーカス・ラインの名前と単位が連動し、非数値の高さと時間配置の除外を説明');
     const colorBox=await page.locator('#text-color').boundingBox(),styleBox=await page.locator('#text-style').boundingBox();assert.ok(colorBox.y<styleBox.y);
     await page.getByText('影・縁取りを調整',{exact:true}).click();await page.getByLabel('文字に縁取りを付ける',{exact:true}).check();
     const dimensions=await page.locator('#text-color,#strokeColor').evaluateAll(elements=>elements.map(element=>({w:element.getBoundingClientRect().width,h:element.getBoundingClientRect().height})));assert.deepEqual(dimensions[0],dimensions[1]);await undo();checks.push('文字色はスタイルの上・縁取りと同じパレット');
@@ -123,6 +132,9 @@ async function verify(){
     await page.screenshot({path:path.join(results,'visual-keyframes-text.png')});const textError=await exportAndCompare('文字の共通キーフレーム',[0,.5,1]);checks.push('文字サイズと色の補間・文章共通・保存再読込・実MP4一致');
     const source=path.join(results,'映像キーフレーム素材.mp4');await run(ffmpeg,['-v','error','-y','-f','lavfi','-i','color=c=0x095bd8:s=640x360:r=10:d=2','-c:v','libx264','-pix_fmt','yuv420p',source]);
     const asset=await inspectMedia(source,path.join(profile,'cache')),video=base();video.assets=[asset];video.clips=[{...clip,id:'video',kind:'video',name:'動く映像',assetId:asset.id,x:-20,scale:.5}];video.clips[0]=setVisualKey(setVisualKey(video.clips[0],0),1,{x:20,rotation:25,opacity:.5,scale:.8,exposure:.4});await open(video);await seek(5);
+    assert.equal(await channelSelect.inputValue(),'opacity');assert.deepEqual(await highlighted(),['prop-opacity']);
+    await channelSelect.selectOption('crop.left');await page.locator('.inspector-section').filter({has:page.locator('summary').filter({hasText:'クロップ'})}).locator('summary').click();assert.equal(await page.locator('.property-field.line-active label').innerText(),'左');assert.match(await page.locator('.visual-channel-status').innerText(),/クロップ \/ 左/);
+    checks.push('別素材で存在しない項目は不透明度へ揃え、入れ子のクロップ設定も対応欄を強調');
     assert.equal(await page.getByRole('spinbutton',{name:'位置 X',exact:true}).inputValue(),'320');await input('位置 X',300);saved=await save();assert.equal(saved.clips[0].visualKeyframes.length,3);assert.equal(saved.clips[0].visualKeyframes[1].values.x,-3.125);await undo();
     const target=page.locator('.media-drag-target');await target.waitFor();const box=await target.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+35,box.y+box.height/2+20,{steps:5});await page.mouse.up();saved=await save();assert.equal(saved.clips[0].visualKeyframes.length,3);await undo();
     const videoError=await exportAndCompare('映像の共通キーフレーム',[0,.5,1]);checks.push('映像の位置・サイズ・回転・不透明度・色・モニター操作・実MP4一致');

@@ -5,6 +5,9 @@
 .visual-keyframe-actions button{justify-content:center;min-height:28px;padding:5px 8px}
 .visual-keyframe-actions button:nth-child(2){flex:1}
 .visual-keyframe-list summary{font-size:11px;color:#b9c6aa;cursor:pointer;padding:5px 0}
+.visual-channel-status{display:flex;align-items:center;gap:5px;color:#d6edb5;font-size:11px;line-height:1.5;margin-top:9px}
+.visual-channel-status svg{flex-shrink:0}
+.visual-channel-help{margin-top:5px}
 .visual-keyframe-list .keyframe-row button[aria-pressed=true]{background:#39482f;color:#e0efcd}
 /* Focusing a clipped endpoint must not scroll the clip's contents. */
 .timeline-clip:has(.clip-visual-keys){overflow:clip;overflow-clip-margin:border-box}

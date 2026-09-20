@@ -3,6 +3,9 @@ import { visualKeys, visualSnapshot } from '../shared/visual-keyframes.mjs';
 import { MIN_BEZIER_COORD, MAX_BEZIER_COORD } from '../shared/video-mask.mjs';
 
 export interface VisualChannel { path: string; label: string; min?: number; max?: number; step?: number; factor?: number; offset?: number; suffix?: string }
+export function resolveVisualChannel(channels: VisualChannel[], selected: string): VisualChannel {
+  return channels.find(channel => channel.path === selected) ?? channels.find(channel => channel.path === 'opacity')!;
+}
 export function channelValue(clip: Clip, path: string): unknown {
   return path.split('.').reduce<unknown>((value, field) => value && typeof value === 'object' ? (value as Record<string, unknown>)[field] : undefined, visualSnapshot(clip));
 }
