@@ -43,6 +43,7 @@ async function verify() {
   const fit = async () => { await zoom.selectOption('fit');await frames();const s=await box(stage),w=await box(wrap);close(w.x+w.width/2,s.x+s.width/2,'fit center x');close(w.y+w.height/2,s.y+s.height/2,'fit center y');assert.ok(w.width<=s.width-47&&w.height<=s.height-47); };
   try {
     await page.locator('.app-titlebar').waitFor({timeout:60000});await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});
+    await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setContentSize(1120,800));await page.waitForFunction(()=>innerWidth===1120&&innerHeight===800);await frames();
     await open(project);await page.locator('.media-drag-target').waitFor();const baseline=await save();
     await fit();
     let initialStage=await box(stage);
@@ -112,7 +113,7 @@ async function verify() {
     await open(project);await page.locator('.media-drag-target').waitFor();await page.locator('.media-drag-target').click();
     const section=page.locator('.inspector-section').filter({has:page.locator('#video-mask-type')});if(!await section.evaluate(el=>el.open))await section.locator('summary').click();
     await page.locator('#video-mask-type').selectOption('bezier');await page.getByRole('button',{name:'モニターでマスクを編集',exact:true}).click();
-    await zoom.selectOption('0.5');await frames();let w=await box(wrap);
+    await zoom.selectOption('0.25');await frames();let w=await box(wrap);
     for(const [x,y] of [[-.1,.25],[.75,-.1],[1.1,.75],[.25,1.1]]) {await page.mouse.click(w.x+w.width*x,w.y+w.height*y);}
     assert.equal(await page.locator('.bezier-mask-anchor').count(),4);saved=await save();
     for(const [i,axis,value] of [[0,'x',-.1],[1,'y',-.1],[2,'x',1.1],[3,'y',1.1]])close(saved.clips[0].videoMask.points[i][axis],value,'off-frame anchor',.01);
@@ -120,7 +121,7 @@ async function verify() {
     await page.getByLabel('点 1の種類',{exact:true}).selectOption('curve');const out=page.getByRole('button',{name:'点 1の出力ハンドルを移動',exact:true}),h=await box(out),prior=(await save()).clips[0].videoMask.points[0];
     await page.keyboard.down('Alt');await pointerDrag(h.x+h.width/2,h.y+h.height/2,-12,12);await page.keyboard.up('Alt');saved=await save();assert.equal(saved.clips[0].videoMask.points[0].inX,prior.inX);assert.ok(saved.clips[0].videoMask.points[0].outX<prior.outX);
     const kept=saved.clips[0].videoMask;await page.keyboard.press('Control+z');saved=await save();assert.deepEqual(saved.clips[0].videoMask.points[0],prior);await page.keyboard.press('Control+Shift+z');saved=await save();assert.deepEqual(saved.clips[0].videoMask,kept);
-    await open(saved);assert.deepEqual((await save()).clips[0].videoMask,kept);await page.getByRole('button',{name:'モニターでマスクを編集',exact:true}).click();await zoom.selectOption('0.5');
+    await open(saved);assert.deepEqual((await save()).clips[0].videoMask,kept);await page.getByRole('button',{name:'モニターでマスクを編集',exact:true}).click();await zoom.selectOption('0.25');
     await page.getByRole('button',{name:'Video1 ロック',exact:true}).click();assert.equal(await page.locator('.bezier-mask-anchor').count(),0);await page.getByRole('button',{name:'Video1 ロック解除',exact:true}).click();await save();
     check('off-frame anchors on all four edges close and persist; independent handles, Undo/Redo and track locks remain valid');
 
