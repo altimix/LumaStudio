@@ -37,7 +37,7 @@ async function verify() {
     const levels = async expected => {
       // Read the level, color and accessibility value in the same rendered frame.
       const handle = await page.waitForFunction(expected => {
-        const sample = [...document.querySelectorAll('.meter-channel')].map(el => ({ db: Number(el.dataset.db), zone: el.dataset.zone, accessibility: el.getAttribute('aria-valuetext'), valueNow: Number(el.getAttribute('aria-valuenow')) }));
+        const sample = [...document.querySelectorAll('.meter-channel')].map(el => ({ db: Number(el.dataset.db), zone: el.dataset.zone, accessibility: el.getAttribute('aria-valuetext'), valueNow: el.getAttribute('aria-valuenow') }));
         return sample.length === expected.length && sample.every((channel, i) => Math.abs(channel.db - expected[i]) < .08) ? sample : false;
       }, expected);
       const sample = await handle.jsonValue(); await handle.dispose(); metrics.push(sample); return sample;
@@ -67,7 +67,7 @@ async function verify() {
     await load({ ...base, name: '音量上限検証', tracks: [...base.tracks, { ...base.tracks.find(t => t.id === sound.trackId), id: copy.trackId, name: '追加音声', autoName: false }], clips: [...base.clips, copy] });
     await seek(12); await page.keyboard.press('l'); const overflow = await levels([4.8608, 4.8608]);
     await page.locator('.meter-reset.is-clipped').waitFor();
-    assert.deepEqual(overflow.map(channel => channel.valueNow), [0, 0]);
+    assert.deepEqual(overflow.map(channel => channel.valueNow), ['0', '0']);
     await page.screenshot({ path: path.join(results, 'audio-meter-clip.png') });
     await page.keyboard.press('k'); await page.waitForFunction(() => document.querySelector('.meter-reading').textContent.startsWith('−∞'));
     assert.equal(await page.locator('.meter-reset.is-clipped').count(), 1);
