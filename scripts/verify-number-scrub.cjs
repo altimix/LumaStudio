@@ -1,6 +1,7 @@
 const { _electron: electron } = require('playwright');
 const fs = require('node:fs/promises'), path = require('node:path'), assert = require('node:assert/strict');
 const { ffmpeg, run, inspectMedia } = require('../electron/media.cjs');
+const { setVisualKey } = require('../shared/visual-keyframes.mjs');
 const root = path.join(__dirname, '..');
 
 (async () => {
@@ -145,6 +146,30 @@ const root = path.join(__dirname, '..');
     await rotation.click();await rotation.press('Tab');assert.notEqual(await page.evaluate(()=>document.activeElement?.id),'prop-rotation');
     const track=project.tracks.find(item=>item.id===clip.trackId);await page.getByRole('button',{name:`${track.name} ロック`,exact:true}).click();await save();assert.equal(await rotation.isDisabled(),true);
     checks.push('Tab navigation remains available and locked tracks disable scrubbing');
+    for(const kind of ['graphic','textBox']){
+      const shape={shape:'rectangle',width:160,height:80,lineWidth:8,fill:true,fillColor:'#ffcc33'},box={width:160,height:80};
+      const base={...video,id:'round-trip',assetId:undefined,linkId:undefined,kind:'title',name:'往復ドラッグ',text:'テキスト',fontSize:32,textStyle:'minimal',textShadow:false,fadeIn:0,fadeOut:0,audioDetached:undefined,[kind]:kind==='graphic'?shape:box};
+      const keyed=setVisualKey(setVisualKey(base,0),2,{[kind]:{...(kind==='graphic'?shape:box),width:240,height:120},rotation:20});
+      const example={...fixture,id:`round-trip-${kind}`,name:`往復ドラッグ ${kind}`,assets:[],clips:[keyed],transitions:[]};
+      await fs.writeFile(file,JSON.stringify(example));await page.keyboard.press('Control+o');await page.getByRole('button',{name:example.name,exact:true}).waitFor();
+      await page.locator('.timeline-clip').first().focus();await page.keyboard.press('Enter');await page.keyboard.press('Home');
+      for(let i=0;i<3;i++)await page.keyboard.press('Shift+ArrowRight');
+      assert.equal(await page.locator('.ruler-label .timecode').textContent(),'00:00:01:00');
+      const initialProject=await save(),undo=page.getByRole('button',{name:/^元に戻す \(/,exact:true}),redo=page.getByRole('button',{name:/^やり直す \(/,exact:true});
+      const prefix=kind==='graphic'?'図形':'テキスト枠';
+      for(const label of [`${prefix}の幅`,`${prefix}の高さ`,'回転']){
+        const field=page.getByRole('spinbutton',{name:label,exact:true});
+        await scrubRoundTrip(field,40);assert.deepEqual(await save(),initialProject,`${label}: returning to the initial value removes the temporary key`);
+        assert.equal(await undo.isDisabled(),true,`${label}: a round trip adds no Undo entry`);
+        await scrub(field,40);const edited=await save();assert.equal(edited.clips[0].visualKeyframes.length,3);
+        assert.equal(edited.clips[0].visualKeyframes[1].time,1);await page.keyboard.press('Control+z');assert.deepEqual(await save(),initialProject);
+        assert.equal(await undo.isDisabled(),true,`${label}: a completed scrub adds exactly one Undo entry`);
+        await scrubRoundTrip(field,40);assert.deepEqual(await save(),initialProject);assert.equal(await redo.isDisabled(),false,`${label}: a no-op preserves the Redo stack`);
+        await page.keyboard.press('Control+Shift+z');assert.deepEqual(await save(),edited);await page.keyboard.press('Control+z');assert.deepEqual(await save(),initialProject);
+        await scrub(field,40,'escape');assert.deepEqual(await save(),initialProject);assert.equal(await undo.isDisabled(),true);assert.equal(await redo.isDisabled(),false);
+      }
+      checks.push(`${kind} width, height and rotation scrubs between keys preserve the original points and Undo/Redo on round trips and cancellation`);
+    }
     assert.deepEqual(errors,[]);await page.screenshot({path:path.join(results,'number-scrub.png')});await fs.writeFile(path.join(results,'number-scrub-verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,checks,errors},null,2));
     console.log('Number input scrubbing verified:',checks.length,'checks.');
   }catch(error){await page.screenshot({path:path.join(results,'number-scrub-failure.png')}).catch(()=>{});throw error;}finally{await app.close();}
