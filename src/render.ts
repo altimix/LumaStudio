@@ -2,6 +2,7 @@ import type { Clip, Project } from './types';
 import { fontStyle } from '../shared/text-style.mjs';
 import { paintGraphic, graphicBounds } from '../shared/graphics.mjs';
 import { textBoxLayout } from '../shared/text-box.mjs';
+import { visualClipAt } from '../shared/visual-keyframes.mjs';
 function textFont(c: Clip, size: number) { const f = fontStyle(c); return `${f.weight} ${size}px "${f.family}", sans-serif`; }
 export function titleBounds(c: Clip, width: number, height: number) {
   if(c.graphic)return graphicBounds(c.graphic);
@@ -57,7 +58,7 @@ export function titleCanvas(c: Clip, width: number, height: number, projectWidth
 export function renderTitles(p: Project): Record<string, string> {
   const images: Record<string, string> = {};
   for (const c of p.clips) if (c.kind === 'title' && !p.tracks.find(t => t.id === c.trackId)?.hidden) {
-    const canvas = titleCanvas(c, p.width, p.height, p.width);
+    const canvas = titleCanvas(visualClipAt(c,0), p.width, p.height, p.width);
     try { images[c.id] = canvas.toDataURL('image/png'); } finally { canvas.width = canvas.height = 0; }
   }
   return images;

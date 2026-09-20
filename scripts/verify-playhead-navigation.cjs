@@ -106,7 +106,7 @@ async function verify() {
     const clip = page.locator('[data-clip-id="navigation-title"]');
     await clip.focus(); await scroll(8000); await page.keyboard.press('Enter'); assert.equal((await visible('clip Enter')).time, 0);
     await scroll(8000); await page.keyboard.press('Enter'); await visible('clip Enter at the same time');
-    await page.getByRole('button', { name: '90.00 秒のキーフレームへ', exact: true }).click(); assert.equal((await visible('opacity keyframe jump')).time, 90);
+    await page.locator('.visual-keyframe-list summary').click();await page.getByRole('button', { name: '90.00 秒のキーフレームへ', exact: true }).click(); assert.equal((await visible('visual keyframe jump')).time, 90);
     const cueJump = async index => {
       await page.getByRole('button', { name: 'YouTube', exact: true }).click();
       await page.locator('.yt-cue-jump').nth(index).click();

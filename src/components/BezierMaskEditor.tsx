@@ -5,6 +5,8 @@ import type { BezierVideoMask, Clip, Project } from '../types';
 import { mediaNormalizedPoint, mediaPoint, type Position, type SourceSize } from '../media-transform';
 import { constrainBezierVector, editBezierHandle, newBezierPoint, translateBezierPoints } from '../bezier-editing';
 import { MAX_BEZIER_MASK_POINTS } from '../../shared/video-mask.mjs';
+import { patchVisualClip, visualClipAt } from '../../shared/visual-keyframes.mjs';
+import { localVisualTime } from '../visual-editing';
 
 type Props = { clip: Clip; mask: BezierVideoMask; source: SourceSize; project: Project; viewport: RefObject<HTMLDivElement | null>; actions: HTMLElement | null; z: number };
 type Operation = { part: 'anchor' | 'in' | 'out'; index: number } | { part: 'add' };
@@ -41,7 +43,7 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
   const begin = (event: ReactPointerEvent<HTMLButtonElement>, operation: Operation) => {
     if (event.button !== 0 || useEditor.getState().gestureActive) return;
     event.preventDefault(); event.stopPropagation(); event.currentTarget.focus({ preventScroll: true });
-    const initial = useEditor.getState(), originalClip = initial.project.clips.find(item => item.id === clip.id), element = viewport.current;
+    const initial = useEditor.getState(), raw = initial.project.clips.find(item => item.id === clip.id), at=raw?localVisualTime(raw,initial.playhead,initial.project.fps):0,originalClip=raw&&visualClipAt(raw,at),element = viewport.current;
     if (!originalClip || originalClip.videoMask?.type !== 'bezier' || !element || initial.playing || initial.project.tracks.find(track => track.id === clip.trackId)?.locked) return;
     const originalMask = originalClip.videoMask, rect = element.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
@@ -72,6 +74,7 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
     const owner = {}, target = event.currentTarget, pointer = event.pointerId;
     let closed = false, writing = false, changed = false, moved = false, unsubscribe = () => {};
     const before = initial;
+    const latestMask=()=>{const item=useEditor.getState().project.clips.find(item=>item.id===clip.id);return item&&visualClipAt(item,at).videoMask;};
     let expected = initial.project;
     let last = { clientX: event.clientX, clientY: event.clientY, shiftKey: event.shiftKey, altKey: event.altKey };
     const constrain = (vector: Position, shift: boolean) => shift ? constrainBezierVector(originalClip, source, initial.project, vector) : vector;
@@ -79,7 +82,7 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
     let heldOpposite = originalMask.points[index];
     const rememberAlt = (alt: boolean) => {
       if (alt && !last.altKey) {
-        const currentMask = useEditor.getState().project.clips.find(item => item.id === clip.id)?.videoMask;
+        const currentMask = latestMask();
         if (currentMask?.type === 'bezier') heldOpposite = currentMask.points[index];
       }
     };
@@ -101,7 +104,7 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
       if (closed) return;
       const state = useEditor.getState();
       if (moved && operation.part === 'anchor' && operation.index === originalMask.points.length - 1 && indices.length === 1 && originalMask.points.length >= 4 && !originalMask.closed && state.project === expected && state.gestureOwner === owner && nearStart(last)) {
-        const latest = state.project.clips.find(item => item.id === clip.id)?.videoMask;
+        const latest = latestMask();
         if (latest?.type === 'bezier' && endpointsOverlap(latest)) {
           const points = latest.points.slice(0, -1), first = points[0], end = latest.points.at(-1)!;
           const incoming = end.kind === 'curve' ? { inX: end.inX + first.x - end.x, inY: end.inY + first.y - end.y } : { inX: first.x, inY: first.y };
@@ -111,7 +114,7 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
       }
       const current = useEditor.getState(); detach();
       // Returning to the initial shape is a no-op, including a modifier-key-only detour.
-      if (changed && current.gestureOwner === owner && current.project === expected && JSON.stringify(current.project.clips.find(item => item.id === clip.id)?.videoMask) === JSON.stringify(originalMask)) restore();
+      if (changed && current.gestureOwner === owner && current.project === expected && JSON.stringify(latestMask()) === JSON.stringify(originalMask)) restore();
       useEditor.getState().endGesture(owner);
     };
     const cancel = () => {
@@ -123,14 +126,15 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
     const write = (nextMask: BezierVideoMask) => {
       if (closed) return;
       const current = useEditor.getState();
-      if (JSON.stringify(current.project.clips.find(item => item.id === clip.id)?.videoMask) === JSON.stringify(nextMask)) return;
+      if (JSON.stringify(latestMask()) === JSON.stringify(nextMask)) return;
       writing = true;
       try {
+        const next=patchVisualClip(raw!,{videoMask:nextMask},at);
         if (!changed) { current.checkpoint(operation.part === 'add' ? 'ベジェマスクの点を追加' : 'ベジェマスクの点を変更'); changed = true; }
         const now = useEditor.getState();
-        now.transient({ ...now.project, clips: now.project.clips.map(item => item.id === clip.id ? { ...item, videoMask: nextMask } : item) });
+        now.transient({ ...now.project, clips: now.project.clips.map(item => item.id === clip.id ? next : item) });
         expected = useEditor.getState().project;
-      } finally { writing = false; }
+      } catch(error){current.notify((error as Error).message);} finally { writing = false; }
     };
     const update = () => {
       const position = normalized(last);
@@ -152,7 +156,7 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
       if (!moved && Math.hypot(e.clientX - origin.clientX, e.clientY - origin.clientY) < 3) return;
       moved = true;
       update();
-      const latest = useEditor.getState().project.clips.find(item => item.id === clip.id)?.videoMask;
+      const latest = latestMask();
       setCloseCandidate(latest?.type === 'bezier' && endpointsOverlap(latest) && operation.part === 'anchor' && index === originalMask.points.length - 1 && indices.length === 1 && !originalMask.closed && originalMask.points.length >= 4 && nearStart(e));
     };
     const up = (e: PointerEvent) => { if (e.pointerId === pointer) { move(e); finish(); } };

@@ -60,6 +60,8 @@ contextBridge.exposeInMainWorld('luma', {
   finishSaveBeforeClose: (requestId, saved) => ipcRenderer.invoke('finish-save-before-close', requestId, saved),
   saveFrame: request => ipcRenderer.invoke('save-frame', request),
   exportProject: (p, settings, titles) => ipcRenderer.invoke('export', p, settings, titles),
+  onRenderTitleFrame: cb => listen('render-title-frame',cb),
+  finishTitleFrame: (id,png,error) => ipcRenderer.invoke('finish-title-frame',id,png,error),
   exportEncoders: (refresh = false) => ipcRenderer.invoke('export-encoders', refresh),
   cancelExport: () => ipcRenderer.invoke('cancel-export'),
   reveal: file => ipcRenderer.invoke('reveal', file),
