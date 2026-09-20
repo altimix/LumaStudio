@@ -35,11 +35,15 @@ async function verify() {
       await page.evaluate(n => { for (let i = 0; i < n * 3; i++) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true, cancelable: true })); }, seconds);
     };
     const levels = async expected => {
-      await page.waitForFunction(expected => [...document.querySelectorAll('.meter-channel')].every((el, i) => Math.abs(Number(el.dataset.db) - expected[i]) < .08), expected);
-      metrics.push(await page.locator('.meter-channel').evaluateAll(elements => elements.map(el => ({ db: Number(el.dataset.db), zone: el.dataset.zone, accessibility: el.getAttribute('aria-valuetext') }))));
+      // Read the level, color and accessibility value in the same rendered frame.
+      const handle = await page.waitForFunction(expected => {
+        const sample = [...document.querySelectorAll('.meter-channel')].map(el => ({ db: Number(el.dataset.db), zone: el.dataset.zone, accessibility: el.getAttribute('aria-valuetext'), valueNow: Number(el.getAttribute('aria-valuenow')) }));
+        return sample.length === expected.length && sample.every((channel, i) => Math.abs(channel.db - expected[i]) < .08) ? sample : false;
+      }, expected);
+      const sample = await handle.jsonValue(); await handle.dispose(); metrics.push(sample); return sample;
     };
-    await load({ ...base, name: '音量メーター検証' }); await seek(1); await page.keyboard.press('l'); await levels([-18.0618, -6.0206]);
-    assert.deepEqual(await page.locator('.meter-channel').evaluateAll(elements => elements.map(el => el.dataset.zone)), ['green', 'yellow']);
+    await load({ ...base, name: '音量メーター検証' }); await seek(1); await page.keyboard.press('l'); const stereo = await levels([-18.0618, -6.0206]);
+    assert.deepEqual(stereo.map(channel => channel.zone), ['green', 'yellow']);
     assert.equal(await page.locator('.meter-reset.is-clipped').count(), 0);
     await page.screenshot({ path: path.join(results, 'audio-meter-stereo.png') });
     // Actual DOM geometry, including a reduced workspace, must use one scale.
@@ -53,17 +57,17 @@ async function verify() {
       assert.equal(await page.locator('.audio-meter').evaluate(el => el.getBoundingClientRect().bottom <= window.innerHeight), true);
     }
     checks.push('known stereo amplitudes, green/yellow zones and calibrated ticks at two viewport sizes');
-    await page.keyboard.press('k'); await seek(12); await page.keyboard.press('l'); await levels([-1.1598, -1.1598]);
-    assert.deepEqual(await page.locator('.meter-channel').evaluateAll(elements => elements.map(el => el.dataset.zone)), ['red', 'red']);
+    await page.keyboard.press('k'); await seek(12); await page.keyboard.press('l'); const red = await levels([-1.1598, -1.1598]);
+    assert.deepEqual(red.map(channel => channel.zone), ['red', 'red']);
     assert.equal(await page.locator('.meter-reset.is-clipped').count(), 0);
     await page.screenshot({ path: path.join(results, 'audio-meter-red.png') });
     await page.keyboard.press('k'); await page.keyboard.press('j'); await levels([-1.1598, -1.1598]); await page.keyboard.press('k'); await page.keyboard.press('l'); await levels([-1.1598, -1.1598]);
     checks.push('opposite-phase channels remain visible in red without false CLIP, including J/K/L');
     const copy = { ...base.clips[0], id: 'meter-mix-copy', trackId: 'meter-extra' };
     await load({ ...base, name: '音量上限検証', tracks: [...base.tracks, { ...base.tracks.find(t => t.id === sound.trackId), id: copy.trackId, name: '追加音声', autoName: false }], clips: [...base.clips, copy] });
-    await seek(12); await page.keyboard.press('l'); await levels([4.8608, 4.8608]);
+    await seek(12); await page.keyboard.press('l'); const overflow = await levels([4.8608, 4.8608]);
     await page.locator('.meter-reset.is-clipped').waitFor();
-    assert.equal(await page.locator('.meter-channel').first().getAttribute('aria-valuenow'), '0');
+    assert.deepEqual(overflow.map(channel => channel.valueNow), [0, 0]);
     await page.screenshot({ path: path.join(results, 'audio-meter-clip.png') });
     await page.keyboard.press('k'); await page.waitForFunction(() => document.querySelector('.meter-reading').textContent.startsWith('−∞'));
     assert.equal(await page.locator('.meter-reset.is-clipped').count(), 1);
