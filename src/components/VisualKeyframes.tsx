@@ -17,7 +17,7 @@ export default function VisualKeyframes({ clip }: { clip: Clip }) {
     <label className="visual-channel-label">線で表示する設定<select aria-label="キーフレームの表示項目" value={channel.path} onChange={event => useEditor.setState({ visualChannel: event.target.value })}>{channels.map(item => <option key={item.path} value={item.path}>{item.label}</option>)}</select></label>
     {keys.length ? <div className="visual-channel-status" role="status"><Diamond size={12}/><span>{numeric ? 'ラインの高さ' : 'ラインの表示項目'}：<strong>{channel.label}</strong></span></div> : null}
     <div className="keyframe-readout"><span>{timecode(at, project.fps)}</span><strong>{channelText(visualClipAt(clip, at), channel)}</strong></div>
-    {keys.length ? <p className="field-help visual-channel-help">{numeric ? '上ほど値が大きくなります。対応する数値欄を黄緑の枠で表示します。' : 'この項目は高さで値を表せないため、ラインは一定の高さです。値は上の表示とポイント一覧で確認できます。'}</p> : null}
+    {keys.length ? <p className="field-help visual-channel-help">{numeric ? `上ほど値が大きくなります。${channel.path.startsWith('videoMask.points.') ? 'この座標はモニターの点・ハンドルで調整します。' : '数値欄がある項目は、対応する欄を黄緑の枠で表示します。'}` : 'この項目は高さで値を表せないため、ラインは一定の高さです。値は上の表示とポイント一覧で確認できます。'}</p> : null}
     <div className="visual-keyframe-actions">
       <button type="button" className="secondary-button" aria-label="前のキーフレーム" disabled={!previous} onClick={() => previous && seek(previous.time)}><ChevronLeft size={14}/></button>
       <button type="button" className="secondary-button" aria-label="再生ヘッドにキーフレームを追加" disabled={!!current} onClick={() => addVisualPoint(clip.id)}><Plus size={13}/><Diamond size={12}/>追加</button>
