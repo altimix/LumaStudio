@@ -4,7 +4,8 @@ import type { Clip } from '../types';
 import { fonts, fontEntry, fontStyle } from '../../shared/text-style.mjs';
 import { ensureFont } from '../fonts';
 import TextBoxControls from './TextBoxControls';
-import TextColorField from './TextColorField';
+import ColorField from './ColorField';
+import { NumericField } from './ClipPropertyFields';
 
 export default function TextEffects({ clip }: { clip: Clip }) {
   const [search, setSearch] = useState(''), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
@@ -21,8 +22,8 @@ export default function TextEffects({ clip }: { clip: Clip }) {
     } catch (error) { if (alive.current) setStatus((error as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, '')); }
     finally { if (alive.current) setBusy(false); }
   };
-  const color = (property: 'shadowColor' | 'strokeColor', label: string) => <TextColorField id={property} label={label} value={clip[property] || '#000000'} onChange={value => patch({ [property]: value })}/>;
-  const number = (property: 'shadowBlur' | 'shadowDistance' | 'strokeWidth', label: string, fallback: number, max: number) => <label className="text-effect-size">{label}<input type="number" min={0} max={max} step={1} key={`${clip.id}-${property}-${clip[property]}`} defaultValue={clip[property] ?? fallback} onBlur={e => { const value = Number(e.currentTarget.value); if (e.currentTarget.value !== '' && Number.isFinite(value)) patch({ [property]: Math.max(0, Math.min(max, value)) }); }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/></label>;
+  const color = (property: 'shadowColor' | 'strokeColor', label: string) => <ColorField id={property} label={label} value={clip[property] || '#000000'} onChange={value => patch({ [property]: value })}/>;
+  const number = (property: 'shadowBlur' | 'shadowDistance' | 'strokeWidth', label: string, fallback: number, max: number) => <NumericField clip={clip} property={property} label={label} fallback={fallback} min={0} max={max} suffix="px"/>;
   return <div className="text-effects">
     <label htmlFor="title-font">日本語フォント</label><input className="font-picker-search" aria-label="日本語フォントを検索" placeholder="フォント名で検索（Noto、Zen など）" value={search} onChange={e => setSearch(e.target.value)}/>
     <select id="title-font" value={font.family} disabled={busy} onChange={e => { const family = e.target.value, candidate = fontEntry(family)!; const weight = candidate.weights.reduce((best, next) => Math.abs(next - font.weight) < Math.abs(best - font.weight) ? next : best); void changeFont(family, weight); }}>
@@ -31,11 +32,11 @@ export default function TextEffects({ clip }: { clip: Clip }) {
     <p className="field-help">Google Fontsの日本語68書体。Noto Sans Japaneseは同梱済みです。ほかの書体は初回にダウンロードし、次回からオフラインでも使えます。</p>
     {status ? <p className="font-progress" role="status">{status}</p> : null}
     <details><summary>影・縁取りを調整</summary><label className="text-effect-toggle"><input type="checkbox" checked={clip.textShadow !== false} onChange={e => patch({ textShadow: e.target.checked })}/>文字に影を付ける</label>
-    {clip.textShadow !== false ? <>{color('shadowColor', '影の色')}{number('shadowBlur', '影のぼかし（px）', 12, 100)}{number('shadowDistance', '影の距離（px）', 4, 100)}</> : null}
+    {clip.textShadow !== false ? <>{color('shadowColor', '影の色')}{number('shadowBlur', '影のぼかし', clip.fontSize*.22, 100)}{number('shadowDistance', '影の距離', clip.fontSize*.035, 100)}</> : null}
     <label className="text-effect-toggle"><input type="checkbox" checked={!!clip.textStroke} onChange={e => patch({ textStroke: e.target.checked })}/>文字に縁取りを付ける</label>
-    {clip.textStroke ? <>{color('strokeColor', '縁取りの色')}{number('strokeWidth', '縁取りの幅（px）', 3, 20)}</> : null}
+    {clip.textStroke ? <>{color('strokeColor', '縁取りの色')}{number('strokeWidth', '縁取りの幅', 3, 20)}</> : null}
     </details>
-    {clip.textStyle === 'subtitle' ? <label className="text-effect-size">字幕の背景の濃さ（%）<input type="number" min={0} max={100} step={1} key={`${clip.id}-background-${clip.captionBackgroundOpacity}`} defaultValue={Math.round((clip.captionBackgroundOpacity ?? .65)*100)} onBlur={e=>{const value=Number(e.currentTarget.value);if(e.currentTarget.value!==''&&Number.isFinite(value))patch({captionBackgroundOpacity:Math.max(0,Math.min(100,value))/100});}} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();}}/></label> : null}
+    {clip.textStyle === 'subtitle' ? <NumericField clip={clip} property="captionBackgroundOpacity" label="字幕の背景の濃さ" fallback={.65} min={0} max={100} factor={100} suffix="%"/> : null}
     <TextBoxControls clip={clip}/>
     <button className="secondary-button" onClick={() => patch({ x: 0, y: 0 })}>画面の中央に配置</button>
     <p className="field-help">プレビューの文字をドラッグして移動できます。位置X・Yには画面左上からのピクセル座標を表示します。</p>

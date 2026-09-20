@@ -1,6 +1,7 @@
 const { _electron: electron } = require('playwright');
 const fs = require('node:fs/promises'), path = require('node:path'), assert = require('node:assert/strict');
 const { ffmpeg, run, inspectMedia } = require('../electron/media.cjs');
+const { setVisualKey } = require('../shared/visual-keyframes.mjs');
 const root = path.join(__dirname, '..');
 
 (async () => {
@@ -101,9 +102,74 @@ const root = path.join(__dirname, '..');
     await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'videoMask').x,.5);await page.keyboard.press('Control+Shift+z');await save();
     checks.push('crop and mask fields use the same persisted scrub gesture');
 
+    const keySection=page.locator('.inspector-section').filter({has:page.locator('.visual-keyframes-panel')});if(await keySection.getAttribute('open')===null)await keySection.locator('summary').click();
+    await page.getByRole('button',{name:'再生ヘッドにキーフレームを追加',exact:true}).click();const beforeFocus=await save();
+    const channels=[['上','crop.top'],['右','crop.right'],['下','crop.bottom'],['左','crop.left'],['位置 X','videoMask.x'],['位置 Y','videoMask.y'],['幅','videoMask.width'],['高さ','videoMask.height'],['境界のぼかし','videoMask.feather'],['色の許容範囲','chromaKey.tolerance'],['境界のなめらかさ','chromaKey.softness'],['緑の色かぶり除去','chromaKey.greenSpill'],['青の色かぶり除去','chromaKey.blueSpill']];
+    const focusChannels=async fields=>{for(const [label,channel] of fields){
+      const field=page.locator(`input[id^="effect-"][id$="-${label.replace(/\s/g,'-')}"]`);await field.focus();
+      assert.equal(await page.locator('select[aria-label="キーフレームの表示項目"]').inputValue(),channel);
+    }};
+    await focusChannels(channels.slice(0,9));assert.deepEqual(await save(),beforeFocus);
+    await page.locator('.inspector-tabs button').nth(1).click();await page.getByRole('button',{name:'クロマキーを有効にする',exact:true}).click();const beforeColorFocus=await save();
+    await focusChannels(channels.slice(9));assert.deepEqual(await save(),beforeColorFocus);await page.locator('.inspector-tabs button').first().click();
+    checks.push('all 13 crop, mask and chroma number fields select their own keyframe graph without changing project data');
+
+    const focusDuringPlayback=async field=>{
+      await field.scrollIntoViewIfNeeded();await page.locator('.timeline-content').focus();await page.keyboard.press('Home');
+      for(let i=0;i<3;i++)await page.keyboard.press('Shift+ArrowRight');
+      const before=await page.locator('.ruler-label .timecode').textContent();await page.keyboard.press('l');
+      await page.waitForFunction(before=>document.querySelector('.ruler-label .timecode').textContent!==before,before);
+      await field.focus();assert.equal(await page.getByRole('status',{name:'シャトル状態'}).textContent(),'停止','focusing a numeric field stops playback');
+      const held=await page.locator('.ruler-label .timecode').textContent();await page.waitForTimeout(250);
+      assert.equal(await page.locator('.ruler-label .timecode').textContent(),held,'the edit position stays fixed while entering a value');
+      const [h,m,s,f]=held.split(':').map(Number);return (h*60+m)*60+s+f/fixture.fps;
+    };
+    const beforeTimingFocus=await save(),graphBefore=await page.locator('select[aria-label="キーフレームの表示項目"]').inputValue();
+    for(const property of ['start','duration','in','fadeIn','fadeOut'])await focusDuringPlayback(page.locator(`#prop-${property}`));
+    assert.deepEqual(await save(),beforeTimingFocus);assert.equal(await page.locator('select[aria-label="キーフレームの表示項目"]').inputValue(),graphBefore);
+    checks.push('timing and fade inputs stop playback on focus without changing the project, history or visual graph');
+
+    const audioClip=page.locator('.timeline-clip[data-clip-id="audio"]');await audioClip.focus();await audioClip.press('Enter');
+    await page.locator('.inspector-tabs').getByRole('button',{name:'オーディオ',exact:true}).click();
+    const beforeVolumeFocus=await save(),volume=page.locator('#prop-volume'),heldTime=await focusDuringPlayback(volume);
+    await volume.fill('65');await page.waitForTimeout(250);await volume.press('Enter');
+    const afterVolumeFocus=await save(),oldAudio=beforeVolumeFocus.clips.find(c=>c.id==='audio'),newAudio=afterVolumeFocus.clips.find(c=>c.id==='audio');
+    const keyTime=Math.round((heldTime-oldAudio.start)*fixture.fps)/fixture.fps,editedKey=newAudio.volumeKeyframes.find(k=>Math.abs(k.time-keyTime)<1e-7);
+    assert.ok(editedKey,'typing edits the point where the input received focus');assert.ok(Math.abs(editedKey.value*newAudio.volume-.65)<1e-9);
+    assert.deepEqual(newAudio.volumeKeyframes.filter(k=>Math.abs(k.time-keyTime)>=1e-7),oldAudio.volumeKeyframes);
+    await page.keyboard.press('Control+z');assert.deepEqual(await save(),beforeVolumeFocus);
+    await page.keyboard.press('Control+Shift+z');assert.deepEqual(await save(),afterVolumeFocus);
+    await page.keyboard.press('Control+z');assert.deepEqual(await save(),beforeVolumeFocus);
+    await page.locator(`.timeline-clip[data-clip-id="${clip.id}"]`).focus();await page.keyboard.press('Enter');await page.locator('.inspector-tabs button').first().click();
+    checks.push('audio volume editing during playback writes at the held frame and preserves other points through Undo/Redo');
+
     await rotation.click();await rotation.press('Tab');assert.notEqual(await page.evaluate(()=>document.activeElement?.id),'prop-rotation');
     const track=project.tracks.find(item=>item.id===clip.trackId);await page.getByRole('button',{name:`${track.name} ロック`,exact:true}).click();await save();assert.equal(await rotation.isDisabled(),true);
     checks.push('Tab navigation remains available and locked tracks disable scrubbing');
+    for(const kind of ['graphic','textBox']){
+      const shape={shape:'rectangle',width:160,height:80,lineWidth:8,fill:true,fillColor:'#ffcc33'},box={width:160,height:80};
+      const base={...video,id:'round-trip',assetId:undefined,linkId:undefined,kind:'title',name:'往復ドラッグ',text:'テキスト',fontSize:32,textStyle:'minimal',textShadow:false,fadeIn:0,fadeOut:0,audioDetached:undefined,[kind]:kind==='graphic'?shape:box};
+      const keyed=setVisualKey(setVisualKey(base,0),2,{[kind]:{...(kind==='graphic'?shape:box),width:240,height:120},rotation:20});
+      const example={...fixture,id:`round-trip-${kind}`,name:`往復ドラッグ ${kind}`,assets:[],clips:[keyed],transitions:[]};
+      await fs.writeFile(file,JSON.stringify(example));await page.keyboard.press('Control+o');await page.getByRole('button',{name:example.name,exact:true}).waitFor();
+      await page.locator('.timeline-clip').first().focus();await page.keyboard.press('Enter');await page.keyboard.press('Home');
+      for(let i=0;i<3;i++)await page.keyboard.press('Shift+ArrowRight');
+      assert.equal(await page.locator('.ruler-label .timecode').textContent(),'00:00:01:00');
+      const initialProject=await save(),undo=page.getByRole('button',{name:/^元に戻す \(/,exact:true}),redo=page.getByRole('button',{name:/^やり直す \(/,exact:true});
+      const prefix=kind==='graphic'?'図形':'テキスト枠';
+      for(const label of [`${prefix}の幅`,`${prefix}の高さ`,'回転']){
+        const field=page.getByRole('spinbutton',{name:label,exact:true});
+        await scrubRoundTrip(field,40);assert.deepEqual(await save(),initialProject,`${label}: returning to the initial value removes the temporary key`);
+        assert.equal(await undo.isDisabled(),true,`${label}: a round trip adds no Undo entry`);
+        await scrub(field,40);const edited=await save();assert.equal(edited.clips[0].visualKeyframes.length,3);
+        assert.equal(edited.clips[0].visualKeyframes[1].time,1);await page.keyboard.press('Control+z');assert.deepEqual(await save(),initialProject);
+        assert.equal(await undo.isDisabled(),true,`${label}: a completed scrub adds exactly one Undo entry`);
+        await scrubRoundTrip(field,40);assert.deepEqual(await save(),initialProject);assert.equal(await redo.isDisabled(),false,`${label}: a no-op preserves the Redo stack`);
+        await page.keyboard.press('Control+Shift+z');assert.deepEqual(await save(),edited);await page.keyboard.press('Control+z');assert.deepEqual(await save(),initialProject);
+        await scrub(field,40,'escape');assert.deepEqual(await save(),initialProject);assert.equal(await undo.isDisabled(),true);assert.equal(await redo.isDisabled(),false);
+      }
+      checks.push(`${kind} width, height and rotation scrubs between keys preserve the original points and Undo/Redo on round trips and cancellation`);
+    }
     assert.deepEqual(errors,[]);await page.screenshot({path:path.join(results,'number-scrub.png')});await fs.writeFile(path.join(results,'number-scrub-verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,checks,errors},null,2));
     console.log('Number input scrubbing verified:',checks.length,'checks.');
   }catch(error){await page.screenshot({path:path.join(results,'number-scrub-failure.png')}).catch(()=>{});throw error;}finally{await app.close();}

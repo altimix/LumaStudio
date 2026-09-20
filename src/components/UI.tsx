@@ -1,6 +1,14 @@
 import { shortcutLabel } from '../shortcut-label';
 import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+export function navigatePanelTabs(event:React.KeyboardEvent<HTMLDivElement>) {
+  if(event.key===' '||event.key==='Enter'){event.stopPropagation();return;}
+  if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+  const buttons=[...event.currentTarget.querySelectorAll<HTMLButtonElement>(':scope > button:not(:disabled)')],current=buttons.indexOf(event.target as HTMLButtonElement);
+  if(current<0||!buttons.length)return;event.preventDefault();event.stopPropagation();
+  const index=event.key==='Home'?0:event.key==='End'?buttons.length-1:(current+(event.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length;
+  buttons[index].focus();buttons[index].click();
+}
 export function IconButton({ label, active, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; active?: boolean }) {
   return <button className={`icon-button ${active ? 'active' : ''} ${props.className || ''}`} title={shortcutLabel(label)} aria-label={shortcutLabel(label)} aria-pressed={active === undefined ? undefined : active} {...props}>{children}</button>;
 }
@@ -9,7 +17,7 @@ export function Modal({ title, children, onClose, wide, blockEditorShortcuts }: 
   useEffect(() => { const previous = document.activeElement as HTMLElement | null; dialog.current?.querySelector<HTMLElement>('button')?.focus(); return () => previous?.focus(); }, []);
   return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}><section ref={dialog} className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={title} onKeyDown={e => {
     if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
-    if (e.key === 'Tab') { const focusable = [...dialog.current!.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')]; const first = focusable[0]; const last = focusable.at(-1); if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); } }
+    if (e.key === 'Tab') { const focusable = [...dialog.current!.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')].filter(element=>element.getClientRects().length>0&&!element.closest('[inert]')); const first = focusable[0]; const last = focusable.at(-1); if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); } }
     if (blockEditorShortcuts) e.stopPropagation();
   }}><div className="modal-heading"><h2>{title}</h2><IconButton label="閉じる" onClick={onClose}><X size={18}/></IconButton></div>{children}</section></div>;
 }
