@@ -5,7 +5,9 @@ const {ffmpeg,run,inspectMedia}=require('../electron/media.cjs');
 const {exportProject,validateProject}=require('../electron/export.cjs');
 const {setVisualKey,visualClipAt}=require('../shared/visual-keyframes.mjs');
 const {DEFAULT_CHROMA_KEY}=require('../shared/chroma-key.mjs');
-const {createTitleFrameBroker,pngFrame}=require('../electron/frame-sequence.cjs');
+const {createTitleFrameBroker,pngFrame,writeFrameSequence}=require('../electron/frame-sequence.cjs');
+const {EventEmitter}=require('node:events');
+const {PassThrough,Writable}=require('node:stream');
 let dir,asset,red,blue;
 before(async()=>{
   dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-visual-keys-'));
@@ -86,6 +88,19 @@ test('canceling frame preparation preserves the prior output and removes tempora
   const output=path.join(dir,'existing.mp4');await fs.writeFile(output,'original');
   await assert.rejects(exportProject(p,settings,output,{signal:controller.signal,titleFrameProvider:async()=>{controller.abort();return red;}}),/キャンセル/);
   assert.equal(await fs.readFile(output,'utf8'),'original');assert.equal((await fs.readdir(dir)).filter(name=>name.startsWith('.luma-')).length,0);
+});
+test('canceling while preparing or piping a frame reports cancellation instead of EPIPE',async()=>{
+  for(const when of ['prepare','write']){
+    const controller=new AbortController(),child=new EventEmitter();let writes=0,requests=0;
+    child.exitCode=null;child.stderr=new PassThrough();
+    child.stdin=new Writable({write(_bytes,_encoding,done){writes++;controller.abort();done(Object.assign(new Error('write EPIPE'),{code:'EPIPE'}));}});
+    child.kill=()=>{setImmediate(()=>{child.exitCode=0;child.emit('close',0);});return true;};
+    await assert.rejects(writeFrameSequence(path.join(dir,'canceled.mov'),{
+      fps:10,frames:3,signal:controller.signal,spawnProcess:()=>child,
+      frame:async()=>{requests++;if(when==='prepare')controller.abort();return red;},
+    }),/キャンセル/);
+    assert.equal(requests,1);assert.equal(writes,when==='prepare'?0:1);
+  }
 });
 test('invalid export frame rates fail before requesting any animated frames',async()=>{
   const p=project({kind:'title',assetId:undefined});p.clips[0]=setVisualKey(setVisualKey(p.clips[0],0),1,{fontSize:80});let requested=false;
