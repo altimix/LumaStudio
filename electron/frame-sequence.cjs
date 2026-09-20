@@ -50,11 +50,13 @@ async function writeFrameSequence(file,{fps,frames,format='png',frame,signal,onF
     for(let index=0;index<frames;index++){
       if(signal?.aborted)throw canceled();if(failure)throw failure;
       const bytes=await Promise.race([Promise.resolve().then(()=>frame(index/fps,index)),early]);
+      if(signal?.aborted)throw canceled();
       if(!Buffer.isBuffer(bytes)||bytes.length>64*1024*1024)throw new Error('フレーム画像が不正です。');
       await Promise.race([new Promise((resolve,reject)=>child.stdin.write(bytes,error=>error?reject(error):resolve())),early]);
       onFrame((index+1)/frames);
     }
     child.stdin.end();await done;
+  }catch(error){throw signal?.aborted?canceled():error;
   }finally{signal?.removeEventListener('abort',abort);child.stdin.destroy();if(child.exitCode===null)child.kill();await done.catch(()=>{});}
 }
 module.exports={pngFrame,createTitleFrameBroker,writeFrameSequence};
