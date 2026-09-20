@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises'), path = require('node:path');
 const { ffmpeg, inspectMedia, run, probe } = require('../electron/media.cjs');
 const { validateProject } = require('../electron/export.cjs');
+const { setVisualKey } = require('../shared/visual-keyframes.mjs');
 const root = path.join(__dirname, '..');
 async function verify() {
   const results = path.join(root, 'test-results'); await fs.mkdir(results, { recursive: true }); await fs.mkdir(path.join(root, '.local'), { recursive: true });
@@ -124,6 +125,24 @@ async function verify() {
     await open(saved);assert.deepEqual((await save()).clips[0].videoMask,kept);await page.getByRole('button',{name:'モニターでマスクを編集',exact:true}).click();await zoom.selectOption('0.25');
     await page.getByRole('button',{name:'Video1 ロック',exact:true}).click();assert.equal(await page.locator('.bezier-mask-anchor').count(),0);await page.getByRole('button',{name:'Video1 ロック解除',exact:true}).click();await save();
     check('off-frame anchors on all four edges close and persist; independent handles, Undo/Redo and track locks remain valid');
+
+    const staticProject=await save(),keyMask=structuredClone(kept);
+    Object.assign(keyMask.points[0],{x:-.123456789,y:1.123456789,inX:-1.23456789,inY:2.23456789,outX:2.3456789,outY:-1.3456789});
+    const keyed=setVisualKey(setVisualKey({...staticProject.clips[0],videoMask:keyMask},0),.5);
+    await open({...staticProject,clips:[keyed]});
+    const keySection=page.locator('.inspector-section').filter({has:page.getByLabel('キーフレームの表示項目',{exact:true})});
+    if(!await keySection.evaluate(el=>el.open))await keySection.locator('summary').click();
+    for(const coordinate of ['x','y','inX','inY','outX','outY']) {
+      await page.getByLabel('キーフレームの表示項目',{exact:true}).selectOption(`videoMask.points.0.${coordinate}`);
+      const point=page.locator('.clip-visual-key').nth(1);await point.scrollIntoViewIfNeeded();const r=await box(point),graph=await box(page.locator('.clip-visual-keys'));
+      await pointerDrag(r.x+r.width/2,r.y+r.height/2,graph.width*.1,0);saved=await save();assert.ok(saved.clips[0].visualKeyframes[1].time>.5);
+      assert.deepEqual(saved.clips[0].visualKeyframes[1].values.videoMask,keyMask,`horizontal keyframe drag preserves exact ${coordinate} geometry`);
+      await page.keyboard.press('Control+z');await save();await point.focus();await page.keyboard.press('ArrowUp');saved=await save();
+      close(saved.clips[0].visualKeyframes[1].values.videoMask.points[0][coordinate],keyMask.points[0][coordinate]+.001,`off-frame ${coordinate} keyboard edit`,1e-9);
+      await page.keyboard.press('Control+z');await save();
+    }
+    check('all six off-frame Bezier keyframe coordinate channels preserve exact geometry when moving time and accept keyboard value changes');
+    await open(staticProject);await page.getByRole('button',{name:'モニターでマスクを編集',exact:true}).click();await zoom.selectOption('0.25');
 
     await page.getByLabel('プレビュー画質',{exact:true}).selectOption('1');await page.waitForFunction(()=>document.querySelector('.canvas-wrap canvas').width===640);await frames();
     const preview=path.join(results,'preview-viewport-frame.png'),png=await page.locator('.canvas-wrap canvas').evaluate(c=>c.toDataURL('image/png').split(',')[1]);await fs.writeFile(preview,Buffer.from(png,'base64'));
