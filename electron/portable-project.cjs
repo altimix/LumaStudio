@@ -28,6 +28,10 @@ async function collectProject(project, directory) {
   if (typeof directory !== 'string' || !path.isAbsolute(directory)) throw Error('保存先フォルダが不正です。');
   const used = new Set(project.clips.map(clip => clip.assetId).filter(Boolean));
   if (project.youtube?.thumbnailAssetId) used.add(project.youtube.thumbnailAssetId);
+  if (project.youtube?.thumbnailReferenceAssetId) {
+    if (!project.assets.some(asset => asset.id === project.youtube.thumbnailReferenceAssetId)) throw Error('サムネイルの参考画像が見つかりません。選び直すか、解除してください。');
+    used.add(project.youtube.thumbnailReferenceAssetId);
+  }
   clean.assets = clean.assets.filter(asset => used.has(asset.id));
   const parent = await fs.realpath(directory), token = randomUUID().slice(0, 8);
   const name = (project.name || 'プロジェクト').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 60);

@@ -12,13 +12,14 @@ test('a bundled template relocates, verifies its media and preserves editable Yo
     const media=path.join(root,'素材.png'),source=path.join(root,'source.luma');await fixture(media);
     const asset=await inspectMedia(media,path.join(root,'cache'));
     const project={version:1,id:'original',name:'template',width:320,height:180,fps:30,tracks:[],clips:[],markers:[],assets:[asset]};
-    project.youtube={sourceKey:timelineKey(project),cues:[],titles:['保存したタイトル'],description:'概要欄',chapters:[],keywords:[],thumbnailPrompt:'',thumbnailAssetId:asset.id};
+    project.youtube={sourceKey:timelineKey(project),cues:[],titles:['保存したタイトル'],description:'概要欄',chapters:[],keywords:[],thumbnailPrompt:'',thumbnailAssetId:asset.id,thumbnailReferenceAssetId:asset.id};
     await fs.writeFile(source,JSON.stringify(project));const before=await hash(source);
     const directory=path.join(root,'bundle'),manifest=await bundleStartupProject(source,directory);assert.equal(manifest.sourceProjectSha256,before);assert.equal(await hash(source),before);
     const moved=path.join(root,'moved');await fs.rename(directory,moved);await fs.unlink(media);
     const loaded=await readStartupProject(moved);assert.notEqual(loaded.id,project.id);assert.notEqual(loaded.assets[0].id,asset.id);assert.notEqual((await readStartupProject(moved)).assets[0].id,loaded.assets[0].id);
     assert.equal(await hash(loaded.assets[0].path),manifest.files[1].sha256);assert.equal(loaded.assets[0].url,undefined);
     assert.equal(loaded.youtube.thumbnailAssetId,loaded.assets[0].id);assert.notEqual(loaded.youtube.sourceKey,timelineKey(loaded));assert.deepEqual(loaded.youtube.titles,project.youtube.titles);
+    assert.equal(loaded.youtube.thumbnailReferenceAssetId,loaded.assets[0].id);
     assert.equal(await readStartupProject(path.join(root,'missing')),null);
     const incomplete=path.join(root,'incomplete');await fs.mkdir(incomplete);await assert.rejects(readStartupProject(incomplete),/すべて展開/);
     const originalBytes=await fs.readFile(loaded.assets[0].path);await fs.unlink(loaded.assets[0].path);await assert.rejects(readStartupProject(moved),/すべて再展開/);

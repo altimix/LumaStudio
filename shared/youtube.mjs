@@ -69,6 +69,7 @@ export function validateYoutube(y) {
   if (!Array.isArray(y.chapters) || y.chapters.length > 100 || y.chapters.some(c => !c || !Number.isInteger(c.time) || c.time < 0 || c.time > 86400 || typeof c.label !== 'string' || c.label.length > 100 || /\n/.test(c.label))) throw new Error('チャプターが不正です。');
   if (composeDescription(y, y.chapters.length > 0).length > 5000) throw new Error('チャプターとハッシュタグを含む概要欄は5000文字以内にしてください。');
   if (y.thumbnailAssetId !== undefined && typeof y.thumbnailAssetId !== 'string') throw new Error('サムネイルが不正です。');
+  if (y.thumbnailReferenceAssetId !== undefined && (typeof y.thumbnailReferenceAssetId !== 'string' || !y.thumbnailReferenceAssetId || y.thumbnailReferenceAssetId.length > 128)) throw new Error('サムネイルの参考画像が不正です。');
 }
 export function validChapters(chapters, duration) {
   return chapters.length >= 3 && chapters[0].time === 0 && chapters.every((c, i) => (chapters[i + 1]?.time ?? duration) - c.time >= 10);

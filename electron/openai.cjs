@@ -1,7 +1,7 @@
 const fs = require('node:fs/promises');
 const { atomicWrite } = require('./persistence.cjs');
 const { alignTranscript, timedTranscript } = require('./transcript-alignment.cjs');
-const MODELS = Object.freeze({ transcriptionModel: 'gpt-transcribe', timingModel: 'whisper-1', textModel: 'gpt-6-astra', imageModel: 'gpt-image-2' });
+const MODELS = Object.freeze({ transcriptionModel: 'gpt-transcribe', timingModel: 'whisper-1', textModel: 'gpt-6-astra', imageModel: 'gpt-image-2.5-sunburst' });
 function validateKey(key) {
   if (typeof key !== 'string' || !/^sk-[A-Za-z0-9_-]{16,500}$/.test(key.trim())) throw new Error('OpenAI APIキーの形式を確認してください。');
   return key.trim();
@@ -90,9 +90,9 @@ function createOpenAI(getKey, fetcher = (...args) => fetch(...args)) {
       const options={ model: MODELS.imageModel, prompt, n: 1, size: portrait ? '864x1536' : '1536x864', quality: 'high', output_format: 'jpeg', output_compression: 95 };
       let body=options,route='images/generations';
       if(references.length){
-        if(references.length>3||references.some(bytes=>!Buffer.isBuffer(bytes)||bytes.length>4*1024*1024))throw new Error('参考画像の大きさを確認してください。');
+        if(references.length>4||references.some(bytes=>!Buffer.isBuffer(bytes)||bytes.length>4*1024*1024))throw new Error('参考画像の大きさを確認してください。');
         body=new FormData();for(const [key,value]of Object.entries(options))body.set(key,String(value));
-        references.forEach((bytes,i)=>body.append('image[]',new Blob([bytes],{type:'image/jpeg'}),`scene-${i+1}.jpg`));
+        references.forEach((bytes,i)=>body.append('image[]',new Blob([bytes],{type:'image/jpeg'}),`reference-${i+1}.jpg`));
         route='images/edits';
       }
       const result = await request(route, body, signal, 360000);

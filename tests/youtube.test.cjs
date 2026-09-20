@@ -112,7 +112,9 @@ test('large transcripts fit the actual persisted project before replacing old ca
   assert.throws(()=>finalizeTranscription(p,cues,{retries:0,timingFallbacks:0}),/15 MiB/);
   assert.equal(p.youtube,old);
   const small=fixture(path.resolve('unused.wav'),60000);
+  const reference={...small.assets[0],id:'reference-photo',name:'人物写真.png',kind:'image',path:path.resolve('人物写真.png'),hasAudio:false,width:120,height:160,duration:5};small.assets.push(reference);small.youtube={...old,thumbnailReferenceAssetId:reference.id};
   const result=finalizeTranscription(small,makeCues(8000),{retries:0,timingFallbacks:0});
+  assert.equal(result.thumbnailReferenceAssetId,reference.id,'retranscribing must preserve the independently selected thumbnail reference');
   assert.equal(JSON.parse(serializeProject({...small,youtube:result})).youtube.cues.length,8000);
 });
 

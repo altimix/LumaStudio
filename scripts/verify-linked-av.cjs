@@ -16,15 +16,7 @@ async function verify() {
   try {
     await page.locator('.media-card').first().waitFor({timeout:60000});await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1200,850));
     await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},file);
-    const save=async()=>{
-      const before=(await fs.stat(file).catch(()=>null))?.mtimeMs;
-      await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
-      // A clean project has no dirty dot before its first asynchronous save.
-      // Await the atomic file replacement before reading or rewriting fixtures.
-      const deadline=Date.now()+10000;
-      while((await fs.stat(file).catch(()=>null))?.mtimeMs===before){assert.ok(Date.now()<deadline,'native project save completed');await new Promise(resolve=>setTimeout(resolve,25));}
-      return JSON.parse(await fs.readFile(file,'utf8'));
-    };
+    const save=()=>require('./verify-save-project.cjs')(page,file);
     const demo=await save(),empty={...demo,name:'リンク編集の検証',width:320,height:180,clips:[],assets:[],markers:[]};
     const open=async p=>{await fs.writeFile(file,JSON.stringify(p));await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},file);await page.keyboard.press('Control+o');await page.waitForFunction(()=>document.querySelector('button[aria-label^="元に戻す ("]').disabled);};
     await open(empty);await app.evaluate(({dialog},source)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[source]});},source);

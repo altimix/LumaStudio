@@ -8,7 +8,8 @@ const os = require('node:os');
 const { randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { ffmpeg, run, probe } = require('./media.cjs');
-const { thumbnailFormat, thumbnailFrames, thumbnailBrief } = require('../shared/youtube-thumbnail.mjs');
+const { thumbnailFormat, thumbnailFrames, thumbnailBrief, thumbnailReference } = require('../shared/youtube-thumbnail.mjs');
+const { thumbnailReferenceJpeg } = require('./thumbnail-reference.cjs');
 const { thumbnailJpeg } = require('./thumbnail-jpeg.cjs');
 const { validateProject } = require('./export.cjs');
 const { number, clipAudioFilter, mixAudioFilter } = require('./audio-render.cjs');
@@ -67,7 +68,7 @@ async function runAudio(args, signal) {
 }
 function finalizeTranscription(p, cues, transcriptionStats) {
   if (!cues.length) throw new Error('認識できる発話がありませんでした。音声・言語設定を確認してください。');
-  const result = { sourceKey: timelineKey(p), cues, transcriptionStats, titles: [], description: '', chapters: [], keywords: [], thumbnailPrompt: '' };
+  const result = { sourceKey: timelineKey(p), cues, transcriptionStats, titles: [], description: '', chapters: [], keywords: [], thumbnailPrompt: '', ...(p.youtube?.thumbnailReferenceAssetId ? { thumbnailReferenceAssetId: p.youtube.thumbnailReferenceAssetId } : {}) };
   validateYoutube(result);
   // Use the exact persisted representation, including all other project data,
   // before returning a result that the renderer can commit over existing captions.
@@ -109,8 +110,10 @@ async function generateMetadata(p, client, signal) {
 async function generateThumbnail(p, prompt, client, signal, directory) {
   validateProject(p);
   if (typeof prompt !== 'string' || prompt.length > 6000) throw new Error('画像プロンプトは6000文字以内で入力してください。');
-  if(!prompt.trim()&&!p.clips.length)throw new Error('動画を配置するか、サムネイルで伝えたい内容を入力してください。');
+  const reference = thumbnailReference(p);
+  if(!prompt.trim()&&!p.clips.length&&!reference)throw new Error('動画を配置するか、参考画像またはサムネイルで伝えたい内容を指定してください。');
   const format=thumbnailFormat(p),references=[];
+  if(reference) references.push(await thumbnailReferenceJpeg(reference.path, signal));
   for(const {asset,sourceTime}of thumbnailFrames(p)){
     signal?.throwIfAborted();
     const args=['-v','error',...(asset.kind==='video'?['-ss',number(sourceTime)]:[]),'-i',asset.path,'-frames:v','1','-vf','scale=1024:1024:force_original_aspect_ratio=decrease','-q:v','3','-f','image2pipe','-c:v','mjpeg','pipe:1'];

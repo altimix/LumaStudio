@@ -11,16 +11,19 @@ async function verify(){
     await page.locator('.media-card').first().waitFor({timeout:60000});const file=path.join(results,'トランジション.luma');
     await app.evaluate(({dialog},data)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:data.inputs});dialog.showSaveDialog=async()=>({canceled:false,filePath:data.file});},{inputs,file});
     await page.getByRole('button',{name:'読み込み',exact:true}).click();await page.getByRole('button',{name:'time-varying-transition.mp4 を追加',exact:true}).waitFor({timeout:60000});
-    const save=async()=>{
-      const before=(await fs.stat(file).catch(()=>null))?.mtimeMs;
-      await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
-      // An already-clean project has no dirty dot to await. Wait for the atomic
-      // save to finish before a test replaces this file with its next fixture.
-      const deadline=Date.now()+10000;
-      while((await fs.stat(file).catch(()=>null))?.mtimeMs===before){assert.ok(Date.now()<deadline,'native project save completed');await new Promise(resolve=>setTimeout(resolve,25));}
-      return JSON.parse(await fs.readFile(file,'utf8'));
-    };
-    const demo=await save(),v=demo.clips.find(c=>c.kind==='video');const p={...demo,name:'つなぎ目の検証',width:320,height:180,markers:[],clips:inputs.slice(0,2).map((input,i)=>({...v,id:'v'+i,assetId:demo.assets.find(a=>a.path===input).id,name:i?'切り替え先':'切り替え元',start:i*3,in:0,duration:3,speed:1,volume:1,fadeIn:0,fadeOut:0,scale:1,rotation:0,x:0,y:0,opacity:1,exposure:0,contrast:1,saturation:1}))};
+    const save=()=>require('./verify-save-project.cjs')(page,file);
+    await app.evaluate(({ipcMain})=>{
+      const original=ipcMain._invokeHandlers.get('clear-recovery');globalThis.__finishedSaveCleanup=0;
+      globalThis.__restoreSaveCleanup=()=>{ipcMain.removeHandler('clear-recovery');ipcMain.handle('clear-recovery',original);};
+      ipcMain.removeHandler('clear-recovery');ipcMain.handle('clear-recovery',async(...args)=>{
+        await new Promise(resolve=>setTimeout(resolve,750));const result=await original(...args);globalThis.__finishedSaveCleanup++;return result;
+      });
+    });
+    const demo=await save();assert.equal(await app.evaluate(()=>globalThis.__finishedSaveCleanup),1);
+    assert.deepEqual(await save(),demo);assert.equal(await app.evaluate(()=>globalThis.__finishedSaveCleanup),2);
+    await app.evaluate(()=>globalThis.__restoreSaveCleanup());
+    checks.push('consecutive clean saves wait for delayed recovery cleanup and a fresh success notification before reading or replacing fixtures');
+    const v=demo.clips.find(c=>c.kind==='video');const p={...demo,name:'つなぎ目の検証',width:320,height:180,markers:[],clips:inputs.slice(0,2).map((input,i)=>({...v,id:'v'+i,assetId:demo.assets.find(a=>a.path===input).id,name:i?'切り替え先':'切り替え元',start:i*3,in:0,duration:3,speed:1,volume:1,fadeIn:0,fadeOut:0,scale:1,rotation:0,x:0,y:0,opacity:1,exposure:0,contrast:1,saturation:1}))};
     await fs.writeFile(file,JSON.stringify(p));await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},file);await page.keyboard.press('Control+o');await page.getByRole('button',{name:p.name,exact:true}).waitFor();
     const incoming=page.locator('.timeline-clip[data-clip-id="v1"]');
     await page.locator('.timeline-clip[data-clip-id="v0"]').focus();await page.keyboard.press('Enter');await page.getByRole('tab',{name:'エフェクト',exact:true}).click();await page.getByLabel('トランジションの長さ',{exact:true}).fill('1');

@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('luma', {
   aiTranscribe: (p, vocabulary) => ipcRenderer.invoke('ai-transcribe', p, vocabulary),
   aiMetadata: p => ipcRenderer.invoke('ai-metadata', p),
   aiThumbnail: (p, prompt) => ipcRenderer.invoke('ai-thumbnail', p, prompt),
+  aiChooseThumbnailReference: p => ipcRenderer.invoke('ai-choose-thumbnail-reference', p),
   aiSaveOutput: (p, format) => ipcRenderer.invoke('ai-save-output', p, format),
   aiCancel: () => ipcRenderer.invoke('ai-cancel'),
   onAIProgress: cb => listen('ai-progress', cb),

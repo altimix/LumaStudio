@@ -9,6 +9,7 @@ function rebaseStartupYoutube(original, copy, ids = new Map()) {
   if (!original.youtube) return copy;
   const youtube={...original.youtube};
   if (youtube.thumbnailAssetId) youtube.thumbnailAssetId=ids.get(youtube.thumbnailAssetId)||youtube.thumbnailAssetId;
+  if (youtube.thumbnailReferenceAssetId) youtube.thumbnailReferenceAssetId=ids.get(youtube.thumbnailReferenceAssetId)||youtube.thumbnailReferenceAssetId;
   if (youtube.sourceKey===timelineKey(original)) youtube.sourceKey=timelineKey(copy);
   return {...copy,youtube};
 }
