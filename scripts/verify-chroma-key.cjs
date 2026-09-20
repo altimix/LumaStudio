@@ -24,6 +24,15 @@ async function verify(){
     await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});await open();await chooseKeyed();
     await page.getByRole('button',{name:'クロマキーを有効にする',exact:true}).click();const color=page.locator('#workspace-inspector input[type="color"]');await color.fill('#0000ff');
     await page.getByRole('tab',{name:'図形',exact:true}).click();await page.getByRole('button',{name:'矢印を描く',exact:true}).click();await page.locator('.draw-layer').waitFor();await page.getByRole('button',{name:'モニターから背景色を採る',exact:true}).click();await page.locator('.draw-layer').waitFor({state:'detached'});checks.push('eyedropper mode cancels the competing drawing overlay');
+    await page.keyboard.press('Escape');assert.equal(await page.locator('.chroma-sample-target').count(),0);assert.equal(await color.inputValue(),'#0000ff');await page.getByRole('button',{name:'モニターから背景色を採る',exact:true}).click();
+    await page.locator('.chroma-sample-target').evaluate(element=>{
+      const bounds=document.querySelector('.chroma-sample-bounds').getBoundingClientRect();
+      element.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true,button:0,clientX:bounds.left+bounds.width*.15,clientY:bounds.top+bounds.height*.5}));
+      window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+      document.querySelector('.chroma-eyedropper').click();
+    });
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));assert.equal(await color.inputValue(),'#0000ff','cancelled sample must not commit after the eyedropper reopens');assert.equal(await page.locator('.chroma-sample-target').count(),1);
+    checks.push('Escape exits the eyedropper and discards pending samples even when immediately reactivated');
     const target=page.getByRole('button',{name:'クロマキーの背景色を採る',exact:true});const box=await target.boundingBox();assert.ok(box);await page.mouse.click(box.x+box.width*.02,box.y+box.height*.02);await page.getByText('素材の内側をクリックしてください。',{exact:true}).waitFor();
     const bounds=await page.locator('.chroma-sample-bounds').boundingBox();assert.ok(bounds);await page.mouse.click(bounds.x+bounds.width*.15,bounds.y+bounds.height*.5);
     await page.waitForFunction(()=>document.querySelector('#workspace-inspector input[type="color"]')?.value.toLowerCase()!=='#0000ff',undefined,{timeout:10000});const sampledColor=(await color.inputValue()).toLowerCase(),sampledRgb=Number.parseInt(sampledColor.slice(1),16);assert.ok((sampledRgb>>16)<5&&((sampledRgb>>8)&255)>250&&(sampledRgb&255)<5,`sampled color ${sampledColor}`);
@@ -31,6 +40,7 @@ async function verify(){
     let saved=await save(),savedKey=saved.clips.find(item=>item.id==='keyed').chromaKey;assert.equal(savedKey.color.toLowerCase(),sampledColor);
     await page.keyboard.press('Control+z');saved=await save();assert.equal(saved.clips.find(item=>item.id==='keyed').chromaKey.color.toLowerCase(),'#0000ff');await page.keyboard.press('Control+Shift+z');saved=await save();assert.equal(saved.clips.find(item=>item.id==='keyed').chromaKey.color.toLowerCase(),sampledColor);
     checks.push('raw 5x5 eyedropper color is one persisted Undo/Redo edit');
+    await page.keyboard.press('Escape');assert.equal(await page.locator('.chroma-sample-target').count(),0);assert.equal(await color.inputValue(),sampledColor);await page.getByRole('button',{name:'モニターから背景色を採る',exact:true}).click();await page.getByRole('button',{name:'モニター編集を終了 (Esc)',exact:true}).click();assert.equal(await page.locator('.chroma-sample-target').count(),0);await page.getByRole('button',{name:'モニターから背景色を採る',exact:true}).click();checks.push('Escape and the monitor exit button preserve the committed sampled color');
 
     await page.getByRole('button',{name:'スポイトを終了',exact:true}).click();await page.getByLabel('色の許容範囲',{exact:true}).fill('10');await page.getByLabel('色の許容範囲',{exact:true}).press('Enter');await page.getByLabel('境界のなめらかさ',{exact:true}).fill('6');await page.getByLabel('境界のなめらかさ',{exact:true}).press('Enter');await page.getByLabel('緑の色かぶり除去',{exact:true}).fill('85');await page.getByLabel('緑の色かぶり除去',{exact:true}).press('Enter');saved=await save();savedKey=saved.clips.find(item=>item.id==='keyed').chromaKey;assert.ok(Math.abs(savedKey.tolerance-.1)<1e-9&&Math.abs(savedKey.softness-.06)<1e-9&&Math.abs(savedKey.greenSpill-.85)<1e-9);
     await page.getByLabel('プレビュー画質',{exact:true}).selectOption('1');await page.waitForFunction(()=>document.querySelector('.canvas-wrap canvas').width===640);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));

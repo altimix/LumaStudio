@@ -22,6 +22,8 @@
 .media-transform-tip{position:absolute;left:50%;top:9px;transform:translateX(-50%);max-width:calc(100% - 16px);display:flex;align-items:center;gap:8px;border-radius:5px;padding:5px 9px;background:#182016e8;color:#e1edc9;font-size:11px;white-space:nowrap;z-index:800000;pointer-events:none}
 .preview-transform-actions{display:flex;flex:1;justify-content:flex-end;min-width:0;margin:0 8px}
 .preview-transform-actions:empty{display:none}
+.media-edit-exit{flex-shrink:0;margin-left:6px}
+.media-edit-exit kbd{font-size:10px;margin-left:4px}
 .chroma-sample-target{position:absolute;inset:0;padding:0;background:#7fb56a08;border:1px solid #d5eeae66;cursor:crosshair;box-shadow:inset 0 0 0 9999px #88b96b05;pointer-events:auto;touch-action:none}
 .chroma-sample-bounds{position:absolute;border:1px dashed #d5eeae;box-shadow:inset 0 0 0 9999px #88b96b08;pointer-events:none}
 .chroma-sample-target:focus-visible{outline:2px solid #e4f6c9;outline-offset:2px}

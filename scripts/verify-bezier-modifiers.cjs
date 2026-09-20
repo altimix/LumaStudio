@@ -75,6 +75,7 @@ module.exports = async function verifyBezierModifiers({ page, save, checks, load
   start = await center(outgoing); await page.mouse.move(start.x, start.y); await page.mouse.down();
   await page.mouse.move(start.x - 15, start.y + 10, { steps: 3 }); await page.keyboard.press('Escape'); await page.mouse.up();
   assert.equal(JSON.stringify(await read()), asymmetric);
+  assert.equal(await page.locator('.bezier-mask-anchor').count(),0);await page.getByRole('button',{name:'モニターでマスクを編集',exact:true}).click();
   checks.push('Alt plus Shift creates an asymmetric handle; Escape restores it without damaging history');
 
   start = await center(outgoing); await page.mouse.move(start.x, start.y); await page.mouse.down();
@@ -87,12 +88,14 @@ module.exports = async function verifyBezierModifiers({ page, save, checks, load
   const coupled = await center(incoming); assert.ok(Math.hypot(coupled.x - frozen.x, coupled.y - frozen.y) > 5);
   await page.keyboard.press('Escape'); await page.mouse.up();
   assert.equal(JSON.stringify(await read()), asymmetric);
+  assert.equal(await page.locator('.bezier-mask-anchor').count(),0);await page.getByRole('button',{name:'モニターでマスクを編集',exact:true}).click();
   checks.push('Alt pressed mid-drag freezes the current opposite handle and release recouples it');
 
   await pen.click(); end = at(.4, .8); await page.mouse.move(end.x, end.y); await page.mouse.down();
   await page.mouse.move(end.x + 20, end.y - 10); await page.keyboard.press('Escape'); await page.mouse.up();
-  assert.equal(await page.locator('.bezier-mask-anchor').count(), 3);
+  assert.equal(await page.locator('.bezier-mask-anchor').count(), 0);
   assert.equal(JSON.stringify(await read()), asymmetric);
+  await page.getByRole('button',{name:'モニターでマスクを編集',exact:true}).click();assert.equal(await page.locator('.bezier-mask-anchor').count(),3);
   checks.push('cancelling pen creation removes the new point and its gesture history');
   end = at(.3, .8); await page.mouse.click(end.x, end.y);
   assert.equal(await page.locator('.bezier-mask-anchor').count(), 4);

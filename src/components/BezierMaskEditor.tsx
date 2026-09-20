@@ -162,7 +162,7 @@ export default function BezierMaskEditor({ clip, mask, source, project, viewport
     const up = (e: PointerEvent) => { if (e.pointerId === pointer) { move(e); finish(); } };
     const pointerCancel = (e: PointerEvent) => { if (e.pointerId === pointer) cancel(); };
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); return; }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); useEditor.getState().setMediaEditMode('transform'); return; }
       if (['Shift', 'Alt', 'Control', 'Meta'].includes(e.key)) {
         rememberAlt(e.altKey);
         last = { ...last, shiftKey: e.shiftKey, altKey: e.altKey };

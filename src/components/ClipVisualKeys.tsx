@@ -2,7 +2,7 @@ import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react
 import { useEditor } from '../store';
 import { clamp, roundFrame } from '../model';
 import { visualClipAt, visualKeys, setVisualKey } from '../../shared/visual-keyframes.mjs';
-import { channelPatch, channelText, channelValue, visualChannels } from '../visual-channels';
+import { channelPatch, channelText, channelValue, resolveVisualChannel, visualChannels } from '../visual-channels';
 import { addVisualPoint, moveVisualPoint, removeVisualPoint } from '../visual-editing';
 import type { Clip } from '../types';
 import './visual-keyframes.css';
@@ -11,7 +11,7 @@ export default function ClipVisualKeys({ clip, locked, zoom }: { clip: Clip; loc
   const project = useEditor(state => state.project), playhead = useEditor(state => state.playhead), selected = useEditor(state => state.visualChannel);
   const root = useRef<HTMLDivElement>(null), cleanup = useRef<(() => void) | null>(null);
   useEffect(() => () => cleanup.current?.(), []);
-  const keys = visualKeys(clip), channels = visualChannels(clip, project), channel = channels.find(item => item.path === selected) ?? channels[4];
+  const keys = visualKeys(clip), channel = resolveVisualChannel(visualChannels(clip, project), selected);
   const y = (time: number) => {
     const value = channelValue(visualClipAt(clip, time), channel.path);
     return typeof value === 'number' && channel.min !== undefined && channel.max !== undefined ? 90 - clamp((value - channel.min) / (channel.max - channel.min), 0, 1) * 80 : 50;
@@ -76,7 +76,7 @@ export default function ClipVisualKeys({ clip, locked, zoom }: { clip: Clip; loc
   if (!keys.length) return null;
   return <div ref={root} className={`clip-visual-keys ${locked ? 'locked' : ''}`} style={{ width: clip.duration * zoom }} role="group" aria-label={`${clip.name}のキーフレーム`} onPointerDown={event => event.stopPropagation()} onDoubleClick={event => { event.preventDefault(); event.stopPropagation(); if (!locked && !(event.target as Element).closest('.clip-visual-key')) { const rect = root.current!.getBoundingClientRect(); addVisualPoint(clip.id, (event.clientX - rect.left) / zoom); } }}>
     <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path className="clip-keyframe-curve" d={path}/><path className="clip-keyframe-hit" d={path}/></svg>
-    <span className="clip-keyframe-label">{channel.label}</span>
+    <span className="clip-keyframe-label">◇ {channel.label}</span>
     {keys.map((point, index) => <button type="button" key={index} className="clip-visual-key" data-key-time={point.time} disabled={locked}
       style={{ left: `${point.time / clip.duration * 100}%`, top: `${y(point.time)}%` }} aria-label={`キーフレーム ${point.time.toFixed(2)} 秒 ${channel.label}`} aria-pressed={Math.abs(playhead - clip.start - point.time) < 1e-7}
       title={`${point.time.toFixed(2)} 秒 · ${channel.label}: ${channelText(visualClipAt(clip, point.time), channel)} · ドラッグで時刻と値、Deleteで削除`}

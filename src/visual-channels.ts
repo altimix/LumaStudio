@@ -3,6 +3,9 @@ import { visualKeys, visualSnapshot } from '../shared/visual-keyframes.mjs';
 import { MIN_BEZIER_COORD, MAX_BEZIER_COORD } from '../shared/video-mask.mjs';
 
 export interface VisualChannel { path: string; label: string; min?: number; max?: number; step?: number; factor?: number; offset?: number; suffix?: string }
+export function resolveVisualChannel(channels: VisualChannel[], selected: string): VisualChannel {
+  return channels.find(channel => channel.path === selected) ?? channels.find(channel => channel.path === 'opacity')!;
+}
 export function channelValue(clip: Clip, path: string): unknown {
   return path.split('.').reduce<unknown>((value, field) => value && typeof value === 'object' ? (value as Record<string, unknown>)[field] : undefined, visualSnapshot(clip));
 }
@@ -23,6 +26,7 @@ export function channelPatch(clip: Clip, path: string, value: number): Partial<C
 }
 export function channelText(clip: Clip, channel: VisualChannel) {
   const value = channelValue(clip, channel.path);
+  if (value == null && channel.min !== undefined) return '未設定';
   if (typeof value === 'number') return `${Number((value * (channel.factor ?? 1) + (channel.offset ?? 0)).toFixed(2))}${channel.suffix ?? ''}`;
   if (typeof value === 'boolean') return value ? 'オン' : 'オフ';
   if (typeof value === 'string') return ({hero:'シネマタイトル',minimal:'ミニマル',subtitle:'字幕'} as Record<string,string>)[value]??value;
