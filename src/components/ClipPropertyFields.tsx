@@ -22,7 +22,7 @@ export function NumericField({ clip, property, label, min, max, step = 1, factor
   if(property==='volume'&&(clip.volumeKeyframes?.length||active?.clipId===clip.id))max=400;
   const displayValue=(current:Clip)=>Number(visualClipAt(current,local)[property]??fallback)*(property==='volume'?volumeAt(current.volumeKeyframes||[],local):1)*factor+offset;
   const value = displayValue(useEditor.getState().project.clips.find(c=>c.id===clip.id)||clip);
-  const dragging=useRef(false),changed=useRef(false),dragStart=useRef<{state:EditorState;clip:Clip;time:number;selected:boolean;owner:object}|null>(null);
+  const dragging=useRef(false),changed=useRef(false),dragStart=useRef<{state:EditorState;clip:Clip;time:number;value:number;selected:boolean;owner:object}|null>(null);
   const finishDrag=(cancel=false)=>{
     const start=dragStart.current;if(!start)return;dragStart.current=null;dragging.current=false;
     const current=useEditor.getState(),now=current.project.clips.find(c=>c.id===start.clip.id);
@@ -41,7 +41,7 @@ export function NumericField({ clip, property, label, min, max, step = 1, factor
     const state=useEditor.getState(),current=state.project.clips.find(c=>c.id===clip.id);
     if(!current||state.project.tracks.find(t=>t.id===current.trackId)?.locked||state.gestureActive)return false;
     if(['start','in','duration','speed'].includes(property)&&clipsLocked(state.project,linkedIds(state.project,[clip.id]))){state.notify('リンク相手を含むトラックのロックを解除してください。');return false;}
-    state.stop();const owner={},session={state,clip:current,time:property==='volume'?local:localVisualTime(current,state.playhead,state.project.fps),selected:state.activeVolumePoint?.clipId===current.id,owner};dragStart.current=session;
+    state.stop();const owner={},session={state,clip:current,time:property==='volume'?local:localVisualTime(current,state.playhead,state.project.fps),value,selected:state.activeVolumePoint?.clipId===current.id,owner};dragStart.current=session;
     if(!state.beginGesture(owner,()=>finishDrag(true))){dragStart.current=null;return false;}dragging.current=true;changed.current=false;return true;
   };
   const apply = (newValue: number) => {
@@ -51,7 +51,7 @@ export function NumericField({ clip, property, label, min, max, step = 1, factor
     const start=dragStart.current;
     if(s.gestureActive&&s.gestureOwner!==start?.owner)return;
     let patch:Partial<Clip>;try{patch=property==='volume'?setEffectiveVolume(start?.clip||current,start?.time??local,v,s.project.fps,start?.selected??(s.activeVolumePoint?.clipId===current.id)):{[property]:v};}catch(error){s.notify((error as Error).message);return;}
-    let candidate:Clip;try{candidate=patchVisualClip(start?.clip||current,patch,start?.time??local);}catch(error){s.notify((error as Error).message);return;}
+    let candidate:Clip;try{candidate=start&&newValue===Number(start.value.toFixed(12))?start.clip:patchVisualClip(start?.clip||current,patch,start?.time??local);}catch(error){s.notify((error as Error).message);return;}
     if(JSON.stringify(current)===JSON.stringify(candidate))return;
     if (dragging.current) {
       if (!changed.current) { s.checkpoint(`${label}を変更`); changed.current = true; }
@@ -65,7 +65,7 @@ export function NumericField({ clip, property, label, min, max, step = 1, factor
 }
 export function EffectField({ clip, label, value, min, max, step = 1, suffix = '', slider=true, channel, patch }: { clip: Clip; label: string; value: number; min: number; max: number; step?: number; suffix?: string; slider?:boolean; channel:string; patch: (clip: Clip, value: number) => Partial<Clip> }) {
   const dragging=useRef(false),changed=useRef(false);
-  const dragStart=useRef<{state:ReturnType<typeof useEditor.getState>;owner:object}|null>(null),inputId=`effect-${clip.id}-${label.replace(/\s/g,'-')}`;
+  const dragStart=useRef<{state:EditorState;clip:Clip;time:number;value:number;owner:object}|null>(null),inputId=`effect-${clip.id}-${label.replace(/\s/g,'-')}`;
   const finish=(cancel=false)=>{
     const start=dragStart.current;if(!start)return;dragStart.current=null;dragging.current=false;
     const current=useEditor.getState();if(current.gestureOwner!==start.owner)return;
@@ -74,16 +74,16 @@ export function EffectField({ clip, label, value, min, max, step = 1, suffix = '
     current.endGesture(start.owner);changed.current=false;
   };
   useEffect(()=>{const cancel=()=>finish(true),escape=(e:KeyboardEvent)=>{if(e.key==='Escape'&&dragStart.current){e.preventDefault();cancel();}},visibility=()=>{if(document.hidden)cancel();};window.addEventListener('blur',cancel);window.addEventListener('keydown',escape);document.addEventListener('visibilitychange',visibility);return()=>{cancel();window.removeEventListener('blur',cancel);window.removeEventListener('keydown',escape);document.removeEventListener('visibilitychange',visibility);};},[clip.id]);
-  const begin=()=>{const state=useEditor.getState(),current=state.project.clips.find(c=>c.id===clip.id),owner={};if(!current||state.project.tracks.find(t=>t.id===current.trackId)?.locked||state.gestureActive)return false;dragStart.current={state,owner};if(!state.beginGesture(owner,()=>finish(true))){dragStart.current=null;return false;}dragging.current=true;changed.current=false;return true;};
+  const begin=()=>{const state=useEditor.getState(),current=state.project.clips.find(c=>c.id===clip.id),owner={};if(!current||state.project.tracks.find(t=>t.id===current.trackId)?.locked||state.gestureActive)return false;state.stop();dragStart.current={state,clip:current,time:localVisualTime(current,state.playhead,state.project.fps),value,owner};if(!state.beginGesture(owner,()=>finish(true))){dragStart.current=null;return false;}dragging.current=true;changed.current=false;return true;};
   const apply=(input:number)=>{
     if(!Number.isFinite(input))return;
     const next=Math.min(max,Math.max(min,input)),state=useEditor.getState(),current=state.project.clips.find(c=>c.id===clip.id);
     if(!current||state.project.tracks.find(t=>t.id===current.trackId)?.locked)return;
     const start=dragStart.current;if(state.gestureActive&&state.gestureOwner!==start?.owner)return;
-    const time=localVisualTime(current,start?.state.playhead??state.playhead,state.project.fps),values=patch(visualClipAt(current,time),next);
-    let candidate:Clip;try{candidate=patchVisualClip(current,values,time);}catch(error){state.notify((error as Error).message);return;}
+    const baseline=start?.clip||current,time=start?.time??localVisualTime(current,state.playhead,state.project.fps),values=patch(visualClipAt(baseline,time),next);
+    let candidate:Clip;try{candidate=start&&next===Number(start.value.toFixed(12))?start.clip:patchVisualClip(baseline,values,time);}catch(error){state.notify((error as Error).message);return;}
     if(JSON.stringify(candidate)===JSON.stringify(current))return;
-    if(dragging.current){if(!changed.current){state.checkpoint(`${label}を変更`);changed.current=true;}const now=useEditor.getState();now.transient({...now.project,clips:now.project.clips.map(c=>c.id===current.id?normalizeClip(candidate,now.project):c)},start?.state.project);}
+    if(dragging.current){if(!changed.current){state.checkpoint(`${label}を変更`);changed.current=true;}const now=useEditor.getState(),project=start?.state.project||now.project;now.transient({...project,clips:project.clips.map(c=>c.id===current.id?normalizeClip(candidate,project):c)},project);}
     else state.updateClip(current.id,values);
   };
   return <PropertyNumberField inputId={inputId} label={label} suffix={suffix} onFocus={()=>{useEditor.getState().stop();useEditor.setState({visualChannel:channel});}}
