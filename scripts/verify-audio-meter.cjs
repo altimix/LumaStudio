@@ -31,8 +31,12 @@ async function verify() {
       await page.getByRole('button', { name: project.name, exact: true }).waitFor();
     };
     const seek = async seconds => {
+      await page.locator('.timeline-content').focus();
       await page.keyboard.press('Home');
-      await page.evaluate(n => { for (let i = 0; i < n * 3; i++) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true, cancelable: true })); }, seconds);
+      for (let i = 0; i < seconds * 3; i++) await page.keyboard.press('Shift+ArrowRight');
+      const expected = `00:00:${String(seconds).padStart(2, '0')}:00`;
+      await page.waitForFunction(expected => document.querySelector('.ruler-label .timecode').textContent === expected, expected);
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     };
     const levels = async expected => {
       // Read the level, color and accessibility value in the same rendered frame.
@@ -44,6 +48,7 @@ async function verify() {
     };
     await load({ ...base, name: '音量メーター検証' }); await seek(1); await page.keyboard.press('l'); const stereo = await levels([-18.0618, -6.0206]);
     assert.deepEqual(stereo.map(channel => channel.zone), ['green', 'yellow']);
+    assert.deepEqual(stereo.map(channel => channel.accessibility), ['-18.1 dBFS', '-6.0 dBFS']);
     assert.equal(await page.locator('.meter-reset.is-clipped').count(), 0);
     await page.screenshot({ path: path.join(results, 'audio-meter-stereo.png') });
     // Actual DOM geometry, including a reduced workspace, must use one scale.
@@ -59,6 +64,7 @@ async function verify() {
     checks.push('known stereo amplitudes, green/yellow zones and calibrated ticks at two viewport sizes');
     await page.keyboard.press('k'); await seek(12); await page.keyboard.press('l'); const red = await levels([-1.1598, -1.1598]);
     assert.deepEqual(red.map(channel => channel.zone), ['red', 'red']);
+    assert.deepEqual(red.map(channel => channel.accessibility), ['-1.2 dBFS', '-1.2 dBFS']);
     assert.equal(await page.locator('.meter-reset.is-clipped').count(), 0);
     await page.screenshot({ path: path.join(results, 'audio-meter-red.png') });
     await page.keyboard.press('k'); await page.keyboard.press('j'); await levels([-1.1598, -1.1598]); await page.keyboard.press('k'); await page.keyboard.press('l'); await levels([-1.1598, -1.1598]);
@@ -68,6 +74,7 @@ async function verify() {
     await seek(12); await page.keyboard.press('l'); const overflow = await levels([4.8608, 4.8608]);
     await page.locator('.meter-reset.is-clipped').waitFor();
     assert.deepEqual(overflow.map(channel => channel.valueNow), ['0', '0']);
+    assert.deepEqual(overflow.map(channel => channel.accessibility), ['+4.9 dBFS', '+4.9 dBFS']);
     await page.screenshot({ path: path.join(results, 'audio-meter-clip.png') });
     await page.keyboard.press('k'); await page.waitForFunction(() => document.querySelector('.meter-reading').textContent.startsWith('−∞'));
     assert.equal(await page.locator('.meter-reset.is-clipped').count(), 1);
