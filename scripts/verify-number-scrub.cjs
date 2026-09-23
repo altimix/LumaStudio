@@ -102,6 +102,37 @@ const root = path.join(__dirname, '..');
     await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'videoMask').x,.5);await page.keyboard.press('Control+Shift+z');await save();
     checks.push('crop and mask fields use the same persisted scrub gesture');
 
+    const regionFields=[['中心 X','x'],['中心 Y','y'],['幅','width'],['高さ','height']];
+    const verifyRegion=async(effect,property,fields)=>{
+      await page.locator('.inspector-section').filter({has:page.locator('summary').filter({hasText:effect})}).locator('summary').click();
+      await page.getByRole('checkbox',{name:`${effect}を適用`,exact:true}).check();
+      for(const [label,key] of [...regionFields,...fields]){
+        const input=page.getByRole('spinbutton',{name:`${effect}の${label}`,exact:true});
+        assert.match(await input.getAttribute('class'),/scrubbable-number/,`${effect} ${label} uses the shared input`);
+        const before=(await save()).clips.find(item=>item.id===clip.id)[property][key];
+        await scrub(input,20);const increased=(await save()).clips.find(item=>item.id===clip.id)[property][key];
+        assert.ok(Math.abs(increased-before-.01)<1e-9,`${effect} ${label} increases by 1%`);
+        await page.keyboard.press('Control+z');assert.ok(Math.abs((await save()).clips.find(item=>item.id===clip.id)[property][key]-before)<1e-9);
+        await page.keyboard.press('Control+Shift+z');assert.ok(Math.abs((await save()).clips.find(item=>item.id===clip.id)[property][key]-increased)<1e-9);
+        await page.keyboard.press('Control+z');await save();
+      }
+    };
+    await verifyRegion('モザイク','mosaic',[['粗さ','blockSize']]);
+    await verifyRegion('ガウスぼかし','gaussianBlur',[['強さ','sigma']]);
+    const roughness=page.getByRole('spinbutton',{name:'モザイクの粗さ',exact:true}),strength=page.getByRole('spinbutton',{name:'ガウスぼかしの強さ',exact:true});
+    const typedBefore=await save();await roughness.click();await roughness.fill('3.3');await roughness.press('Enter');
+    assert.equal((await save()).clips.find(item=>item.id===clip.id).mosaic.blockSize,.033);
+    await page.keyboard.press('Control+z');assert.deepEqual(await save(),typedBefore);
+    await roughness.click();await roughness.fill('4.2');await roughness.press('Escape');assert.deepEqual(await save(),typedBefore);
+    await roughness.focus();await roughness.press('Tab');assert.notEqual(await page.evaluate(()=>document.activeElement?.id),`region-${clip.id}-mosaic-blockSize`);
+    checks.push('mosaic numeric input keeps direct typing, Escape cancellation and Tab navigation');
+    const beforeRegions=await save(),undoLabel=await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).textContent();
+    await scrubRoundTrip(roughness,40);assert.deepEqual(await save(),beforeRegions);assert.equal(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).textContent(),undoLabel);
+    for(const [input,cancel] of [[roughness,'escape'],[strength,'pointer'],[strength,'blur']]){await scrub(input,24,cancel);assert.deepEqual(await save(),beforeRegions);}
+    await scrub(roughness,200);assert.equal((await save()).clips.find(item=>item.id===clip.id).mosaic.blockSize,.1);await page.keyboard.press('Control+z');await save();
+    await scrub(strength,-200);assert.equal((await save()).clips.find(item=>item.id===clip.id).gaussianBlur.sigma,.001);await page.keyboard.press('Control+z');await save();
+    checks.push('all ten mosaic and Gaussian fields scrub, undo and redo once, preserve round trips and cancellations, and respect strength limits');
+
     const keySection=page.locator('.inspector-section').filter({has:page.locator('.visual-keyframes-panel')});if(await keySection.getAttribute('open')===null)await keySection.locator('summary').click();
     await page.getByRole('button',{name:'再生ヘッドにキーフレームを追加',exact:true}).click();const beforeFocus=await save();
     const channels=[['上','crop.top'],['右','crop.right'],['下','crop.bottom'],['左','crop.left'],['位置 X','videoMask.x'],['位置 Y','videoMask.y'],['幅','videoMask.width'],['高さ','videoMask.height'],['境界のぼかし','videoMask.feather'],['色の許容範囲','chromaKey.tolerance'],['境界のなめらかさ','chromaKey.softness'],['緑の色かぶり除去','chromaKey.greenSpill'],['青の色かぶり除去','chromaKey.blueSpill']];
@@ -145,7 +176,8 @@ const root = path.join(__dirname, '..');
 
     await rotation.click();await rotation.press('Tab');assert.notEqual(await page.evaluate(()=>document.activeElement?.id),'prop-rotation');
     const track=project.tracks.find(item=>item.id===clip.trackId);await page.getByRole('button',{name:`${track.name} ロック`,exact:true}).click();await save();assert.equal(await rotation.isDisabled(),true);
-    checks.push('Tab navigation remains available and locked tracks disable scrubbing');
+    assert.equal(await roughness.isDisabled(),true);assert.equal(await strength.isDisabled(),true);
+    checks.push('Tab navigation remains available and locked tracks disable scrubbing, including mosaic and Gaussian fields');
     for(const kind of ['graphic','textBox']){
       const shape={shape:'rectangle',width:160,height:80,lineWidth:8,fill:true,fillColor:'#ffcc33'},box={width:160,height:80};
       const base={...video,id:'round-trip',assetId:undefined,linkId:undefined,kind:'title',name:'往復ドラッグ',text:'テキスト',fontSize:32,textStyle:'minimal',textShadow:false,fadeIn:0,fadeOut:0,audioDetached:undefined,[kind]:kind==='graphic'?shape:box};
