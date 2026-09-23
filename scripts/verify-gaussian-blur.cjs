@@ -36,6 +36,8 @@ async function verify(){
     await page.keyboard.press('Control+z');p=await saved();assert.ok(Math.abs(p.clips[0].gaussianBlur.x-.5)<1e-8);
     await page.keyboard.press('Control+Shift+z');p=await saved();assert.ok(p.clips[0].gaussianBlur.x>.53);
     const corner=page.getByRole('button',{name:'ガウスぼかし範囲の右下を変更'});await drag(corner,32,18);p=await saved();assert.ok(p.clips[0].gaussianBlur.width>.32&&p.clips[0].gaussianBlur.height>.32);
+    await drag(corner,-400,-250);p=await saved();assert.ok(p.clips[0].gaussianBlur.width>=.01&&p.clips[0].gaussianBlur.height>=.01,'corner crossing keeps validator-safe dimensions');
+    await page.keyboard.press('Control+z');p=await saved();assert.ok(p.clips[0].gaussianBlur.width>.32&&p.clips[0].gaussianBlur.height>.32);
     await page.getByLabel('プレビュー画質',{exact:true}).selectOption('1');
     await page.waitForFunction(()=>document.querySelector('.canvas-wrap canvas')?.width===640);
     await page.waitForFunction(()=>{const c=document.querySelector('.canvas-wrap canvas'),d=c.getContext('2d').getImageData(0,0,640,360).data;return Math.abs(d[(32*640+32)*4]-d[(32*640+36)*4])>100;},null,{timeout:15000});

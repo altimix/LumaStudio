@@ -167,7 +167,7 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
           region.y=Math.max(region.height/2,Math.min(1-region.height/2,originalRegion!.y+dy));
         }else{
           const opposite={x:originalRegion!.x-operation.corner.x*originalRegion!.width/2,y:originalRegion!.y-operation.corner.y*originalRegion!.height/2};
-          const axis=(fixed:number,desired:number,direction:number)=>{const moving=Math.max(0,Math.min(1,desired));const end=direction>0?Math.max(fixed+.01,moving):Math.min(fixed-.01,moving);return {center:(fixed+end)/2,size:Math.abs(end-fixed)};};
+          const axis=(fixed:number,desired:number,direction:number)=>{const moving=Math.max(0,Math.min(1,desired));const end=direction>0?Math.max(fixed+.01,moving):Math.min(fixed-.01,moving);return {center:(fixed+end)/2,size:Math.max(.01,Math.abs(end-fixed))};};
           const horizontal=axis(opposite.x,point.x,operation.corner.x),vertical=axis(opposite.y,point.y,operation.corner.y);
           region.x=horizontal.center;region.y=vertical.center;region.width=horizontal.size;region.height=vertical.size;
         }
