@@ -1,5 +1,5 @@
 const { test }=require('node:test');const assert=require('node:assert/strict');
-const fs=require('node:fs/promises');const path=require('node:path');const os=require('node:os');const {spawn}=require('node:child_process');const {EventEmitter}=require('node:events');
+const fs=require('node:fs/promises');const fsSync=require('node:fs');const path=require('node:path');const os=require('node:os');const {spawn}=require('node:child_process');const {EventEmitter}=require('node:events');
 const {ENCODERS,encodingArgs,createEncoderDetector,exportEncoders}=require('../electron/encoders.cjs');
 const {exportProject}=require('../electron/export.cjs');const {ffmpeg,run,probe,inspectMedia}=require('../electron/media.cjs');
 test('GPU detection executes a real probe, deduplicates it and falls back to CPU when none initialize',async()=>{
@@ -82,5 +82,14 @@ test('display rotation keeps requested export dimensions and centered picture on
   const pixels=await run(ffmpeg,['-v','error','-i',output,'-frames:v','1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
   const side=pixels.subarray((90*320+10)*3,(90*320+10)*3+3);assert.ok([...side].every(v=>v<8));
   const center=pixels.subarray((90*320+160)*3,(90*320+160)*3+3);assert.ok([...center].some(v=>v>40));
+  p.clips[0].gaussianBlur={x:.5,y:.5,width:.5,height:.5,sigma:.03};
+  let graph='';
+  await exportProject(p,settings,path.join(dir,`blur-${rotation}.mp4`),{spawnProcess:(binary,args,options)=>{
+    graph=fsSync.readFileSync(args[args.indexOf('-filter_complex_script')+1],'utf8');
+    return spawn(binary,args,options);
+  }});
+  // The 320x180 encoded frame displays as 180x320, then scales to 100x180.
+  // A three-percent blur therefore uses sigma 3, not 9.6 from encoded width.
+  assert.match(graph,/gblur=sigma=3\[blurred\d+\]/);
  }
 });

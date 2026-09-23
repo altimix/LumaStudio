@@ -4,7 +4,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
-const { ffmpeg, run } = require('./media.cjs');
+const { ffmpeg, run, probe } = require('./media.cjs');
 const { validateOpacityKeys, opacityExpression } = require('../shared/opacity.mjs');
 const { validateVisualKeys, visualClipAt, visualKeys, visualExpression, needsTitleFrames } = require('../shared/visual-keyframes.mjs');
 const { animatedColorFilter, animatedChromaFilter, animatedTransformFilter, usesAnimatedMask, usesAnimatedChroma, maskFrame } = require('./visual-animation.cjs');
@@ -114,7 +114,7 @@ function exportAssets(p) {
   }
   return p.assets.filter(a => ids.has(a.id));
 }
-function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPaths = {}) {
+function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPaths = {}, decodedDimensions = {}) {
   validateProject(p);
   if (settings.target === 'shorts' && p.width * 16 !== p.height * 9) throw new Error('Shortsは縦型9:16のシーケンスで書き出してください。シーケンス設定を確認してください。');
   if (settings.target === 'shorts' && (settings.width !== 1080 || settings.height !== 1920 || Math.max(0, ...p.clips.map(c => c.start + c.duration)) > 180 + 0.000001)) throw new Error('Shortsは1080×1920・3分以内にしてください。タイムラインで必要な範囲に編集してください。');
@@ -180,7 +180,8 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
       if (hasMosaic(c)) f.push(ffmpegMosaicFilter(c));
       if (hasGaussianBlur(c)) {
         filters.push(f.join(',')+`[preblur${index}]`);
-        const scaledWidth=asset?.width&&asset?.height?Math.max(2,Math.floor(Math.min(fitW/asset.width,fitH/asset.height)*asset.width/2)*2):fitW;
+        const sourceSize=decodedDimensions[c.assetId] || asset;
+        const scaledWidth=sourceSize?.width&&sourceSize?.height?Math.max(2,Math.floor(Math.min(fitW/sourceSize.width,fitH/sourceSize.height)*sourceSize.width/2)*2):fitW;
         const sigma=Math.max(.5,scaledWidth*c.gaussianBlur.sigma);
         filters.push(`[preblur${index}]split=2[blurbase${index}][blurinput${index}]`);
         filters.push(`[blurinput${index}]gblur=sigma=${number(sigma)}[blurred${index}]`);
@@ -256,6 +257,20 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
   const partial = path.join(path.dirname(output), `.luma-${randomUUID()}.mp4`);
   try {
     const sources = Object.fromEntries(p.assets.map(a => [a.id, a.path]));
+    // FFmpeg autorotates video before the scale filter. Probe the current file
+    // so blur strength follows the decoded frame even for older projects that
+    // contain only the encoded width and height.
+    const blurredIds=new Set(p.clips.filter(c=>c.kind==='video'&&!p.tracks.find(t=>t.id===c.trackId)?.hidden&&hasGaussianBlur(visualClipAt(c,0))).map(c=>c.assetId));
+    const decodedDimensions=Object.fromEntries(await Promise.all([...blurredIds].map(async id=>{
+      const asset=p.assets.find(a=>a.id===id),stream=(await probe(asset.path,{signal})).streams.find(s=>s.codec_type==='video'&&!s.disposition?.attached_pic);
+      if(!stream?.width||!stream?.height)throw new Error(`素材の映像サイズを取得できません: ${asset.name}`);
+      const angle=Number(stream.side_data_list?.find(s=>Number.isFinite(s.rotation))?.rotation??stream.tags?.rotate??0);
+      const turn=Math.abs(angle%180);
+      if(Math.abs(turn-90)<.01)return [id,{width:stream.height,height:stream.width}];
+      if(turn<.01||Math.abs(turn-180)<.01)return [id,{width:stream.width,height:stream.height}];
+      const radians=angle*Math.PI/180,cos=Math.abs(Math.cos(radians)),sin=Math.abs(Math.sin(radians));
+      return [id,{width:Math.ceil(stream.width*cos+stream.height*sin),height:Math.ceil(stream.width*sin+stream.height*cos)}];
+    })));
     // Still images use their first frame in both preview and export, including GIF/APNG/WebP.
     for (const a of exportAssets(p).filter(a => a.kind === 'image')) {
       const file = path.join(tempDir, `${randomUUID()}.png`);
@@ -290,7 +305,7 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
       masks[c.id] = file;
     }
     const encode = async () => {
-    const { args, duration } = buildExport(p, { ...settings, encoder: encoder.id }, sources, partial, audioPaths, masks);
+    const { args, duration } = buildExport(p, { ...settings, encoder: encoder.id }, sources, partial, audioPaths, masks, decodedDimensions);
     const processArgs = await writeFilterScript(args, tempDir);
     if (signal?.aborted) throw new Error('書き出しをキャンセルしました。');
     onProgress({ status: 'rendering', progress: 0, output, encoder: encoder.id, encoderLabel: encoder.label, warning });
