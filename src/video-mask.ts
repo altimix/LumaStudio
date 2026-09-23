@@ -77,11 +77,20 @@ export function maskedVideoFrame(source: CanvasImageSource, clip: Clip, width: n
       const columns=Math.max(1,Math.ceil(regionWidth/block)),rows=Math.max(1,Math.ceil(regionHeight/block));
       if(mosaicCells.width!==columns||mosaicCells.height!==rows){mosaicCells.width=columns;mosaicCells.height=rows;}
       const cells=mosaicCells.getContext('2d',{alpha:true})!;
-      cells.imageSmoothingEnabled=false;cells.clearRect(0,0,columns,rows);
-      cells.drawImage(context.canvas,left,top,regionWidth,regionHeight,0,0,columns,rows);
+      const sourcePixels=context.getImageData(left,top,regionWidth,regionHeight).data;
+      const sampled=cells.createImageData(columns,rows),targetPixels=sampled.data;
+      for(let row=0;row<rows;row++)for(let column=0;column<columns;column++){
+        const sampleX=Math.min(regionWidth-1,column*block+Math.floor(block/2));
+        const sampleY=Math.min(regionHeight-1,row*block+Math.floor(block/2));
+        const from=(sampleY*regionWidth+sampleX)*4,to=(row*columns+column)*4;
+        targetPixels[to]=sourcePixels[from];targetPixels[to+1]=sourcePixels[from+1];targetPixels[to+2]=sourcePixels[from+2];targetPixels[to+3]=sourcePixels[from+3];
+      }
+      cells.putImageData(sampled,0,0);
+      context.save();context.beginPath();context.rect(left,top,regionWidth,regionHeight);context.clip();
       context.clearRect(left,top,regionWidth,regionHeight);
       context.imageSmoothingEnabled=false;
-      context.drawImage(mosaicCells,0,0,columns,rows,left,top,regionWidth,regionHeight);
+      context.drawImage(mosaicCells,0,0,columns,rows,left,top,columns*block,rows*block);
+      context.restore();
     }
   }else if(mosaicCells){mosaicCells.width=mosaicCells.height=0;mosaicCells=undefined;}
   if(hasVideoMask(clip)){context.globalCompositeOperation = 'destination-in'; context.imageSmoothingEnabled = !!clip.videoMask?.feather; context.drawImage(mask, 0, 0, width, height);}context.restore();

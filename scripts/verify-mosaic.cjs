@@ -38,6 +38,8 @@ async function verify(){
     await page.waitForFunction(()=>document.querySelector('.canvas-wrap canvas')?.width===640);
     await page.waitForFunction(()=>{const c=document.querySelector('.canvas-wrap canvas'),d=c.getContext('2d').getImageData(0,0,640,360).data;return Math.abs(d[(32*640+32)*4]-d[(32*640+36)*4])>100;},null,{timeout:15000});
     const preview=await page.locator('.canvas-wrap canvas').evaluate(canvas=>{const bytes=canvas.getContext('2d').getImageData(0,0,640,360).data;return [[32,32],[36,32],[320,180],[324,180]].map(([x,y])=>bytes[(y*640+x)*4]);});
+    const mosaic=p.clips[0].mosaic,left=Math.ceil((mosaic.x-mosaic.width/2)*640),right=Math.ceil((mosaic.x+mosaic.width/2)*640);
+    const previewLine=await page.locator('.canvas-wrap canvas').evaluate((canvas,{left,right})=>{const bytes=canvas.getContext('2d').getImageData(left,180,right-left,1).data;return Array.from({length:right-left},(_,index)=>bytes[index*4]);},{left,right});
     assert.ok(Math.abs(preview[0]-preview[1])>100,'preview preserves detail outside the selected region');
     assert.ok(Math.abs(preview[2]-preview[3])<20,'preview pixelates only the selected region');
     await page.screenshot({path:path.join(results,'mosaic-editor.png')});
@@ -63,6 +65,8 @@ async function verify(){
     assert.ok(Math.abs(pixel(32,32)-pixel(36,32))>100,'outside region keeps source detail');
     assert.ok(Math.abs(preview[2]-pixel(320,180))<20,'preview and export agree inside the selected region');
     assert.ok(Math.abs(preview[1]-pixel(36,32))<20,'preview and export agree outside the selected region');
+    const lineDifferences=previewLine.map((value,index)=>Math.abs(value-pixel(left+index,180)));
+    assert.equal(lineDifferences.filter(value=>value>40).length,0,'preview and MP4 keep the same mosaic block boundaries across the selected width');
     assert.deepEqual(errors,[]);
     await fs.writeFile(path.join(results,'mosaic-verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,mosaic:p.clips[0].mosaic,preview,exportSamples:[pixel(32,32),pixel(36,32),pixel(320,180),pixel(324,180)],consoleErrors:errors},null,2));
     console.log('Mosaic verified in',executablePath?'packaged app':'development app');
