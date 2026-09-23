@@ -1,9 +1,10 @@
 import type { Clip } from './types';
 import { hasVideoMask, maskAlphaAt, rasterizeBezierMask } from '../shared/video-mask.mjs';
 import { hasChromaKey } from '../shared/chroma-key.mjs';
+import { hasMosaic, mosaicBounds } from '../shared/mosaic.mjs';
 import { GpuChromaPreview, paintChromaCpu } from './chroma-preview';
 
-export type MaskedFrame = { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D; mask: HTMLCanvasElement; key: string; renderKey?:string; chroma?:GpuChromaPreview; chromaFallback?:HTMLCanvasElement; chromaUnavailable?:boolean };
+export type MaskedFrame = { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D; mask: HTMLCanvasElement; key: string; renderKey?:string; chroma?:GpuChromaPreview; chromaFallback?:HTMLCanvasElement; chromaUnavailable?:boolean; mosaicCells?:HTMLCanvasElement };
 
 // The matte contains only normalized alpha information, so it does not need to
 // match a 4K/8K source pixel-for-pixel. Keeping the longer edge bounded avoids
@@ -48,8 +49,8 @@ export function paintVideoMask(canvas: HTMLCanvasElement, clip: Clip, width: num
 }
 
 export function maskedVideoFrame(source: CanvasImageSource, clip: Clip, width: number, height: number, cached?: MaskedFrame, sourceKey?: string): MaskedFrame | undefined {
-  if (!hasVideoMask(clip) && !hasChromaKey(clip)) return undefined;
-  const key = videoMaskKey(clip, width, height), renderKey = sourceKey === undefined ? undefined : JSON.stringify([sourceKey, key, clip.chromaKey || null]);
+  if (!hasVideoMask(clip) && !hasChromaKey(clip) && !hasMosaic(clip)) return undefined;
+  const key = videoMaskKey(clip, width, height), renderKey = sourceKey === undefined ? undefined : JSON.stringify([sourceKey, key, clip.chromaKey || null, clip.mosaic || null]);
   // requestAnimationFrame continues while paused. Reuse the completed matte
   // until the decoded source frame or an effect setting actually changes.
   if (renderKey !== undefined && cached?.renderKey === renderKey && !cached.chroma?.lost) return cached;
@@ -67,12 +68,29 @@ export function maskedVideoFrame(source: CanvasImageSource, clip: Clip, width: n
   }else{chroma?.dispose();chroma=undefined;chromaUnavailable=false;if(chromaFallback){chromaFallback.width=chromaFallback.height=0;chromaFallback=undefined;}}
   context.save(); context.globalCompositeOperation = 'copy'; context.globalAlpha = 1; context.filter = 'none';
   context.drawImage(processed, 0, 0, width, height);
+  context.globalCompositeOperation = 'source-over';
+  let mosaicCells=cached?.mosaicCells;
+  if(clip.mosaic){
+    const {left,top,right,bottom,block}=mosaicBounds(clip.mosaic,width,height),regionWidth=right-left,regionHeight=bottom-top;
+    if(regionWidth>0&&regionHeight>0){
+      mosaicCells ||= document.createElement('canvas');
+      const columns=Math.max(1,Math.ceil(regionWidth/block)),rows=Math.max(1,Math.ceil(regionHeight/block));
+      if(mosaicCells.width!==columns||mosaicCells.height!==rows){mosaicCells.width=columns;mosaicCells.height=rows;}
+      const cells=mosaicCells.getContext('2d',{alpha:true})!;
+      cells.imageSmoothingEnabled=false;cells.clearRect(0,0,columns,rows);
+      cells.drawImage(context.canvas,left,top,regionWidth,regionHeight,0,0,columns,rows);
+      context.clearRect(left,top,regionWidth,regionHeight);
+      context.imageSmoothingEnabled=false;
+      context.drawImage(mosaicCells,0,0,columns,rows,left,top,regionWidth,regionHeight);
+    }
+  }else if(mosaicCells){mosaicCells.width=mosaicCells.height=0;mosaicCells=undefined;}
   if(hasVideoMask(clip)){context.globalCompositeOperation = 'destination-in'; context.imageSmoothingEnabled = !!clip.videoMask?.feather; context.drawImage(mask, 0, 0, width, height);}context.restore();
-  return { canvas, context, mask, key, renderKey, chroma, chromaFallback, chromaUnavailable };
+  return { canvas, context, mask, key, renderKey, chroma, chromaFallback, chromaUnavailable, mosaicCells };
 }
 
 export function disposeMaskedFrame(frame: MaskedFrame) {
   frame.chroma?.dispose();if(frame.chromaFallback)frame.chromaFallback.width=frame.chromaFallback.height=0;frame.canvas.width = frame.canvas.height = frame.mask.width = frame.mask.height = 0;
+  if(frame.mosaicCells)frame.mosaicCells.width=frame.mosaicCells.height=0;
 }
 
 export function evictInactiveMaskedFrames(frames: Map<string, MaskedFrame>, active: ReadonlySet<string>) {

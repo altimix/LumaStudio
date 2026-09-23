@@ -1,10 +1,10 @@
 import AudioVolumeAutomation from './AudioVolumeAutomation';
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PanelRightClose, SlidersHorizontal, RotateCcw, ChevronDown, Move, Scan, Palette, Pipette, Volume2, Film, Type, Info, Lock } from 'lucide-react';
 import { useEditor } from '../store';
 import { timecode } from '../model';
 import { navigatePanelTabs } from './UI';
-import type { BezierVideoMask, ChromaKey, Clip, VideoMask } from '../types';
+import type { BezierVideoMask, ChromaKey, Clip, Mosaic, VideoMask } from '../types';
 import VisualKeyframes from './VisualKeyframes';
 import { visualClipAt, hasVisualKeys } from '../../shared/visual-keyframes.mjs';
 import { localVisualTime } from '../visual-editing';
@@ -15,11 +15,38 @@ import GraphicEffects from './GraphicEffects';
 import { MAX_MEDIA_SECONDS } from '../../shared/time.mjs';
 import { clampCropEdge, DEFAULT_BEZIER_MASK, DEFAULT_VIDEO_MASK, EMPTY_CROP, MAX_BEZIER_MASK_POINTS } from '../../shared/video-mask.mjs';
 import { DEFAULT_CHROMA_KEY } from '../../shared/chroma-key.mjs';
+import { DEFAULT_MOSAIC } from '../../shared/mosaic.mjs';
 import ColorField from './ColorField';
 import './mask-effects.css';
 import './chroma-key.css';
+import './mosaic-effects.css';
 
 import { NumericField, EffectField } from './ClipPropertyFields';
+function MosaicNumber({label,value,min,max,change}:{label:string;value:number;min:number;max:number;change:(value:number)=>void}){
+  const [draft,setDraft]=useState(String(Number((value*100).toFixed(2))));
+  const focused=useRef(false),cancelled=useRef(false);
+  useEffect(()=>{if(!focused.current)setDraft(String(Number((value*100).toFixed(2))));},[value]);
+  const reset=()=>setDraft(String(Number((value*100).toFixed(2))));
+  const commit=()=>{focused.current=false;if(cancelled.current){cancelled.current=false;reset();return;}const parsed=Number(draft);if(draft.trim()&&Number.isFinite(parsed))change(Math.min(max,Math.max(min,parsed))/100);else reset();};
+  return <label className="mosaic-number">{label}<span><input aria-label={`モザイクの${label}`} type="number" min={Number(min.toFixed(2))} max={Number(max.toFixed(2))} step="0.1" value={draft} onFocus={()=>{focused.current=true;cancelled.current=false;useEditor.getState().stop();}} onChange={event=>setDraft(event.target.value)} onBlur={commit} onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur();if(event.key==='Escape'){event.preventDefault();cancelled.current=true;event.currentTarget.blur();}}}/>%</span></label>;
+}
+function MosaicEffects({clip}:{clip:Clip}){
+  const mosaic=clip.mosaic,mode=useEditor(s=>s.mediaEditMode);
+  const update=(patch:Partial<Mosaic>)=>{const state=useEditor.getState(),current=state.project.clips.find(item=>item.id===clip.id)?.mosaic;if(current)state.updateClip(clip.id,{mosaic:{...current,...patch}});};
+  const disable=()=>{const state=useEditor.getState();state.updateClip(clip.id,{mosaic:undefined});if(state.mediaEditMode==='mosaic')state.setMediaEditMode('transform');};
+  return <Section title="モザイク" icon={Scan} open={!!mosaic||mode==='mosaic'} onReset={mosaic?disable:undefined}>
+    <label className="mask-checkbox"><input type="checkbox" checked={!!mosaic} onChange={event=>{const state=useEditor.getState();if(event.target.checked){state.updateClip(clip.id,{mosaic:{...DEFAULT_MOSAIC}});state.setMediaEditMode('mosaic');}else disable();}}/>モザイクを適用</label>
+    {mosaic?<><div className="mask-edit-buttons"><button className={'secondary-button '+(mode==='mosaic'?'active':'')} aria-pressed={mode==='mosaic'} onClick={()=>useEditor.getState().setMediaEditMode(mode==='mosaic'?'transform':'mosaic')}>モニターで範囲を編集</button></div>
+      <p className="field-help">モニターでドラッグして移動、四隅で範囲を変更できます。範囲は素材と一緒に移動・回転します。</p>
+      <MosaicNumber label="中心 X" value={mosaic.x} min={mosaic.width*50} max={100-mosaic.width*50} change={x=>update({x})}/>
+      <MosaicNumber label="中心 Y" value={mosaic.y} min={mosaic.height*50} max={100-mosaic.height*50} change={y=>update({y})}/>
+      <MosaicNumber label="幅" value={mosaic.width} min={1} max={Math.min(mosaic.x,1-mosaic.x)*200} change={width=>update({width})}/>
+      <MosaicNumber label="高さ" value={mosaic.height} min={1} max={Math.min(mosaic.y,1-mosaic.y)*200} change={height=>update({height})}/>
+      <MosaicNumber label="粗さ" value={mosaic.blockSize} min={.5} max={10} change={blockSize=>update({blockSize})}/>
+      <p className="field-help">粗さは素材幅に対する1ブロックの大きさです。</p>
+    </>:null}
+  </Section>;
+}
 function CropMaskEffects({clip}:{clip:Clip}){
   const mode=useEditor(s=>s.mediaEditMode),crop=clip.crop||EMPTY_CROP,mask=clip.videoMask;
   const cropPatch=(key:keyof typeof EMPTY_CROP)=>(current:Clip,value:number)=>({crop:{...(current.crop||EMPTY_CROP),[key]:clampCropEdge(current.crop||EMPTY_CROP,key,value/100)}});
@@ -135,7 +162,7 @@ export default function Inspector({ onCollapse, onShowEffects }: { onCollapse: (
           <TextEffects key={clip.id} clip={clip}/>
         </Section> : null}
         {clip.kind !== 'audio' ? <Section title="トランスフォーム" icon={Move} onReset={() => patch({ x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 })}><div className="position-fields"><NumericField clip={clip} property="x" label="位置 X" min={-p.width * 1.5} max={p.width * 2.5} factor={p.width / 100} offset={p.width / 2} step={1} suffix="px" slider={false}/><NumericField clip={clip} property="y" label="位置 Y" min={-p.height * 1.5} max={p.height * 2.5} factor={p.height / 100} offset={p.height / 2} step={1} suffix="px" slider={false}/></div><p className="field-help">画面左上を基準にした素材の中心座標です。</p><NumericField clip={clip} property="scale" label="スケール" min={10} max={300} factor={100} suffix="%"/><NumericField clip={clip} property="rotation" label="回転" min={-180} max={180} suffix="°"/><NumericField clip={clip} property="opacity" label="不透明度" min={0} max={100} factor={100} suffix="%"/></Section> : null}
-        {(clip.kind === 'video' || clip.kind === 'image') ? <CropMaskEffects clip={clip}/> : null}
+        {(clip.kind === 'video' || clip.kind === 'image') ? <><CropMaskEffects clip={clip}/><MosaicEffects clip={clip}/></> : null}
         <Section title="フェード" icon={Scan}><NumericField clip={clip} property="fadeIn" label="フェードイン" min={0} max={Math.min(10, clip.duration)} step={0.1} suffix="秒"/><NumericField clip={clip} property="fadeOut" label="フェードアウト" min={0} max={Math.min(10, clip.duration)} step={0.1} suffix="秒"/><p className="field-help">{clip.audioDetached ? '映像に反映されます。音声のフェードは音声クリップで調整します。' : '映像と音声に反映されます。'}</p></Section>
       </> : null}
       {tab === 'color' ? clip.kind === 'audio' || clip.kind === 'title' ? <div className="inspector-empty-small"><Palette size={24}/><p>色調整する映像・画像クリップを選択してください。</p></div> : <><Section title="基本補正" icon={Palette} onReset={() => patch({ exposure: 0, contrast: 1, saturation: 1 })}><NumericField clip={clip} property="exposure" label="露出" min={-2} max={2} step={0.01} suffix="EV"/><NumericField clip={clip} property="contrast" label="コントラスト" min={0} max={200} factor={100} suffix="%"/><NumericField clip={clip} property="saturation" label="彩度" min={0} max={200} factor={100} suffix="%"/></Section><ChromaKeyEffects clip={clip}/><div className="color-advice"><span className="eyebrow">COLOR YOUR STORY</span><p>色は、物語の温度。</p><small>左のエフェクトパネルから6種類のルックを適用できます。</small><button className="secondary-button" onClick={onShowEffects}>ルックを選ぶ</button></div></> : null}
