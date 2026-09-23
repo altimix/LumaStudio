@@ -4,7 +4,7 @@ import { PanelRightClose, SlidersHorizontal, RotateCcw, ChevronDown, Move, Scan,
 import { useEditor } from '../store';
 import { timecode } from '../model';
 import { navigatePanelTabs } from './UI';
-import type { BezierVideoMask, ChromaKey, Clip, GaussianBlur, Mosaic, VideoMask } from '../types';
+import type { BezierVideoMask, ChromaKey, Clip, VideoMask } from '../types';
 import VisualKeyframes from './VisualKeyframes';
 import { visualClipAt, hasVisualKeys } from '../../shared/visual-keyframes.mjs';
 import { localVisualTime } from '../visual-editing';
@@ -22,45 +22,77 @@ import './mask-effects.css';
 import './chroma-key.css';
 import './mosaic-effects.css';
 
-import { NumericField, EffectField } from './ClipPropertyFields';
-function RegionNumber({effect,label,value,min,max,change}:{effect:string;label:string;value:number;min:number;max:number;change:(value:number)=>void}){
-  const [draft,setDraft]=useState(String(Number((value*100).toFixed(2))));
-  const focused=useRef(false),cancelled=useRef(false);
-  useEffect(()=>{if(!focused.current)setDraft(String(Number((value*100).toFixed(2))));},[value]);
-  const reset=()=>setDraft(String(Number((value*100).toFixed(2))));
-  const commit=()=>{focused.current=false;if(cancelled.current){cancelled.current=false;reset();return;}const parsed=Number(draft);if(draft.trim()&&Number.isFinite(parsed))change(Math.min(max,Math.max(min,parsed))/100);else reset();};
-  return <label className="mosaic-number">{label}<span><input aria-label={`${effect}の${label}`} type="number" min={Number(min.toFixed(2))} max={Number(max.toFixed(2))} step="0.1" value={draft} onFocus={()=>{focused.current=true;cancelled.current=false;useEditor.getState().stop();}} onChange={event=>setDraft(event.target.value)} onBlur={commit} onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur();if(event.key==='Escape'){event.preventDefault();cancelled.current=true;event.currentTarget.blur();}}}/>%</span></label>;
+import { NumericField, EffectField, restoreGesture } from './ClipPropertyFields';
+import ScrubbableNumberInput from './ScrubbableNumberInput';
+type RegionField='mosaic'|'gaussianBlur';
+type RegionProperty='x'|'y'|'width'|'height'|'blockSize'|'sigma';
+type RegionGesture={state:ReturnType<typeof useEditor.getState>;clip:Clip;value:number;owner:object};
+function regionValue(clip:Clip,field:RegionField,property:RegionProperty){
+  const region=clip[field];
+  return region&&property in region?region[property as keyof typeof region] as number:undefined;
+}
+function RegionNumber({clip,effect,field,property,label,value,min,max}:{clip:Clip;effect:string;field:RegionField;property:RegionProperty;label:string;value:number;min:number;max:number}){
+  const dragStart=useRef<RegionGesture|null>(null),changed=useRef(false),clipId=clip.id;
+  const finish=(cancel=false)=>{
+    const start=dragStart.current;if(!start)return;dragStart.current=null;
+    const state=useEditor.getState();if(state.gestureOwner!==start.owner)return;
+    const now=state.project.clips.find(item=>item.id===clipId);
+    if(changed.current&&(cancel||!now||JSON.stringify(now)===JSON.stringify(start.clip)))restoreGesture(start.state);
+    state.endGesture(start.owner);changed.current=false;
+  };
+  useEffect(()=>()=>finish(true),[clipId,field,property]);
+  const begin=()=>{
+    const state=useEditor.getState(),current=state.project.clips.find(item=>item.id===clipId),currentValue=current&&regionValue(current,field,property);
+    if(!current||currentValue===undefined||state.project.tracks.find(track=>track.id===current.trackId)?.locked||state.gestureActive)return false;
+    state.stop();const owner={};dragStart.current={state,clip:current,value:Number((currentValue*100).toFixed(2)),owner};
+    if(!state.beginGesture(owner,()=>finish(true))){dragStart.current=null;return false;}changed.current=false;return true;
+  };
+  const apply=(input:number)=>{
+    if(!Number.isFinite(input))return;
+    const state=useEditor.getState(),current=state.project.clips.find(item=>item.id===clipId),currentValue=current&&regionValue(current,field,property),start=dragStart.current;
+    if(!current||currentValue===undefined||state.project.tracks.find(track=>track.id===current.trackId)?.locked||state.gestureActive&&state.gestureOwner!==start?.owner)return;
+    const next=Math.min(max,Math.max(min,input));
+    if(start){
+      const baseline=start.state.project,region=start.clip[field]!;
+      const candidate=next===start.value?start.clip:{...start.clip,[field]:{...region,[property]:next/100}};
+      if(JSON.stringify(candidate)===JSON.stringify(current))return;
+      if(!changed.current){state.checkpoint(`${effect}の${label}を変更`);changed.current=true;}
+      const now=useEditor.getState();now.transient({...baseline,clips:baseline.clips.map(item=>item.id===clipId?candidate:item)},baseline);
+    }else if(Math.abs(currentValue-next/100)>1e-12){
+      state.updateClip(clipId,{[field]:{...current[field]!,[property]:next/100}});
+    }
+  };
+  const display=Number((value*100).toFixed(2));
+  return <label className="mosaic-number" onFocusCapture={()=>useEditor.getState().stop()}>{label}<span><ScrubbableNumberInput id={`region-${clipId}-${field}-${property}`} aria-label={`${effect}の${label}`} value={display} min={Number(min.toFixed(2))} max={Number(max.toFixed(2))} step={.1} onCommit={apply} onScrubStart={begin} onScrubChange={apply} onScrubEnd={()=>{finish();const current=useEditor.getState().project.clips.find(item=>item.id===clipId),accepted=current&&regionValue(current,field,property);return accepted===undefined?display:Number((accepted*100).toFixed(2));}} onScrubCancel={()=>finish(true)}/>%</span></label>;
 }
 function MosaicEffects({clip}:{clip:Clip}){
   const mosaic=clip.mosaic,mode=useEditor(s=>s.mediaEditMode);
-  const update=(patch:Partial<Mosaic>)=>{const state=useEditor.getState(),current=state.project.clips.find(item=>item.id===clip.id)?.mosaic;if(current)state.updateClip(clip.id,{mosaic:{...current,...patch}});};
   const disable=()=>{const state=useEditor.getState();state.updateClip(clip.id,{mosaic:undefined});if(state.mediaEditMode==='mosaic')state.setMediaEditMode('transform');};
   return <Section title="モザイク" icon={Scan} open={!!mosaic||mode==='mosaic'} onReset={mosaic?disable:undefined}>
     <label className="mask-checkbox"><input type="checkbox" checked={!!mosaic} onChange={event=>{const state=useEditor.getState();if(event.target.checked){state.updateClip(clip.id,{mosaic:{...DEFAULT_MOSAIC}});state.setMediaEditMode('mosaic');}else disable();}}/>モザイクを適用</label>
     {mosaic?<><div className="mask-edit-buttons"><button className={'secondary-button '+(mode==='mosaic'?'active':'')} aria-pressed={mode==='mosaic'} onClick={()=>useEditor.getState().setMediaEditMode(mode==='mosaic'?'transform':'mosaic')}>モニターで範囲を編集</button></div>
       <p className="field-help">モニターでドラッグして移動、四隅で範囲を変更できます。範囲は素材と一緒に移動・回転します。</p>
-      <RegionNumber effect="モザイク" label="中心 X" value={mosaic.x} min={mosaic.width*50} max={100-mosaic.width*50} change={x=>update({x})}/>
-      <RegionNumber effect="モザイク" label="中心 Y" value={mosaic.y} min={mosaic.height*50} max={100-mosaic.height*50} change={y=>update({y})}/>
-      <RegionNumber effect="モザイク" label="幅" value={mosaic.width} min={1} max={Math.min(mosaic.x,1-mosaic.x)*200} change={width=>update({width})}/>
-      <RegionNumber effect="モザイク" label="高さ" value={mosaic.height} min={1} max={Math.min(mosaic.y,1-mosaic.y)*200} change={height=>update({height})}/>
-      <RegionNumber effect="モザイク" label="粗さ" value={mosaic.blockSize} min={.5} max={10} change={blockSize=>update({blockSize})}/>
+      <RegionNumber clip={clip} effect="モザイク" field="mosaic" property="x" label="中心 X" value={mosaic.x} min={mosaic.width*50} max={100-mosaic.width*50}/>
+      <RegionNumber clip={clip} effect="モザイク" field="mosaic" property="y" label="中心 Y" value={mosaic.y} min={mosaic.height*50} max={100-mosaic.height*50}/>
+      <RegionNumber clip={clip} effect="モザイク" field="mosaic" property="width" label="幅" value={mosaic.width} min={1} max={Math.min(mosaic.x,1-mosaic.x)*200}/>
+      <RegionNumber clip={clip} effect="モザイク" field="mosaic" property="height" label="高さ" value={mosaic.height} min={1} max={Math.min(mosaic.y,1-mosaic.y)*200}/>
+      <RegionNumber clip={clip} effect="モザイク" field="mosaic" property="blockSize" label="粗さ" value={mosaic.blockSize} min={.5} max={10}/>
       <p className="field-help">粗さは素材幅に対する1ブロックの大きさです。</p>
     </>:null}
   </Section>;
 }
 function GaussianBlurEffects({clip}:{clip:Clip}){
   const blur=clip.gaussianBlur,mode=useEditor(s=>s.mediaEditMode);
-  const update=(patch:Partial<GaussianBlur>)=>{const state=useEditor.getState(),current=state.project.clips.find(item=>item.id===clip.id)?.gaussianBlur;if(current)state.updateClip(clip.id,{gaussianBlur:{...current,...patch}});};
   const disable=()=>{const state=useEditor.getState();state.updateClip(clip.id,{gaussianBlur:undefined});if(state.mediaEditMode==='gaussianBlur')state.setMediaEditMode('transform');};
   return <Section title="ガウスぼかし" icon={Scan} open={!!blur||mode==='gaussianBlur'} onReset={blur?disable:undefined}>
     <label className="mask-checkbox"><input type="checkbox" checked={!!blur} onChange={event=>{const state=useEditor.getState();if(event.target.checked){state.updateClip(clip.id,{gaussianBlur:{...DEFAULT_GAUSSIAN_BLUR}});state.setMediaEditMode('gaussianBlur');}else disable();}}/>ガウスぼかしを適用</label>
     {blur?<><div className="mask-edit-buttons"><button className={'secondary-button '+(mode==='gaussianBlur'?'active':'')} aria-pressed={mode==='gaussianBlur'} onClick={()=>useEditor.getState().setMediaEditMode(mode==='gaussianBlur'?'transform':'gaussianBlur')}>モニターで範囲を編集</button></div>
       <p className="field-help">モニターでドラッグして移動、四隅で範囲を変更できます。範囲は素材と一緒に移動・回転します。</p>
-      <RegionNumber effect="ガウスぼかし" label="中心 X" value={blur.x} min={blur.width*50} max={100-blur.width*50} change={x=>update({x})}/>
-      <RegionNumber effect="ガウスぼかし" label="中心 Y" value={blur.y} min={blur.height*50} max={100-blur.height*50} change={y=>update({y})}/>
-      <RegionNumber effect="ガウスぼかし" label="幅" value={blur.width} min={1} max={Math.min(blur.x,1-blur.x)*200} change={width=>update({width})}/>
-      <RegionNumber effect="ガウスぼかし" label="高さ" value={blur.height} min={1} max={Math.min(blur.y,1-blur.y)*200} change={height=>update({height})}/>
-      <RegionNumber effect="ガウスぼかし" label="強さ" value={blur.sigma} min={.1} max={3} change={sigma=>update({sigma})}/>
+      <RegionNumber clip={clip} effect="ガウスぼかし" field="gaussianBlur" property="x" label="中心 X" value={blur.x} min={blur.width*50} max={100-blur.width*50}/>
+      <RegionNumber clip={clip} effect="ガウスぼかし" field="gaussianBlur" property="y" label="中心 Y" value={blur.y} min={blur.height*50} max={100-blur.height*50}/>
+      <RegionNumber clip={clip} effect="ガウスぼかし" field="gaussianBlur" property="width" label="幅" value={blur.width} min={1} max={Math.min(blur.x,1-blur.x)*200}/>
+      <RegionNumber clip={clip} effect="ガウスぼかし" field="gaussianBlur" property="height" label="高さ" value={blur.height} min={1} max={Math.min(blur.y,1-blur.y)*200}/>
+      <RegionNumber clip={clip} effect="ガウスぼかし" field="gaussianBlur" property="sigma" label="強さ" value={blur.sigma} min={.1} max={3}/>
       <p className="field-help">強さは素材幅に対するガウス分布の標準偏差です。</p>
     </>:null}
   </Section>;

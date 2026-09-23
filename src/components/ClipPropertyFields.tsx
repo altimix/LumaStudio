@@ -15,7 +15,7 @@ type EditorState = ReturnType<typeof useEditor.getState>;
 function useLineActive(clip: Clip, path: string) {
   return useEditor(state => hasVisualKeys(clip) && resolveVisualChannel(visualChannels(clip, state.project), state.visualChannel).path === path);
 }
-function restoreGesture(before: EditorState) {
+export function restoreGesture(before: EditorState) {
   useEditor.setState({ project:before.project, history:before.history, future:before.future, historyPlayheads:before.historyPlayheads, futurePlayheads:before.futurePlayheads, historyLabels:before.historyLabels, futureLabels:before.futureLabels, currentAction:before.currentAction, dirty:before.dirty, activeVolumePoint:before.activeVolumePoint, zoom:before.zoom });
 }
 
