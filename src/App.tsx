@@ -290,7 +290,7 @@ export default function App() {
       try {
         if (kind === 'image') { const image = new Image(); image.src = url; await image.decode(); assets.push({ id: uid(), name: file.name, path: file.name, url, thumbnail: url, kind, duration: 5, width: image.width, height: image.height, fps: 0, hasAudio: false, waveform: [], size: file.size, codec: file.type }); }
         else { const element = document.createElement(kind); element.preload = 'metadata'; element.src = url; await new Promise<void>((resolve,reject) => { element.onloadedmetadata = () => resolve(); element.onerror = reject; }); if (!Number.isFinite(element.duration)) throw new Error('長さを取得できません'); assets.push({ id: uid(), name: file.name, path: file.name, url, thumbnail: '', kind, duration: element.duration, width: element instanceof HTMLVideoElement ? element.videoWidth : 0, height: element instanceof HTMLVideoElement ? element.videoHeight : 0, fps: 30, hasAudio: true, waveform: [], size: file.size, codec: file.type }); }
-      } catch { URL.revokeObjectURL(url); useEditor.getState().notify(`${file.name} を再生できません。デスクトップアプリで読み込んでください。`); }
+      } catch { URL.revokeObjectURL(url); useEditor.getState().notify('素材を再生できません。デスクトップアプリで読み込んでください。'); }
     }
     useEditor.getState().importAssets(assets);
   };
