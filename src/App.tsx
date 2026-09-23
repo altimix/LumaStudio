@@ -33,7 +33,6 @@ import YouTubeStudio from './components/YouTubeStudio';
 import { shortcutCommand, type EditorCommand } from './shortcuts';
 import { IconButton, Modal } from './components/UI';
 import { version } from '../package.json';
-
 const isDesktop = !!window.luma;
 function errorText(e: unknown) { const message = e instanceof Error ? e.message : String(e); return message.replace(/^Error invoking remote method '[^']+': Error: /, ''); }
 function downloadJSON(p: Project) {
@@ -289,7 +288,7 @@ export default function App() {
       const url = URL.createObjectURL(file); const kind = file.type.startsWith('image/') ? 'image' : file.type.startsWith('audio/') ? 'audio' : 'video';
       try {
         if (kind === 'image') { const image = new Image(); image.src = url; await image.decode(); assets.push({ id: uid(), name: file.name, path: file.name, url, thumbnail: url, kind, duration: 5, width: image.width, height: image.height, fps: 0, hasAudio: false, waveform: [], size: file.size, codec: file.type }); }
-        else { const element = (kind === 'audio' ? document.createElement('audio') : document.createElement('video')); element.preload = 'metadata'; element.src = url; await new Promise<void>((resolve,reject) => { element.onloadedmetadata = () => resolve(); element.onerror = reject; }); if (!Number.isFinite(element.duration)) throw new Error('長さを取得できません'); assets.push({ id: uid(), name: file.name, path: file.name, url, thumbnail: '', kind, duration: element.duration, width: element instanceof HTMLVideoElement ? element.videoWidth : 0, height: element instanceof HTMLVideoElement ? element.videoHeight : 0, fps: 30, hasAudio: true, waveform: [], size: file.size, codec: file.type }); }
+        else { const element = document.createElement(kind); element.preload = 'metadata'; element.src = url; await new Promise<void>((resolve,reject) => { element.onloadedmetadata = () => resolve(); element.onerror = reject; }); if (!Number.isFinite(element.duration)) throw new Error('長さを取得できません'); assets.push({ id: uid(), name: file.name, path: file.name, url, thumbnail: '', kind, duration: element.duration, width: element instanceof HTMLVideoElement ? element.videoWidth : 0, height: element instanceof HTMLVideoElement ? element.videoHeight : 0, fps: 30, hasAudio: true, waveform: [], size: file.size, codec: file.type }); }
       } catch { URL.revokeObjectURL(url); useEditor.getState().notify(`${file.name} を再生できません。デスクトップアプリで読み込んでください。`); }
     }
     useEditor.getState().importAssets(assets);
