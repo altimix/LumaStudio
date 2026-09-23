@@ -5,6 +5,10 @@ altimixが開発する、Windows・macOS向けの日本語動画編集ソフト�
 
 [公式サイト](https://lumastudio.altimix.jp/) · [ダウンロード](https://github.com/altimix/LumaStudio/releases/latest) · [操作ガイド](README.html) · [開発手順](docs/DEVELOPMENT.md) · [開発に参加](CONTRIBUTING.md)
 
+## 開発中
+
+- 動画・画像クリップの「ビデオ → モザイク」で範囲の中心・幅・高さ・粗さを指定できます。モニター上では範囲を移動し、四隅で大きさを変更できます。写真保存とMP4書き出しにも反映されます。
+
 ## 1.9.0
 
 - サムネイル生成をGPT Image 2.5（Sunburst）へ更新。人物・商品などの参考画像を任意で1枚選べます。画像なしでの生成、差し替え・解除、Undo / Redo、保存・持ち運びにも対応します。

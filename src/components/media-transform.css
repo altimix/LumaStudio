@@ -8,8 +8,10 @@
 .media-resize-handle{position:absolute;width:11px;height:11px;border:1px solid #182014;border-radius:2px;background:#d3f6af;padding:0;transform:translate(-50%,-50%);pointer-events:auto;touch-action:none}
 .media-effect-box{position:absolute;border:1px solid #f1dc86;background:#efd25b12;padding:0;pointer-events:auto;touch-action:none;cursor:move;box-shadow:0 0 0 1px #171a17aa}
 .media-effect-box.crop{pointer-events:none;border-style:dashed;background:transparent}
+.media-effect-box.mosaic{border-color:#8bdcf0;background:#58c4df22;box-shadow:0 0 0 1px #132b31aa}
 .media-effect-handle{position:absolute;width:12px;height:12px;border:1px solid #463c16;border-radius:50%;background:#ffe38a;padding:0;transform:translate(-50%,-50%);pointer-events:auto;touch-action:none}
 .media-effect-handle.edge{border-radius:2px}
+.media-effect-handle.mosaic{background:#8bdcf0;border-color:#1b4854}
 .media-effect-box:focus-visible,.media-effect-handle:focus-visible{outline:2px solid white;outline-offset:2px}
 .bezier-add-target{position:absolute;border:1px dashed #f1dc8690;background:#efd25b08;padding:0;pointer-events:auto;touch-action:none;cursor:crosshair}
 .bezier-mask-path{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
