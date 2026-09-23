@@ -11,6 +11,7 @@ export interface BezierMaskPoint { x: number; y: number; inX: number; inY: numbe
 export interface BezierVideoMask { type: 'bezier'; points: BezierMaskPoint[]; closed: boolean; feather: number; inverted: boolean }
 export type VideoMask = BasicVideoMask | BezierVideoMask;
 export interface ChromaKey { color: string; tolerance: number; softness: number; greenSpill: number; blueSpill: number; matte: boolean }
+export interface Mosaic { x: number; y: number; width: number; height: number; blockSize: number }
 export interface Graphic { shape: 'arrow' | 'rectangle' | 'ellipse'; width:number; height:number; lineWidth:number; fill:boolean; fillColor:string; flipX?:boolean; flipY?:boolean }
 export interface Asset {
   id: string; name: string; path: string; url: string; thumbnail: string; kind: MediaKind;
@@ -36,6 +37,7 @@ export interface Clip {
   crop?: Crop;
   videoMask?: VideoMask;
   chromaKey?: ChromaKey;
+  mosaic?: Mosaic;
   subtitle?: boolean;
   graphic?: Graphic;
 }
