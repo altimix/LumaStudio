@@ -5,6 +5,10 @@ altimixが開発する、Windows・macOS向けの日本語動画編集ソフト�
 
 [公式サイト](https://lumastudio.altimix.jp/) · [ダウンロード](https://github.com/altimix/LumaStudio/releases/latest) · [操作ガイド](README.html) · [開発手順](docs/DEVELOPMENT.md) · [開発に参加](CONTRIBUTING.md)
 
+## 1.10.1
+
+- モザイクとガウスぼかしの中心 X・Y、幅・高さ、粗さ／強さを、他の数値欄と同じく左右ドラッグで調整できます。直接入力、範囲制限、Undo / Redoにも対応します。
+
 ## 1.10.0
 
 - 動画・画像クリップの「ビデオ → モザイク」で範囲の中心・幅・高さ・粗さを指定できます。境界をぼかさない四角い粒で画素化し、モニターでの範囲編集、写真保存、MP4書き出しにも反映されます。
