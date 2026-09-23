@@ -93,3 +93,24 @@ test('display rotation keeps requested export dimensions and centered picture on
   assert.match(graph,/gblur=sigma=3\[blurred\d+\]/);
  }
 });
+
+test('EXIF-rotated stills use the decoded width for Gaussian strength',async t=>{
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-exif-blur-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+  const plain=path.join(dir,'plain.jpg'),oriented=path.join(dir,'oriented.jpg');
+  await run(ffmpeg,['-v','error','-f','lavfi','-i','testsrc2=s=320x180:d=1','-frames:v','1','-y',plain]);
+  const bytes=await fs.readFile(plain),tiff=Buffer.alloc(26);
+  tiff.write('II',0);tiff.writeUInt16LE(42,2);tiff.writeUInt32LE(8,4);tiff.writeUInt16LE(1,8);
+  tiff.writeUInt16LE(0x112,10);tiff.writeUInt16LE(3,12);tiff.writeUInt32LE(1,14);tiff.writeUInt16LE(6,18);
+  const payload=Buffer.concat([Buffer.from('Exif\0\0'),tiff]),segment=Buffer.alloc(4);
+  segment[0]=0xff;segment[1]=0xe1;segment.writeUInt16BE(payload.length+2,2);
+  await fs.writeFile(oriented,Buffer.concat([bytes.subarray(0,2),segment,payload,bytes.subarray(2)]));
+  const asset=await inspectMedia(oriented,path.join(dir,'cache'));
+  assert.equal(asset.width,320);assert.equal(asset.height,180);
+  const p=project(asset);p.clips[0].kind='image';p.clips[0].volume=0;p.clips[0].gaussianBlur={x:.5,y:.5,width:.5,height:.5,sigma:.03};
+  let graph='';
+  await exportProject(p,{width:320,height:180,fps:30,quality:'high',encoder:'cpu'},path.join(dir,'out.mp4'),{spawnProcess:(binary,args,options)=>{
+    graph=fsSync.readFileSync(args[args.indexOf('-filter_complex_script')+1],'utf8');
+    return spawn(binary,args,options);
+  }});
+  assert.match(graph,/gblur=sigma=3\[blurred\d+\]/);
+});

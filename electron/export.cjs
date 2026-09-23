@@ -257,25 +257,28 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
   const partial = path.join(path.dirname(output), `.luma-${randomUUID()}.mp4`);
   try {
     const sources = Object.fromEntries(p.assets.map(a => [a.id, a.path]));
-    // FFmpeg autorotates video before the scale filter. Probe the current file
-    // so blur strength follows the decoded frame even for older projects that
-    // contain only the encoded width and height.
-    const blurredIds=new Set(p.clips.filter(c=>c.kind==='video'&&!p.tracks.find(t=>t.id===c.trackId)?.hidden&&hasGaussianBlur(visualClipAt(c,0))).map(c=>c.assetId));
-    const decodedDimensions=Object.fromEntries(await Promise.all([...blurredIds].map(async id=>{
-      const asset=p.assets.find(a=>a.id===id),stream=(await probe(asset.path,{signal})).streams.find(s=>s.codec_type==='video'&&!s.disposition?.attached_pic);
-      if(!stream?.width||!stream?.height)throw new Error(`素材の映像サイズを取得できません: ${asset.name}`);
-      const angle=Number(stream.side_data_list?.find(s=>Number.isFinite(s.rotation))?.rotation??stream.tags?.rotate??0);
-      const turn=Math.abs(angle%180);
-      if(Math.abs(turn-90)<.01)return [id,{width:stream.height,height:stream.width}];
-      if(turn<.01||Math.abs(turn-180)<.01)return [id,{width:stream.width,height:stream.height}];
-      const radians=angle*Math.PI/180,cos=Math.abs(Math.cos(radians)),sin=Math.abs(Math.sin(radians));
-      return [id,{width:Math.ceil(stream.width*cos+stream.height*sin),height:Math.ceil(stream.width*sin+stream.height*cos)}];
-    })));
     // Still images use their first frame in both preview and export, including GIF/APNG/WebP.
     for (const a of exportAssets(p).filter(a => a.kind === 'image')) {
       const file = path.join(tempDir, `${randomUUID()}.png`);
       await run(ffmpeg, ['-v', 'error', '-i', a.path, '-frames:v', '1', file], { signal });
       sources[a.id] = file;
+    }
+    // Probe the actual decoded input for each blurred asset. Still images have
+    // already become autorotated PNGs; video display rotation is applied by
+    // FFmpeg before the scale filter. Older projects only store encoded size.
+    const blurredIds=new Set(p.clips.filter(c=>['video','image'].includes(c.kind)&&!p.tracks.find(t=>t.id===c.trackId)?.hidden&&hasGaussianBlur(visualClipAt(c,0))).map(c=>c.assetId));
+    const decodedDimensions={};
+    for(const id of blurredIds){
+      const asset=p.assets.find(a=>a.id===id),stream=(await probe(sources[id],{signal})).streams.find(s=>s.codec_type==='video'&&!s.disposition?.attached_pic);
+      if(!stream?.width||!stream?.height)throw new Error(`素材の映像サイズを取得できません: ${asset.name}`);
+      const angle=asset.kind==='image'?0:Number(stream.side_data_list?.find(s=>Number.isFinite(s.rotation))?.rotation??stream.tags?.rotate??0);
+      const turn=Math.abs(angle%180);
+      if(Math.abs(turn-90)<.01)decodedDimensions[id]={width:stream.height,height:stream.width};
+      else if(turn<.01||Math.abs(turn-180)<.01)decodedDimensions[id]={width:stream.width,height:stream.height};
+      else{
+        const radians=angle*Math.PI/180,cos=Math.abs(Math.cos(radians)),sin=Math.abs(Math.sin(radians));
+        decodedDimensions[id]={width:Math.ceil(stream.width*cos+stream.height*sin),height:Math.ceil(stream.width*sin+stream.height*cos)};
+      }
     }
     for (const c of p.clips.filter(c => c.kind === 'title' && !p.tracks.find(t => t.id === c.trackId)?.hidden)) {
       if(needsTitleFrames(c)){
