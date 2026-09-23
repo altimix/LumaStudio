@@ -21,6 +21,12 @@ describe('mosaic clip editing',()=>{
     p.tracks[1].locked=true;state.load(p);state.updateClip('mosaic-clip',{mosaic:{...DEFAULT_MOSAIC}});
     expect(useEditor.getState().project).toBe(p);expect(useEditor.getState().history).toHaveLength(0);
   });
+  it('rejects invalid mosaic data before replacing a loaded project',()=>{
+    const state=useEditor.getState(),valid=fixture(),invalid=fixture();
+    state.load(valid);invalid.clips[0]={...invalid.clips[0],mosaic:{...DEFAULT_MOSAIC,x:.01}};
+    expect(()=>state.load(invalid)).toThrow(/モザイクの範囲/);
+    expect(useEditor.getState().project).toBe(valid);
+  });
   it('keeps mosaic on the video when its audio is separated',()=>{
     const p=fixture();p.assets=[{...asset,hasAudio:true}];p.clips[0]={...p.clips[0],mosaic:{...DEFAULT_MOSAIC}};
     const result=separateAudio(p,['mosaic-clip']);

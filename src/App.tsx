@@ -18,7 +18,6 @@ import { validateTransitions } from '../shared/transitions.mjs';
 import { validateTextStyle } from '../shared/text-style.mjs';
 import { validateTextBox } from '../shared/text-box.mjs';
 import { validateGraphic } from '../shared/graphics.mjs';
-import { validateMosaic } from '../shared/mosaic.mjs';
 import { validateVolumeKeys } from '../shared/volume-automation.mjs';
 import type { Asset, ExportProgress, ExportSettings, ImportProgress, Project, UpdateInfo } from './types';
 import MediaLibrary from './components/MediaLibrary';
@@ -33,6 +32,7 @@ import YouTubeStudio from './components/YouTubeStudio';
 import { shortcutCommand, type EditorCommand } from './shortcuts';
 import { IconButton, Modal } from './components/UI';
 import { version } from '../package.json';
+
 const isDesktop = !!window.luma;
 function errorText(e: unknown) { const message = e instanceof Error ? e.message : String(e); return message.replace(/^Error invoking remote method '[^']+': Error: /, ''); }
 function downloadJSON(p: Project) {
@@ -321,7 +321,7 @@ export default function App() {
       {renderError ? <div className="export-error" role="alert">{renderError}</div> : null}<div className="modal-footer"><span className="export-local"><HardDrive size={13}/>このPCで処理</span>{rendering ? <button className="secondary-button" onClick={() => { if(exportAttempt.current?.native){void window.luma?.cancelExport();}else{exportAttempt.current=null;setRendering(false);setPreparingFonts(false);setRenderError('書き出しをキャンセルしました。');} }}>書き出しを中止</button> : <button className="primary-button" disabled={!p.clips.length} onClick={() => { void startExport(); }}><Download size={16}/>保存先を選んで書き出す</button>}</div></>}
     </Modal> : null}
 
-    <input ref={importInput} hidden type="file" multiple accept="video/*,audio/*,image/*" onChange={e => { void browserImport(e.target.files); e.target.value = ''; }}/><input ref={openInput} hidden type="file" accept=".luma" onChange={async e => { const file = e.target.files?.[0]; if (file) { try { const project = JSON.parse(await file.text()) as Project; if (project.version !== 1 || !Array.isArray(project.clips) || !Array.isArray(project.assets)) throw new Error('プロジェクト形式が不正です'); validateTransitions(project); project.clips.forEach(c => { validateGraphic(c); validateMosaic(c); validateVolumeKeys(c); validateTextBox(c); if (c.kind === 'title') validateTextStyle(c); }); project.assets = project.assets.map(a => a.url.startsWith('blob:') ? { ...a, offline: true, url: '' } : a); useEditor.getState().load(project); } catch (error) { useEditor.getState().notify(errorText(error)); } } e.target.value = ''; }}/>
+    <input ref={importInput} hidden type="file" multiple accept="video/*,audio/*,image/*" onChange={e => { void browserImport(e.target.files); e.target.value = ''; }}/><input ref={openInput} hidden type="file" accept=".luma" onChange={async e => { const file = e.target.files?.[0]; if (file) { try { const project = JSON.parse(await file.text()) as Project; if (project.version !== 1 || !Array.isArray(project.clips) || !Array.isArray(project.assets)) throw new Error('プロジェクト形式が不正です'); validateTransitions(project); project.clips.forEach(c => { validateGraphic(c); validateVolumeKeys(c); validateTextBox(c); if (c.kind === 'title') validateTextStyle(c); }); project.assets = project.assets.map(a => a.url.startsWith('blob:') ? { ...a, offline: true, url: '' } : a); useEditor.getState().load(project); } catch (error) { useEditor.getState().notify(errorText(error)); } } e.target.value = ''; }}/>
     {projectBusy && !savingOnClose ? <ProjectOperationDialog title={projectBusy} message={cancellingImport ? '処理を中止して一時ファイルを片付けています。' : importProgress?.stage || '処理が終わるまでお待ちください。'} progress={importProgress} onCancel={importLabel ? cancelImport : undefined} cancelling={cancellingImport}/> : null}
     {savingOnClose ? <ProjectOperationDialog title="プロジェクトを保存しています" message="保存が完了すると終了します。" blockKeys/> : null}
   </div>;
