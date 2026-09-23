@@ -73,7 +73,7 @@ async function verify(){
     assert.equal(lineDifferences.filter(value=>value>40).length,0,'preview and MP4 keep the same Gaussian blur region');
     await page.getByRole('dialog',{name:'動画を書き出す'}).getByRole('button',{name:'閉じる'}).click();
     await page.locator('.inspector-section').filter({has:page.locator('summary').filter({hasText:'モザイク'})}).locator('summary').click();
-    await page.getByRole('checkbox',{name:'モザイクを適用'}).check();
+    await page.getByRole('checkbox',{name:'モザイクぼかしを適用'}).check();
     p=await saved();assert.ok(p.clips[0].mosaic&&p.clips[0].gaussianBlur,'mosaic and Gaussian blur coexist on one clip');
     await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},combinedOutput);
     await page.getByRole('button',{name:'書き出し',exact:true}).click();

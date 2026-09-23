@@ -71,7 +71,7 @@ test('plain full-frame video avoids RGBA compositing while edited layouts retain
   assert.match(graph({...p,assets:[{...asset,codec:'prores'}]},settings),/overlay=/);
 });
 
-test('display rotation keeps requested export dimensions and centered picture on the direct path',async t=>{
+test('display rotation keeps centered output and both blur strengths aligned with the decoded width',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-rotation-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
  const source=path.join(dir,'source.mp4');await run(ffmpeg,['-v','error','-f','lavfi','-i','testsrc2=s=320x180:r=30:d=1','-c:v','libx264','-y',source]);
  for(const rotation of [90,270]){
@@ -90,11 +90,17 @@ test('display rotation keeps requested export dimensions and centered picture on
   }});
   // The 320x180 encoded frame displays as 180x320, then scales to 100x180.
   // A three-percent blur therefore uses sigma 3, not 9.6 from encoded width.
-  assert.match(graph,/gblur=sigma=3\[blurred\d+\]/);
+  assert.match(graph,/gblur=sigma=3\[blurred(?:gaussian)?\d+\]/);
+  delete p.clips[0].gaussianBlur;p.clips[0].mosaic={x:.5,y:.5,width:.5,height:.5,blockSize:.1};
+  await exportProject(p,settings,path.join(dir,`mosaic-${rotation}.mp4`),{spawnProcess:(binary,args,options)=>{
+    graph=fsSync.readFileSync(args[args.indexOf('-filter_complex_script')+1],'utf8');
+    return spawn(binary,args,options);
+  }});
+  assert.match(graph,/gblur=sigma=1\.5\[blurredmosaic\d+\]/,'mosaic softening also uses the displayed source width');
  }
 });
 
-test('EXIF-rotated stills use the decoded width for Gaussian strength',async t=>{
+test('EXIF-rotated stills use the decoded width for both blur strengths',async t=>{
   const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-exif-blur-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
   const plain=path.join(dir,'plain.jpg'),oriented=path.join(dir,'oriented.jpg');
   await run(ffmpeg,['-v','error','-f','lavfi','-i','testsrc2=s=320x180:d=1','-frames:v','1','-y',plain]);
@@ -112,5 +118,11 @@ test('EXIF-rotated stills use the decoded width for Gaussian strength',async t=>
     graph=fsSync.readFileSync(args[args.indexOf('-filter_complex_script')+1],'utf8');
     return spawn(binary,args,options);
   }});
-  assert.match(graph,/gblur=sigma=3\[blurred\d+\]/);
+  assert.match(graph,/gblur=sigma=3\[blurred(?:gaussian)?\d+\]/);
+  delete p.clips[0].gaussianBlur;p.clips[0].mosaic={x:.5,y:.5,width:.5,height:.5,blockSize:.1};
+  await exportProject(p,{width:320,height:180,fps:30,quality:'high',encoder:'cpu'},path.join(dir,'mosaic.mp4'),{spawnProcess:(binary,args,options)=>{
+    graph=fsSync.readFileSync(args[args.indexOf('-filter_complex_script')+1],'utf8');
+    return spawn(binary,args,options);
+  }});
+  assert.match(graph,/gblur=sigma=1\.5\[blurredmosaic\d+\]/,'EXIF still mosaic softening uses the autorotated width');
 });

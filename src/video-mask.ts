@@ -1,8 +1,8 @@
 import type { Clip } from './types';
 import { hasVideoMask, maskAlphaAt, rasterizeBezierMask } from '../shared/video-mask.mjs';
 import { hasChromaKey } from '../shared/chroma-key.mjs';
-import { hasMosaic, mosaicBounds } from '../shared/mosaic.mjs';
-import { gaussianBlurBounds, hasGaussianBlur } from '../shared/gaussian-blur.mjs';
+import { hasMosaic, mosaicBounds, mosaicBlurSigma } from '../shared/mosaic.mjs';
+import { effectRegionBounds, hasGaussianBlur } from '../shared/gaussian-blur.mjs';
 import { GpuChromaPreview, paintChromaCpu } from './chroma-preview';
 import { paintEdgePaddedBlurSource } from './blur-padding';
 
@@ -71,6 +71,18 @@ export function maskedVideoFrame(source: CanvasImageSource, clip: Clip, width: n
   context.save(); context.globalCompositeOperation = 'copy'; context.globalAlpha = 1; context.filter = 'none';
   context.drawImage(processed, 0, 0, width, height);
   context.globalCompositeOperation = 'source-over';
+  let blurPaddedSource=cached?.blurPaddedSource;
+  const blurRegion=(region:{x:number;y:number;width:number;height:number},sigma:number,clampSamples=false)=>{
+    const {left,top,right,bottom}=effectRegionBounds(region,width,height);
+    if(right<=left||bottom<=top)return;
+    blurPaddedSource ||= document.createElement('canvas');
+    const allowed=clampSamples?{left,top,right,bottom}:{left:0,top:0,right:width,bottom:height};
+    const position=paintEdgePaddedBlurSource(blurPaddedSource,canvas,allowed,{left,top,right,bottom},sigma);
+    context.save();context.beginPath();context.rect(left,top,right-left,bottom-top);context.clip();
+    context.globalCompositeOperation='copy';context.filter=`blur(${sigma}px)`;context.drawImage(blurPaddedSource,position.x,position.y);
+    context.restore();
+  };
+  if(clip.gaussianBlur)blurRegion(clip.gaussianBlur,Math.max(.5,width*clip.gaussianBlur.sigma));
   let mosaicCells=cached?.mosaicCells;
   if(clip.mosaic){
     const {left,top,right,bottom,block}=mosaicBounds(clip.mosaic,width,height),regionWidth=right-left,regionHeight=bottom-top;
@@ -95,17 +107,8 @@ export function maskedVideoFrame(source: CanvasImageSource, clip: Clip, width: n
       context.restore();
     }
   }else if(mosaicCells){mosaicCells.width=mosaicCells.height=0;mosaicCells=undefined;}
-  let blurPaddedSource=cached?.blurPaddedSource;
-  if(clip.gaussianBlur){
-    const {left,top,right,bottom,sigma}=gaussianBlurBounds(clip.gaussianBlur,width,height);
-    if(right>left&&bottom>top){
-      blurPaddedSource ||= document.createElement('canvas');
-      const position=paintEdgePaddedBlurSource(blurPaddedSource,canvas,{left:0,top:0,right:width,bottom:height},{left,top,right,bottom},sigma);
-      context.save();context.beginPath();context.rect(left,top,right-left,bottom-top);context.clip();
-      context.globalCompositeOperation='copy';context.filter=`blur(${sigma}px)`;context.drawImage(blurPaddedSource,position.x,position.y);
-      context.restore();
-    }
-  }else if(blurPaddedSource){blurPaddedSource.width=blurPaddedSource.height=0;blurPaddedSource=undefined;}
+  if(clip.mosaic)blurRegion(clip.mosaic,mosaicBlurSigma(clip.mosaic,width),true);
+  if(!clip.mosaic&&!clip.gaussianBlur&&blurPaddedSource){blurPaddedSource.width=blurPaddedSource.height=0;blurPaddedSource=undefined;}
   if(hasVideoMask(clip)){context.globalCompositeOperation = 'destination-in'; context.imageSmoothingEnabled = !!clip.videoMask?.feather; context.drawImage(mask, 0, 0, width, height);}context.restore();
   return { canvas, context, mask, key, renderKey, chroma, chromaFallback, chromaUnavailable, mosaicCells, blurPaddedSource };
 }

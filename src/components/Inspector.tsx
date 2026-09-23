@@ -35,16 +35,16 @@ function MosaicEffects({clip}:{clip:Clip}){
   const mosaic=clip.mosaic,mode=useEditor(s=>s.mediaEditMode);
   const update=(patch:Partial<Mosaic>)=>{const state=useEditor.getState(),current=state.project.clips.find(item=>item.id===clip.id)?.mosaic;if(current)state.updateClip(clip.id,{mosaic:{...current,...patch}});};
   const disable=()=>{const state=useEditor.getState();state.updateClip(clip.id,{mosaic:undefined});if(state.mediaEditMode==='mosaic')state.setMediaEditMode('transform');};
-  return <Section title="モザイク" icon={Scan} open={!!mosaic||mode==='mosaic'} onReset={mosaic?disable:undefined}>
-    <label className="mask-checkbox"><input type="checkbox" checked={!!mosaic} onChange={event=>{const state=useEditor.getState();if(event.target.checked){state.updateClip(clip.id,{mosaic:{...DEFAULT_MOSAIC}});state.setMediaEditMode('mosaic');}else disable();}}/>モザイクを適用</label>
+  return <Section title="モザイクぼかし" icon={Scan} open={!!mosaic||mode==='mosaic'} onReset={mosaic?disable:undefined}>
+    <label className="mask-checkbox"><input type="checkbox" checked={!!mosaic} onChange={event=>{const state=useEditor.getState();if(event.target.checked){state.updateClip(clip.id,{mosaic:{...DEFAULT_MOSAIC}});state.setMediaEditMode('mosaic');}else disable();}}/>モザイクぼかしを適用</label>
     {mosaic?<><div className="mask-edit-buttons"><button className={'secondary-button '+(mode==='mosaic'?'active':'')} aria-pressed={mode==='mosaic'} onClick={()=>useEditor.getState().setMediaEditMode(mode==='mosaic'?'transform':'mosaic')}>モニターで範囲を編集</button></div>
       <p className="field-help">モニターでドラッグして移動、四隅で範囲を変更できます。範囲は素材と一緒に移動・回転します。</p>
-      <RegionNumber effect="モザイク" label="中心 X" value={mosaic.x} min={mosaic.width*50} max={100-mosaic.width*50} change={x=>update({x})}/>
-      <RegionNumber effect="モザイク" label="中心 Y" value={mosaic.y} min={mosaic.height*50} max={100-mosaic.height*50} change={y=>update({y})}/>
-      <RegionNumber effect="モザイク" label="幅" value={mosaic.width} min={1} max={Math.min(mosaic.x,1-mosaic.x)*200} change={width=>update({width})}/>
-      <RegionNumber effect="モザイク" label="高さ" value={mosaic.height} min={1} max={Math.min(mosaic.y,1-mosaic.y)*200} change={height=>update({height})}/>
-      <RegionNumber effect="モザイク" label="粗さ" value={mosaic.blockSize} min={.5} max={10} change={blockSize=>update({blockSize})}/>
-      <p className="field-help">粗さは素材幅に対する1ブロックの大きさです。</p>
+      <RegionNumber effect="モザイクぼかし" label="中心 X" value={mosaic.x} min={mosaic.width*50} max={100-mosaic.width*50} change={x=>update({x})}/>
+      <RegionNumber effect="モザイクぼかし" label="中心 Y" value={mosaic.y} min={mosaic.height*50} max={100-mosaic.height*50} change={y=>update({y})}/>
+      <RegionNumber effect="モザイクぼかし" label="幅" value={mosaic.width} min={1} max={Math.min(mosaic.x,1-mosaic.x)*200} change={width=>update({width})}/>
+      <RegionNumber effect="モザイクぼかし" label="高さ" value={mosaic.height} min={1} max={Math.min(mosaic.y,1-mosaic.y)*200} change={height=>update({height})}/>
+      <RegionNumber effect="モザイクぼかし" label="粗さ" value={mosaic.blockSize} min={.5} max={10} change={blockSize=>update({blockSize})}/>
+      <p className="field-help">粗さは素材幅に対する1ブロックの大きさです。粒の境界は滑らかにぼかします。</p>
     </>:null}
   </Section>;
 }

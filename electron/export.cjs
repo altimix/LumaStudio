@@ -20,8 +20,8 @@ const { validateGraphic } = require('../shared/graphics.mjs');
 const { validateTreatment } = require('../shared/audio-treatment.mjs');
 const { ffmpegMaskExpression, hasBezierMask, hasVideoMask, rasterizeBezierMask, validateVideoMask } = require('../shared/video-mask.mjs');
 const { ffmpegChromaFilter, hasChromaKey, validateChromaKey } = require('../shared/chroma-key.mjs');
-const { ffmpegMosaicFilter, hasMosaic, validateMosaic } = require('../shared/mosaic.mjs');
-const { ffmpegGaussianBlend, hasGaussianBlur, validateGaussianBlur } = require('../shared/gaussian-blur.mjs');
+const { ffmpegMosaicFilter, hasMosaic, mosaicBlurSigma, validateMosaic } = require('../shared/mosaic.mjs');
+const { ffmpegRegionBlend, hasGaussianBlur, validateGaussianBlur } = require('../shared/gaussian-blur.mjs');
 const { encodingArgs, exportEncoders, validateEncoder, ENCODERS } = require('./encoders.cjs');
 
 const { validateTransitions, transitionPlan, audioEnvelopes, mediaWindow } = require('../shared/transitions.mjs');
@@ -103,6 +103,14 @@ function colorFilter(c) {
   const matrix = [0.213, 0.715, 0.072].map((w, j) => [0, 1, 2].map(i => (i === j ? s : 0) + w * (1 - s)));
   return `lutrgb=r='${lut}':g='${lut}':b='${lut}',colorchannelmixer=rr=${number(matrix[0][0])}:rg=${number(matrix[1][0])}:rb=${number(matrix[2][0])}:gr=${number(matrix[0][1])}:gg=${number(matrix[1][1])}:gb=${number(matrix[2][1])}:br=${number(matrix[0][2])}:bg=${number(matrix[1][2])}:bb=${number(matrix[2][2])}`;
 }
+function addRegionBlur(filters, chain, index, effect, sigma, region, prepare = '') {
+  const suffix=`${effect}${index}`;
+  filters.push(chain.join(',')+`[preblur${suffix}]`);
+  filters.push(`[preblur${suffix}]split=2[blurbase${suffix}][blurinput${suffix}]`);
+  filters.push(`[blurinput${suffix}]${prepare ? prepare+',' : ''}gblur=sigma=${number(sigma)}[blurred${suffix}]`);
+  filters.push(`[blurbase${suffix}][blurred${suffix}]${ffmpegRegionBlend(region)}[postblur${suffix}]`);
+  chain.length=0;chain.push(`[postblur${suffix}]null`);
+}
 function exportAssets(p) {
   const anySolo = p.tracks.some(t => t.solo), ids = new Set();
   for (const c of p.clips) {
@@ -177,17 +185,12 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
       if (usesAnimatedChroma(rawClip)) f.push('format=rgba',animatedChromaFilter(rawClip,offset));
       else if (hasChromaKey(c)) f.push('format=rgba', ffmpegChromaFilter(c));
       f.push(`scale=${fitW}:${fitH}:force_original_aspect_ratio=decrease:force_divisible_by=2`, 'setsar=1', ...(directVideo ? [`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`] : ['format=rgba']));
-      if (hasMosaic(c)) f.push(ffmpegMosaicFilter(c));
+      const sourceSize=decodedDimensions[c.assetId] || asset;
+      const scaledWidth=sourceSize?.width&&sourceSize?.height?Math.max(2,Math.floor(Math.min(fitW/sourceSize.width,fitH/sourceSize.height)*sourceSize.width/2)*2):fitW;
       if (hasGaussianBlur(c)) {
-        filters.push(f.join(',')+`[preblur${index}]`);
-        const sourceSize=decodedDimensions[c.assetId] || asset;
-        const scaledWidth=sourceSize?.width&&sourceSize?.height?Math.max(2,Math.floor(Math.min(fitW/sourceSize.width,fitH/sourceSize.height)*sourceSize.width/2)*2):fitW;
-        const sigma=Math.max(.5,scaledWidth*c.gaussianBlur.sigma);
-        filters.push(`[preblur${index}]split=2[blurbase${index}][blurinput${index}]`);
-        filters.push(`[blurinput${index}]gblur=sigma=${number(sigma)}[blurred${index}]`);
-        filters.push(`[blurbase${index}][blurred${index}]${ffmpegGaussianBlend(c)}[postblur${index}]`);
-        f.length=0;f.push(`[postblur${index}]null`);
+        addRegionBlur(filters,f,index,'gaussian',Math.max(.5,scaledWidth*c.gaussianBlur.sigma),c.gaussianBlur);
       }
+      if (hasMosaic(c)) addRegionBlur(filters,f,index,'mosaic',mosaicBlurSigma(c.mosaic,scaledWidth),c.mosaic,ffmpegMosaicFilter(c,true));
       if(c.kind!=='title'&&colorChanges)f.push(animatedColorFilter(rawClip,offset));
       else if (c.kind !== 'title' && (c.exposure !== 0 || c.contrast !== 1 || c.saturation !== 1)) f.push(colorFilter(c));
       if (hasBezierMask(c)||animatedMask) {
@@ -266,7 +269,7 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
     // Probe the actual decoded input for each blurred asset. Still images have
     // already become autorotated PNGs; video display rotation is applied by
     // FFmpeg before the scale filter. Older projects only store encoded size.
-    const blurredIds=new Set(p.clips.filter(c=>['video','image'].includes(c.kind)&&!p.tracks.find(t=>t.id===c.trackId)?.hidden&&hasGaussianBlur(visualClipAt(c,0))).map(c=>c.assetId));
+    const blurredIds=new Set(p.clips.filter(c=>['video','image'].includes(c.kind)&&!p.tracks.find(t=>t.id===c.trackId)?.hidden&&(hasGaussianBlur(visualClipAt(c,0))||hasMosaic(visualClipAt(c,0)))).map(c=>c.assetId));
     const decodedDimensions={};
     for(const id of blurredIds){
       const asset=p.assets.find(a=>a.id===id),stream=(await probe(sources[id],{signal})).streams.find(s=>s.codec_type==='video'&&!s.disposition?.attached_pic);

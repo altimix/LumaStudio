@@ -22,16 +22,22 @@ export function mosaicBounds(mosaic, width, height) {
   };
 }
 
+// Soften cell edges while leaving the selected rectangle and block size intact.
+export function mosaicBlurSigma(mosaic, width) { return Math.max(.5, width * mosaic.blockSize * .15); }
+
 // Apply after scaling and chroma, before crop/mask and the clip transform.
 // The sample location is clamped to the selected region, so a boundary block
 // cannot borrow an unpixelated pixel from outside the selected rectangle.
-export function ffmpegMosaicFilter(clip) {
+export function ffmpegMosaicFilter(clip, extendEdges = false) {
   const m = clip.mosaic, n = value => Number(value.toFixed(8));
   const left = `ceil(W*${n(m.x - m.width / 2)})`, right = `ceil(W*${n(m.x + m.width / 2)})`;
   const top = `ceil(H*${n(m.y - m.height / 2)})`, bottom = `ceil(H*${n(m.y + m.height / 2)})`;
   const block = `max(2,round(W*${n(m.blockSize)}))`;
-  const sx = `min(${right}-1,max(${left},${left}+floor((X-${left})/${block})*${block}+floor(${block}/2)))`;
-  const sy = `min(${bottom}-1,max(${top},${top}+floor((Y-${top})/${block})*${block}+floor(${block}/2)))`;
+  const x = extendEdges ? `min(${right}-1,max(${left},X))` : 'X';
+  const y = extendEdges ? `min(${bottom}-1,max(${top},Y))` : 'Y';
+  const sx = `min(${right}-1,max(${left},${left}+floor((${x}-${left})/${block})*${block}+floor(${block}/2)))`;
+  const sy = `min(${bottom}-1,max(${top},${top}+floor((${y}-${top})/${block})*${block}+floor(${block}/2)))`;
   const inside = `gte(X,${left})*lt(X,${right})*gte(Y,${top})*lt(Y,${bottom})`;
-  return `geq=r='if(${inside},r(${sx},${sy}),r(X,Y))':g='if(${inside},g(${sx},${sy}),g(X,Y))':b='if(${inside},b(${sx},${sy}),b(X,Y))':a='if(${inside},alpha(${sx},${sy}),alpha(X,Y))'`;
+  const channel = (name) => extendEdges ? `${name}(${sx},${sy})` : `if(${inside},${name}(${sx},${sy}),${name}(X,Y))`;
+  return `geq=r='${channel('r')}':g='${channel('g')}':b='${channel('b')}':a='${channel('alpha')}'`;
 }
