@@ -75,7 +75,7 @@ export interface DesktopAPI {
   aiImportEnv(): Promise<AIStatus>;
   aiClearKey(): Promise<AIStatus>;
   aiTranscribe(project: Project, vocabulary: string): Promise<YoutubeData>;
-  aiMetadata(project: Project): Promise<YoutubeData>;
+  aiMetadata(project: Project, model: import('../shared/ai-text-model.mjs').TextModel): Promise<YoutubeData>;
   aiThumbnail(project: Project, prompt: string): Promise<Asset>;
   aiChooseThumbnailReference(project: Project): Promise<Asset | null>;
   aiSaveOutput(project: Project, format: 'srt' | 'vtt' | 'txt' | 'jpg'): Promise<string | null>;
