@@ -2,9 +2,10 @@ import type { Clip } from './types';
 import { hasVideoMask, maskAlphaAt, rasterizeBezierMask } from '../shared/video-mask.mjs';
 import { hasChromaKey } from '../shared/chroma-key.mjs';
 import { hasMosaic, mosaicBounds } from '../shared/mosaic.mjs';
+import { gaussianBlurBounds, hasGaussianBlur } from '../shared/gaussian-blur.mjs';
 import { GpuChromaPreview, paintChromaCpu } from './chroma-preview';
 
-export type MaskedFrame = { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D; mask: HTMLCanvasElement; key: string; renderKey?:string; chroma?:GpuChromaPreview; chromaFallback?:HTMLCanvasElement; chromaUnavailable?:boolean; mosaicCells?:HTMLCanvasElement };
+export type MaskedFrame = { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D; mask: HTMLCanvasElement; key: string; renderKey?:string; chroma?:GpuChromaPreview; chromaFallback?:HTMLCanvasElement; chromaUnavailable?:boolean; mosaicCells?:HTMLCanvasElement; blurSource?:HTMLCanvasElement };
 
 // The matte contains only normalized alpha information, so it does not need to
 // match a 4K/8K source pixel-for-pixel. Keeping the longer edge bounded avoids
@@ -49,8 +50,8 @@ export function paintVideoMask(canvas: HTMLCanvasElement, clip: Clip, width: num
 }
 
 export function maskedVideoFrame(source: CanvasImageSource, clip: Clip, width: number, height: number, cached?: MaskedFrame, sourceKey?: string): MaskedFrame | undefined {
-  if (!hasVideoMask(clip) && !hasChromaKey(clip) && !hasMosaic(clip)) return undefined;
-  const key = videoMaskKey(clip, width, height), renderKey = sourceKey === undefined ? undefined : JSON.stringify([sourceKey, key, clip.chromaKey || null, clip.mosaic || null]);
+  if (!hasVideoMask(clip) && !hasChromaKey(clip) && !hasMosaic(clip) && !hasGaussianBlur(clip)) return undefined;
+  const key = videoMaskKey(clip, width, height), renderKey = sourceKey === undefined ? undefined : JSON.stringify([sourceKey, key, clip.chromaKey || null, clip.mosaic || null, clip.gaussianBlur || null]);
   // requestAnimationFrame continues while paused. Reuse the completed matte
   // until the decoded source frame or an effect setting actually changes.
   if (renderKey !== undefined && cached?.renderKey === renderKey && !cached.chroma?.lost) return cached;
@@ -93,13 +94,27 @@ export function maskedVideoFrame(source: CanvasImageSource, clip: Clip, width: n
       context.restore();
     }
   }else if(mosaicCells){mosaicCells.width=mosaicCells.height=0;mosaicCells=undefined;}
+  let blurSource=cached?.blurSource;
+  if(clip.gaussianBlur){
+    const {left,top,right,bottom,sigma}=gaussianBlurBounds(clip.gaussianBlur,width,height);
+    if(right>left&&bottom>top){
+      blurSource ||= document.createElement('canvas');
+      if(blurSource.width!==width||blurSource.height!==height){blurSource.width=width;blurSource.height=height;}
+      const original=blurSource.getContext('2d',{alpha:true})!;
+      original.globalCompositeOperation='copy';original.filter='none';original.drawImage(canvas,0,0);
+      context.save();context.beginPath();context.rect(left,top,right-left,bottom-top);context.clip();
+      context.globalCompositeOperation='copy';context.filter=`blur(${sigma}px)`;context.drawImage(blurSource,0,0);
+      context.restore();
+    }
+  }else if(blurSource){blurSource.width=blurSource.height=0;blurSource=undefined;}
   if(hasVideoMask(clip)){context.globalCompositeOperation = 'destination-in'; context.imageSmoothingEnabled = !!clip.videoMask?.feather; context.drawImage(mask, 0, 0, width, height);}context.restore();
-  return { canvas, context, mask, key, renderKey, chroma, chromaFallback, chromaUnavailable, mosaicCells };
+  return { canvas, context, mask, key, renderKey, chroma, chromaFallback, chromaUnavailable, mosaicCells, blurSource };
 }
 
 export function disposeMaskedFrame(frame: MaskedFrame) {
   frame.chroma?.dispose();if(frame.chromaFallback)frame.chromaFallback.width=frame.chromaFallback.height=0;frame.canvas.width = frame.canvas.height = frame.mask.width = frame.mask.height = 0;
   if(frame.mosaicCells)frame.mosaicCells.width=frame.mosaicCells.height=0;
+  if(frame.blurSource)frame.blurSource.width=frame.blurSource.height=0;
 }
 
 export function evictInactiveMaskedFrames(frames: Map<string, MaskedFrame>, active: ReadonlySet<string>) {

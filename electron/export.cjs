@@ -21,6 +21,7 @@ const { validateTreatment } = require('../shared/audio-treatment.mjs');
 const { ffmpegMaskExpression, hasBezierMask, hasVideoMask, rasterizeBezierMask, validateVideoMask } = require('../shared/video-mask.mjs');
 const { ffmpegChromaFilter, hasChromaKey, validateChromaKey } = require('../shared/chroma-key.mjs');
 const { ffmpegMosaicFilter, hasMosaic, validateMosaic } = require('../shared/mosaic.mjs');
+const { ffmpegGaussianBlend, hasGaussianBlur, validateGaussianBlur } = require('../shared/gaussian-blur.mjs');
 const { encodingArgs, exportEncoders, validateEncoder, ENCODERS } = require('./encoders.cjs');
 
 const { validateTransitions, transitionPlan, audioEnvelopes, mediaWindow } = require('../shared/transitions.mjs');
@@ -74,6 +75,7 @@ function validateProject(p, { allowForeignPaths = false } = {}) {
     validateVideoMask(c);
     validateChromaKey(c);
     validateMosaic(c);
+    validateGaussianBlur(c);
     if (c.audioTreatment && (!hasClipAudio(c, p.assets.find(a => a.id === c.assetId)))) throw new Error('音声のないクリップには自動調整を適用できません。');
     if (c.subtitle !== undefined && (typeof c.subtitle !== 'boolean' || c.kind !== 'title')) throw new Error('字幕クリップが不正です。');
     if (c.fadeIn + c.fadeOut > c.duration + 0.00001) throw new Error('フェードの合計がクリップの長さを超えています。');
@@ -127,7 +129,7 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
   const args = ['-hide_banner', '-y', '-filter_complex_threads', '2', '-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:r=${fps}:d=${number(duration)}`, '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${number(duration)}`];
   const visible = p.clips.filter(c => c.kind !== 'audio' && !p.tracks.find(t => t.id === c.trackId)?.hidden);
   const only = visible.length === 1 ? visible[0] : null, onlyAsset = p.assets.find(a => a.id === only?.assetId);
-  const directVideo = onlyAsset?.codec === 'h264' && only?.kind === 'video' && only.start === 0 && only.duration === duration && only.scale === 1 && only.x === 0 && only.y === 0 && only.rotation === 0 && only.opacity === 1 && !only.opacityKeyframes?.length && !only.visualKeyframes?.length && !only.fadeIn && !only.fadeOut && only.exposure === 0 && only.contrast === 1 && only.saturation === 1 && !hasVideoMask(only) && !hasChromaKey(only) && !hasMosaic(only) && !p.transitions?.length && onlyAsset?.width * height === onlyAsset?.height * width;
+  const directVideo = onlyAsset?.codec === 'h264' && only?.kind === 'video' && only.start === 0 && only.duration === duration && only.scale === 1 && only.x === 0 && only.y === 0 && only.rotation === 0 && only.opacity === 1 && !only.opacityKeyframes?.length && !only.visualKeyframes?.length && !only.fadeIn && !only.fadeOut && only.exposure === 0 && only.contrast === 1 && only.saturation === 1 && !hasVideoMask(only) && !hasChromaKey(only) && !hasMosaic(only) && !hasGaussianBlur(only) && !p.transitions?.length && onlyAsset?.width * height === onlyAsset?.height * width;
   const filters = directVideo ? [] : ['[0:v]format=rgba[base]'];
   let base = 'base'; const audios = ['[1:a]']; let input = 2;
   const envelopes=audioEnvelopes(p), plans=transitionPlan(p), transitionClips=new Set(plans.filter(t=>t.video).flatMap(t=>[t.fromId,t.toId])), visuals=[];
@@ -176,6 +178,15 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
       else if (hasChromaKey(c)) f.push('format=rgba', ffmpegChromaFilter(c));
       f.push(`scale=${fitW}:${fitH}:force_original_aspect_ratio=decrease:force_divisible_by=2`, 'setsar=1', ...(directVideo ? [`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`] : ['format=rgba']));
       if (hasMosaic(c)) f.push(ffmpegMosaicFilter(c));
+      if (hasGaussianBlur(c)) {
+        filters.push(f.join(',')+`[preblur${index}]`);
+        const scaledWidth=asset?.width&&asset?.height?Math.max(2,Math.floor(Math.min(fitW/asset.width,fitH/asset.height)*asset.width/2)*2):fitW;
+        const sigma=Math.max(.5,scaledWidth*c.gaussianBlur.sigma);
+        filters.push(`[preblur${index}]split=2[blurbase${index}][blurinput${index}]`);
+        filters.push(`[blurinput${index}]gblur=sigma=${number(sigma)}[blurred${index}]`);
+        filters.push(`[blurbase${index}][blurred${index}]${ffmpegGaussianBlend(c)}[postblur${index}]`);
+        f.length=0;f.push(`[postblur${index}]null`);
+      }
       if(c.kind!=='title'&&colorChanges)f.push(animatedColorFilter(rawClip,offset));
       else if (c.kind !== 'title' && (c.exposure !== 0 || c.contrast !== 1 || c.saturation !== 1)) f.push(colorFilter(c));
       if (hasBezierMask(c)||animatedMask) {
