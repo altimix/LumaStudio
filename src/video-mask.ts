@@ -6,7 +6,7 @@ import { gaussianBlurBounds, hasGaussianBlur } from '../shared/gaussian-blur.mjs
 import { GpuChromaPreview, paintChromaCpu } from './chroma-preview';
 import { paintEdgePaddedBlurSource } from './blur-padding';
 
-export type MaskedFrame = { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D; mask: HTMLCanvasElement; key: string; renderKey?:string; chroma?:GpuChromaPreview; chromaFallback?:HTMLCanvasElement; chromaUnavailable?:boolean; mosaicCells?:HTMLCanvasElement; blurSource?:HTMLCanvasElement; blurPaddedSource?:HTMLCanvasElement };
+export type MaskedFrame = { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D; mask: HTMLCanvasElement; key: string; renderKey?:string; chroma?:GpuChromaPreview; chromaFallback?:HTMLCanvasElement; chromaUnavailable?:boolean; mosaicCells?:HTMLCanvasElement; blurPaddedSource?:HTMLCanvasElement };
 
 // The matte contains only normalized alpha information, so it does not need to
 // match a 4K/8K source pixel-for-pixel. Keeping the longer edge bounded avoids
@@ -95,29 +95,24 @@ export function maskedVideoFrame(source: CanvasImageSource, clip: Clip, width: n
       context.restore();
     }
   }else if(mosaicCells){mosaicCells.width=mosaicCells.height=0;mosaicCells=undefined;}
-  let blurSource=cached?.blurSource,blurPaddedSource=cached?.blurPaddedSource;
+  let blurPaddedSource=cached?.blurPaddedSource;
   if(clip.gaussianBlur){
     const {left,top,right,bottom,sigma}=gaussianBlurBounds(clip.gaussianBlur,width,height);
     if(right>left&&bottom>top){
-      blurSource ||= document.createElement('canvas');
-      if(blurSource.width!==width||blurSource.height!==height){blurSource.width=width;blurSource.height=height;}
-      const original=blurSource.getContext('2d',{alpha:true})!;
-      original.globalCompositeOperation='copy';original.filter='none';original.drawImage(canvas,0,0);
       blurPaddedSource ||= document.createElement('canvas');
-      const position=paintEdgePaddedBlurSource(blurPaddedSource,blurSource,{left:0,top:0,right:width,bottom:height},{left,top,right,bottom},sigma);
+      const position=paintEdgePaddedBlurSource(blurPaddedSource,canvas,{left:0,top:0,right:width,bottom:height},{left,top,right,bottom},sigma);
       context.save();context.beginPath();context.rect(left,top,right-left,bottom-top);context.clip();
       context.globalCompositeOperation='copy';context.filter=`blur(${sigma}px)`;context.drawImage(blurPaddedSource,position.x,position.y);
       context.restore();
     }
-  }else{if(blurSource){blurSource.width=blurSource.height=0;blurSource=undefined;}if(blurPaddedSource){blurPaddedSource.width=blurPaddedSource.height=0;blurPaddedSource=undefined;}}
+  }else if(blurPaddedSource){blurPaddedSource.width=blurPaddedSource.height=0;blurPaddedSource=undefined;}
   if(hasVideoMask(clip)){context.globalCompositeOperation = 'destination-in'; context.imageSmoothingEnabled = !!clip.videoMask?.feather; context.drawImage(mask, 0, 0, width, height);}context.restore();
-  return { canvas, context, mask, key, renderKey, chroma, chromaFallback, chromaUnavailable, mosaicCells, blurSource, blurPaddedSource };
+  return { canvas, context, mask, key, renderKey, chroma, chromaFallback, chromaUnavailable, mosaicCells, blurPaddedSource };
 }
 
 export function disposeMaskedFrame(frame: MaskedFrame) {
   frame.chroma?.dispose();if(frame.chromaFallback)frame.chromaFallback.width=frame.chromaFallback.height=0;frame.canvas.width = frame.canvas.height = frame.mask.width = frame.mask.height = 0;
   if(frame.mosaicCells)frame.mosaicCells.width=frame.mosaicCells.height=0;
-  if(frame.blurSource)frame.blurSource.width=frame.blurSource.height=0;
   if(frame.blurPaddedSource)frame.blurPaddedSource.width=frame.blurPaddedSource.height=0;
 }
 
