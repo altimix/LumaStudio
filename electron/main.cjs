@@ -28,6 +28,7 @@ const { assertReplacement, hydrateProject, parseProjectJson, serializeProject, M
 const { createRecoveryStore } = require('./recovery.cjs');
 const { createBackupHistory } = require('./backup-history.cjs');
 const { createCredentials, createOpenAI } = require('./openai.cjs');
+const { validateTextModel } = require('../shared/ai-text-model.mjs');
 const { audioClips, totalTime, transcribeTimeline, generateMetadata, generateThumbnail } = require('./youtube.cjs');
 const { subtitleFile, youtubeText } = require('../shared/youtube.mjs');
 app.setName('Luma Studio');
@@ -207,7 +208,7 @@ function installIPC() {
     validateProject(p); for (const c of audioClips(p)) await registered(p.assets.find(a => a.id === c.assetId));
     await credentials.get(); return transcribeTimeline(p, vocabulary, ai, signal, progress, await preparedAudioPaths(p, signal));
   }));
-  handle('ai-metadata', p => job(signal => { progress({ progress: 0, message: 'タイトル・概要欄・検索ワードを生成中' }); return generateMetadata(p, ai, signal); }));
+  handle('ai-metadata', (p, model) => job(signal => { const selected = validateTextModel(model); progress({ progress: 0, message: 'タイトル・概要欄・検索ワードを生成中' }); return generateMetadata(p, ai, signal, selected); }));
   handle('ai-choose-thumbnail-reference', async p => {
     validateProject(p);
     const result = await dialog.showOpenDialog(window, { title: 'サムネイルに取り込む参考画像を1枚選択', properties: ['openFile'], filters: [{ name: '参考画像（PNG・JPEG・WebP）', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
