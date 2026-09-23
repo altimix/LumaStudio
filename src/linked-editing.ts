@@ -25,7 +25,7 @@ export function separateAudio(p: Project, ids: string[], link = true, reuseAvail
     const id = uid(), linkId = link ? uid() : undefined;
     reserved.push({ trackId: track.id, start: c.start, duration: c.duration });
     audioIds.set(c.id, id); replacements.set(c.id, { ...c, linkId, audioDetached: true, audioTreatment: undefined, volumeKeyframes: undefined });
-    const {audioDetached: _videoOnly, crop: _crop, videoMask: _videoMask, chromaKey: _chromaKey, mosaic: _mosaic, ...audioSource}=c;
+    const {audioDetached: _videoOnly, crop: _crop, videoMask: _videoMask, chromaKey: _chromaKey, mosaic: _mosaic, gaussianBlur: _gaussianBlur, ...audioSource}=c;
     return { ...audioSource, id, linkId, kind: 'audio' as const, trackId: track.id, name: `${c.name}（音声）` };
   });
   // Preserve existing crossfades on the new audio sources, including partial separation of a join.

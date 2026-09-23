@@ -4,7 +4,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
-const { ffmpeg, run } = require('./media.cjs');
+const { ffmpeg, run, probe } = require('./media.cjs');
 const { validateOpacityKeys, opacityExpression } = require('../shared/opacity.mjs');
 const { validateVisualKeys, visualClipAt, visualKeys, visualExpression, needsTitleFrames } = require('../shared/visual-keyframes.mjs');
 const { animatedColorFilter, animatedChromaFilter, animatedTransformFilter, usesAnimatedMask, usesAnimatedChroma, maskFrame } = require('./visual-animation.cjs');
@@ -21,6 +21,7 @@ const { validateTreatment } = require('../shared/audio-treatment.mjs');
 const { ffmpegMaskExpression, hasBezierMask, hasVideoMask, rasterizeBezierMask, validateVideoMask } = require('../shared/video-mask.mjs');
 const { ffmpegChromaFilter, hasChromaKey, validateChromaKey } = require('../shared/chroma-key.mjs');
 const { ffmpegMosaicFilter, hasMosaic, validateMosaic } = require('../shared/mosaic.mjs');
+const { ffmpegGaussianBlend, hasGaussianBlur, validateGaussianBlur } = require('../shared/gaussian-blur.mjs');
 const { encodingArgs, exportEncoders, validateEncoder, ENCODERS } = require('./encoders.cjs');
 
 const { validateTransitions, transitionPlan, audioEnvelopes, mediaWindow } = require('../shared/transitions.mjs');
@@ -74,6 +75,7 @@ function validateProject(p, { allowForeignPaths = false } = {}) {
     validateVideoMask(c);
     validateChromaKey(c);
     validateMosaic(c);
+    validateGaussianBlur(c);
     if (c.audioTreatment && (!hasClipAudio(c, p.assets.find(a => a.id === c.assetId)))) throw new Error('音声のないクリップには自動調整を適用できません。');
     if (c.subtitle !== undefined && (typeof c.subtitle !== 'boolean' || c.kind !== 'title')) throw new Error('字幕クリップが不正です。');
     if (c.fadeIn + c.fadeOut > c.duration + 0.00001) throw new Error('フェードの合計がクリップの長さを超えています。');
@@ -112,7 +114,7 @@ function exportAssets(p) {
   }
   return p.assets.filter(a => ids.has(a.id));
 }
-function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPaths = {}) {
+function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPaths = {}, decodedDimensions = {}) {
   validateProject(p);
   if (settings.target === 'shorts' && p.width * 16 !== p.height * 9) throw new Error('Shortsは縦型9:16のシーケンスで書き出してください。シーケンス設定を確認してください。');
   if (settings.target === 'shorts' && (settings.width !== 1080 || settings.height !== 1920 || Math.max(0, ...p.clips.map(c => c.start + c.duration)) > 180 + 0.000001)) throw new Error('Shortsは1080×1920・3分以内にしてください。タイムラインで必要な範囲に編集してください。');
@@ -127,7 +129,7 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
   const args = ['-hide_banner', '-y', '-filter_complex_threads', '2', '-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:r=${fps}:d=${number(duration)}`, '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${number(duration)}`];
   const visible = p.clips.filter(c => c.kind !== 'audio' && !p.tracks.find(t => t.id === c.trackId)?.hidden);
   const only = visible.length === 1 ? visible[0] : null, onlyAsset = p.assets.find(a => a.id === only?.assetId);
-  const directVideo = onlyAsset?.codec === 'h264' && only?.kind === 'video' && only.start === 0 && only.duration === duration && only.scale === 1 && only.x === 0 && only.y === 0 && only.rotation === 0 && only.opacity === 1 && !only.opacityKeyframes?.length && !only.visualKeyframes?.length && !only.fadeIn && !only.fadeOut && only.exposure === 0 && only.contrast === 1 && only.saturation === 1 && !hasVideoMask(only) && !hasChromaKey(only) && !hasMosaic(only) && !p.transitions?.length && onlyAsset?.width * height === onlyAsset?.height * width;
+  const directVideo = onlyAsset?.codec === 'h264' && only?.kind === 'video' && only.start === 0 && only.duration === duration && only.scale === 1 && only.x === 0 && only.y === 0 && only.rotation === 0 && only.opacity === 1 && !only.opacityKeyframes?.length && !only.visualKeyframes?.length && !only.fadeIn && !only.fadeOut && only.exposure === 0 && only.contrast === 1 && only.saturation === 1 && !hasVideoMask(only) && !hasChromaKey(only) && !hasMosaic(only) && !hasGaussianBlur(only) && !p.transitions?.length && onlyAsset?.width * height === onlyAsset?.height * width;
   const filters = directVideo ? [] : ['[0:v]format=rgba[base]'];
   let base = 'base'; const audios = ['[1:a]']; let input = 2;
   const envelopes=audioEnvelopes(p), plans=transitionPlan(p), transitionClips=new Set(plans.filter(t=>t.video).flatMap(t=>[t.fromId,t.toId])), visuals=[];
@@ -176,6 +178,16 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
       else if (hasChromaKey(c)) f.push('format=rgba', ffmpegChromaFilter(c));
       f.push(`scale=${fitW}:${fitH}:force_original_aspect_ratio=decrease:force_divisible_by=2`, 'setsar=1', ...(directVideo ? [`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`] : ['format=rgba']));
       if (hasMosaic(c)) f.push(ffmpegMosaicFilter(c));
+      if (hasGaussianBlur(c)) {
+        filters.push(f.join(',')+`[preblur${index}]`);
+        const sourceSize=decodedDimensions[c.assetId] || asset;
+        const scaledWidth=sourceSize?.width&&sourceSize?.height?Math.max(2,Math.floor(Math.min(fitW/sourceSize.width,fitH/sourceSize.height)*sourceSize.width/2)*2):fitW;
+        const sigma=Math.max(.5,scaledWidth*c.gaussianBlur.sigma);
+        filters.push(`[preblur${index}]split=2[blurbase${index}][blurinput${index}]`);
+        filters.push(`[blurinput${index}]gblur=sigma=${number(sigma)}[blurred${index}]`);
+        filters.push(`[blurbase${index}][blurred${index}]${ffmpegGaussianBlend(c)}[postblur${index}]`);
+        f.length=0;f.push(`[postblur${index}]null`);
+      }
       if(c.kind!=='title'&&colorChanges)f.push(animatedColorFilter(rawClip,offset));
       else if (c.kind !== 'title' && (c.exposure !== 0 || c.contrast !== 1 || c.saturation !== 1)) f.push(colorFilter(c));
       if (hasBezierMask(c)||animatedMask) {
@@ -251,6 +263,23 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
       await run(ffmpeg, ['-v', 'error', '-i', a.path, '-frames:v', '1', file], { signal });
       sources[a.id] = file;
     }
+    // Probe the actual decoded input for each blurred asset. Still images have
+    // already become autorotated PNGs; video display rotation is applied by
+    // FFmpeg before the scale filter. Older projects only store encoded size.
+    const blurredIds=new Set(p.clips.filter(c=>['video','image'].includes(c.kind)&&!p.tracks.find(t=>t.id===c.trackId)?.hidden&&hasGaussianBlur(visualClipAt(c,0))).map(c=>c.assetId));
+    const decodedDimensions={};
+    for(const id of blurredIds){
+      const asset=p.assets.find(a=>a.id===id),stream=(await probe(sources[id],{signal})).streams.find(s=>s.codec_type==='video'&&!s.disposition?.attached_pic);
+      if(!stream?.width||!stream?.height)throw new Error(`素材の映像サイズを取得できません: ${asset.name}`);
+      const angle=asset.kind==='image'?0:Number(stream.side_data_list?.find(s=>Number.isFinite(s.rotation))?.rotation??stream.tags?.rotate??0);
+      const turn=Math.abs(angle%180);
+      if(Math.abs(turn-90)<.01)decodedDimensions[id]={width:stream.height,height:stream.width};
+      else if(turn<.01||Math.abs(turn-180)<.01)decodedDimensions[id]={width:stream.width,height:stream.height};
+      else{
+        const radians=angle*Math.PI/180,cos=Math.abs(Math.cos(radians)),sin=Math.abs(Math.sin(radians));
+        decodedDimensions[id]={width:Math.ceil(stream.width*cos+stream.height*sin),height:Math.ceil(stream.width*sin+stream.height*cos)};
+      }
+    }
     for (const c of p.clips.filter(c => c.kind === 'title' && !p.tracks.find(t => t.id === c.trackId)?.hidden)) {
       if(needsTitleFrames(c)){
         if(typeof titleFrameProvider!=='function')throw new Error('テキストのキーフレーム画像を準備できませんでした。');
@@ -279,7 +308,7 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
       masks[c.id] = file;
     }
     const encode = async () => {
-    const { args, duration } = buildExport(p, { ...settings, encoder: encoder.id }, sources, partial, audioPaths, masks);
+    const { args, duration } = buildExport(p, { ...settings, encoder: encoder.id }, sources, partial, audioPaths, masks, decodedDimensions);
     const processArgs = await writeFilterScript(args, tempDir);
     if (signal?.aborted) throw new Error('書き出しをキャンセルしました。');
     onProgress({ status: 'rendering', progress: 0, output, encoder: encoder.id, encoderLabel: encoder.label, warning });

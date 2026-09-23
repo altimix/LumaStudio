@@ -131,7 +131,7 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
     window.addEventListener('keydown', key); window.addEventListener('keyup', key); window.addEventListener('blur', cancel); window.addEventListener('resize', cancel); document.addEventListener('visibilitychange', visibility);
     target.addEventListener('lostpointercapture', cancelPointer); target.setPointerCapture(pointer);
   };
-  type EffectOperation = { kind:'crop'; edge:keyof Crop } | { kind:'mask'|'mosaic'; corner?:Corner };
+  type EffectOperation = { kind:'crop'; edge:keyof Crop } | { kind:'mask'|'mosaic'|'gaussianBlur'; corner?:Corner };
   const startEffect = (event:ReactPointerEvent<HTMLButtonElement>,renderedClip:Clip,source:SourceSize,operation:EffectOperation) => {
     if(event.button!==0||cleanup.current||useEditor.getState().gestureActive)return;
     event.preventDefault();event.stopPropagation();event.currentTarget.focus({preventScroll:true});
@@ -139,12 +139,13 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
     if(!clip||!viewport||initial.playing||initial.project.tracks.find(t=>t.id===clip.trackId)?.locked)return;
     if(operation.kind==='mask'&&(!clip.videoMask||clip.videoMask.type==='bezier'))return;
     if(operation.kind==='mosaic'&&!clip.mosaic)return;
+    if(operation.kind==='gaussianBlur'&&!clip.gaussianBlur)return;
     const owner={},target=event.currentTarget,pointer=event.pointerId,rect=viewport.getBoundingClientRect();
     if(!rect.width||!rect.height||!initial.beginGesture(owner,()=>cancel()))return;
     let before=useEditor.getState(),expected=before.project,changed=false,closed=false,writing=false,unsubscribe=()=>{};
     const origin={x:event.clientX,y:event.clientY},startPoint=mediaNormalizedPoint(clip,source,project,{x:(event.clientX-rect.left)/rect.width*project.width,y:(event.clientY-rect.top)/rect.height*project.height});
-    const originalCrop={...(clip.crop||EMPTY_CROP)},originalMask=clip.videoMask&&clip.videoMask.type!=='bezier'?{...clip.videoMask}:undefined,originalMosaic=clip.mosaic&&{...clip.mosaic};
-    const action=operation.kind==='crop'?'クロップ範囲を変更':operation.kind==='mosaic'?'モザイク範囲を変更':'マスクを変更';
+    const originalCrop={...(clip.crop||EMPTY_CROP)},originalMask=clip.videoMask&&clip.videoMask.type!=='bezier'?{...clip.videoMask}:undefined,originalRegion=operation.kind==='gaussianBlur'?clip.gaussianBlur&&{...clip.gaussianBlur}:clip.mosaic&&{...clip.mosaic};
+    const action=operation.kind==='crop'?'クロップ範囲を変更':operation.kind==='mosaic'?'モザイク範囲を変更':operation.kind==='gaussianBlur'?'ガウスぼかしの範囲を変更':'マスクを変更';
     const detach=()=>{closed=true;cleanup.current=null;unsubscribe();window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',cancelPointer);window.removeEventListener('keydown',key);window.removeEventListener('blur',cancel);target.removeEventListener('lostpointercapture',cancelPointer);if(target.hasPointerCapture(pointer))target.releasePointerCapture(pointer);};
     const finish=()=>{if(closed)return;detach();useEditor.getState().endGesture(owner);};
     const cancel=()=>{if(closed)return;const current=useEditor.getState();detach();if(changed&&current.gestureOwner===owner&&current.project===expected)useEditor.setState({project:before.project,history:before.history,future:before.future,historyPlayheads:before.historyPlayheads,futurePlayheads:before.futurePlayheads,historyLabels:before.historyLabels,futureLabels:before.futureLabels,currentAction:before.currentAction,dirty:before.dirty});useEditor.getState().endGesture(owner);};
@@ -159,18 +160,18 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
         if(operation.edge==='top')crop.top=Math.max(0,Math.min(.99-crop.bottom,originalCrop.top+dy));
         if(operation.edge==='bottom')crop.bottom=Math.max(0,Math.min(.99-crop.top,originalCrop.bottom-dy));
         patch={crop};
-      }else if(operation.kind==='mosaic'){
-        const mosaic={...originalMosaic!};
+      }else if(operation.kind==='mosaic'||operation.kind==='gaussianBlur'){
+        const region={...originalRegion!};
         if(!operation.corner){
-          mosaic.x=Math.max(mosaic.width/2,Math.min(1-mosaic.width/2,originalMosaic!.x+dx));
-          mosaic.y=Math.max(mosaic.height/2,Math.min(1-mosaic.height/2,originalMosaic!.y+dy));
+          region.x=Math.max(region.width/2,Math.min(1-region.width/2,originalRegion!.x+dx));
+          region.y=Math.max(region.height/2,Math.min(1-region.height/2,originalRegion!.y+dy));
         }else{
-          const opposite={x:originalMosaic!.x-operation.corner.x*originalMosaic!.width/2,y:originalMosaic!.y-operation.corner.y*originalMosaic!.height/2};
-          const axis=(fixed:number,desired:number,direction:number)=>{const moving=Math.max(0,Math.min(1,desired));const end=direction>0?Math.max(fixed+.01,moving):Math.min(fixed-.01,moving);return {center:(fixed+end)/2,size:Math.abs(end-fixed)};};
+          const opposite={x:originalRegion!.x-operation.corner.x*originalRegion!.width/2,y:originalRegion!.y-operation.corner.y*originalRegion!.height/2};
+          const axis=(fixed:number,desired:number,direction:number)=>{const moving=Math.max(0,Math.min(1,desired));const end=direction>0?Math.max(fixed+.01,moving):Math.min(fixed-.01,moving);return {center:(fixed+end)/2,size:Math.max(.01,Math.abs(end-fixed))};};
           const horizontal=axis(opposite.x,point.x,operation.corner.x),vertical=axis(opposite.y,point.y,operation.corner.y);
-          mosaic.x=horizontal.center;mosaic.y=vertical.center;mosaic.width=horizontal.size;mosaic.height=vertical.size;
+          region.x=horizontal.center;region.y=vertical.center;region.width=horizontal.size;region.height=vertical.size;
         }
-        patch={mosaic};
+        patch=operation.kind==='mosaic'?{mosaic:region as Clip['mosaic']}:{gaussianBlur:region as Clip['gaussianBlur']};
       }else{
         const mask={...originalMask!};
         if(!operation.corner){mask.x=Math.max(0,Math.min(1,originalMask!.x+dx));mask.y=Math.max(0,Math.min(1,originalMask!.y+dy));}
@@ -223,6 +224,7 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
     }
     if(editMode==='mask'&&clip.videoMask?.type!=='bezier'&&clip.videoMask){const mask=clip.videoMask,center=mediaPoint(clip,source,project,{x:mask.x,y:mask.y});return <><button className="media-effect-box mask" aria-label="マスクを移動" style={style(center,bounds.width*mask.width,bounds.height*mask.height,mask.type==='ellipse')} onPointerDown={e=>startEffect(e,clip,source,{kind:'mask'})}/>{corners.map(corner=>{const point=mediaPoint(clip,source,project,{x:mask.x+corner.x*mask.width/2,y:mask.y+corner.y*mask.height/2});return <button key={corner.name} className="media-effect-handle" aria-label={`マスクの${corner.name}を変更`} style={{left:point.x/project.width*100+'%',top:point.y/project.height*100+'%',cursor:corner.cursor,zIndex:z+1}} onPointerDown={e=>startEffect(e,clip,source,{kind:'mask',corner})}/>;})}</>}
     if(editMode==='mosaic'&&clip.mosaic){const mosaic=clip.mosaic,center=mediaPoint(clip,source,project,{x:mosaic.x,y:mosaic.y});return <><button className="media-effect-box mosaic" aria-label="モザイク範囲を移動" style={style(center,bounds.width*mosaic.width,bounds.height*mosaic.height)} onPointerDown={e=>startEffect(e,clip,source,{kind:'mosaic'})}/>{corners.map(corner=>{const point=mediaPoint(clip,source,project,{x:mosaic.x+corner.x*mosaic.width/2,y:mosaic.y+corner.y*mosaic.height/2});return <button key={corner.name} className="media-effect-handle mosaic" aria-label={`モザイク範囲の${corner.name}を変更`} style={{left:point.x/project.width*100+'%',top:point.y/project.height*100+'%',cursor:corner.cursor,zIndex:z+1}} onPointerDown={e=>startEffect(e,clip,source,{kind:'mosaic',corner})}/>;})}</>}
+    if(editMode==='gaussianBlur'&&clip.gaussianBlur){const blur=clip.gaussianBlur,center=mediaPoint(clip,source,project,{x:blur.x,y:blur.y});return <><button className="media-effect-box gaussian-blur" aria-label="ガウスぼかし範囲を移動" style={style(center,bounds.width*blur.width,bounds.height*blur.height)} onPointerDown={e=>startEffect(e,clip,source,{kind:'gaussianBlur'})}/>{corners.map(corner=>{const point=mediaPoint(clip,source,project,{x:blur.x+corner.x*blur.width/2,y:blur.y+corner.y*blur.height/2});return <button key={corner.name} className="media-effect-handle gaussian-blur" aria-label={`ガウスぼかし範囲の${corner.name}を変更`} style={{left:point.x/project.width*100+'%',top:point.y/project.height*100+'%',cursor:corner.cursor,zIndex:z+1}} onPointerDown={e=>startEffect(e,clip,source,{kind:'gaussianBlur',corner})}/>;})}</>}
     if(editMode==='mask'&&clip.videoMask?.type==='bezier') return <BezierMaskEditor key={clip.id} clip={clip} mask={clip.videoMask} source={source} project={project} viewport={root} actions={actions} z={z}/>;
     return null;
   };
