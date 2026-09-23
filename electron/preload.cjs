@@ -14,7 +14,7 @@ contextBridge.exposeInMainWorld('luma', {
   aiImportEnv: () => ipcRenderer.invoke('ai-import-env'),
   aiClearKey: () => ipcRenderer.invoke('ai-clear-key'),
   aiTranscribe: (p, vocabulary) => ipcRenderer.invoke('ai-transcribe', p, vocabulary),
-  aiMetadata: p => ipcRenderer.invoke('ai-metadata', p),
+  aiMetadata: (p, model) => ipcRenderer.invoke('ai-metadata', p, model),
   aiThumbnail: (p, prompt) => ipcRenderer.invoke('ai-thumbnail', p, prompt),
   aiChooseThumbnailReference: p => ipcRenderer.invoke('ai-choose-thumbnail-reference', p),
   aiSaveOutput: (p, format) => ipcRenderer.invoke('ai-save-output', p, format),

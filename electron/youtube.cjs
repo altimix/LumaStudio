@@ -92,13 +92,13 @@ async function transcribeTimeline(p, vocabulary, client, signal, progress = () =
     progress({ progress: 1, message: `${cues.length}件の字幕を作成しました` }); return result;
   } finally { await fs.rm(directory, { recursive: true, force: true }); }
 }
-async function generateMetadata(p, client, signal) {
+async function generateMetadata(p, client, signal, model) {
   validateProject(p); const y = p.youtube;
   if (!y?.cues.length) throw new Error('先に文字起こしを実行してください。');
   if (y.sourceKey !== timelineKey(p)) throw new Error('音声の編集後に文字起こしを再実行してください。');
   const input = { project: p.name, duration: totalTime(p), format: p.height > p.width ? 'Shorts・縦型' : 'YouTube・横型', transcript: y.cues };
   if (JSON.stringify(input).length > 160000) throw new Error('投稿文生成の入力が長すぎます。シーケンスを分けてください。');
-  const raw = await client.metadata(input, signal);
+  const raw = await client.metadata(input, signal, model);
   if (!Array.isArray(raw.hashtags) || raw.hashtags.length !== 3) throw new Error('投稿文のハッシュタグは3個必要です。再生成してください。');
   const next = { ...y, titles: raw.titles, description: raw.description, chapters: raw.chapters, keywords: raw.keywords, hashtags: raw.hashtags, thumbnailPrompt: raw.thumbnailPrompt };
   validateYoutube(next);

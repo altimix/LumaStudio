@@ -152,8 +152,22 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
     assert.match(await fs.readFile(path.join(results,'日本語字幕の制作検証.srt'),'utf8'),/00:00:00,300 --> 00:00:02,500/);
     assert.match(await fs.readFile(path.join(results,'日本語字幕の制作検証.vtt'),'utf8'),/^WEBVTT/);
     await page.screenshot({path:path.join(results,'youtube-captions.png')}); checks.push('rendered timeline sent as bounded Japanese transcription, edited captions applied, SRT/VTT saved');
-    await page.getByRole('button',{name:'タイトル・概要欄',exact:true}).click(); await page.getByRole('button',{name:'投稿文を生成',exact:true}).click();
+    await page.getByRole('button',{name:'タイトル・概要欄',exact:true}).click();
+    const modelSelect=page.getByRole('combobox',{name:'投稿文モデル',exact:true});
+    assert.equal(await modelSelect.inputValue(),'gpt-6-astra');
+    await page.getByRole('button',{name:'投稿文を生成',exact:true}).click();
     await page.getByRole('textbox',{name:'YouTubeタイトル案1',exact:true}).waitFor(); await done();
+    await modelSelect.selectOption('gpt-6-sol');
+    await page.getByRole('button',{name:'投稿文を生成',exact:true}).click(); await done();
+    assert.equal((await app.evaluate(()=>globalThis.__ytRequests.filter(r=>r.kind==='metadata').at(-1))).model,'gpt-6-sol');
+    const beforeInvalidModel=(await app.evaluate(()=>globalThis.__ytRequests)).length;
+    const invalidModel=await page.evaluate(async project=>{try{await window.luma.aiMetadata(project,'gpt-6-sol-max');return '';}catch(error){return String(error);}},p);
+    assert.match(invalidModel,/投稿文モデルを選び直してください/);
+    assert.equal((await app.evaluate(()=>globalThis.__ytRequests)).length,beforeInvalidModel);
+    await page.getByRole('button',{name:'編集に戻る',exact:true}).click(); await studio();
+    await page.getByRole('button',{name:'タイトル・概要欄',exact:true}).click();
+    assert.equal(await modelSelect.inputValue(),'gpt-6-sol');
+    checks.push('Astra is the default, Sol reaches the API, invalid models are rejected, and selection persists after reopening');
     assert.equal(await page.getByRole('textbox',{name:/YouTubeタイトル案/}).count(),3);
     assert.equal((await page.getByRole('textbox',{name:'YouTube検索ワード',exact:true}).inputValue()).split(',').length,10);
     const tagsField = page.getByRole('textbox', { name: 'YouTubeハッシュタグ', exact: true });
@@ -265,7 +279,7 @@ const base = { in:0,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,cont
       assert.equal(JSON.parse(await fs.readFile(projectFile,'utf8')).youtube.cues[0].text,text);await studio();
     }
     checks.push('Escape and backdrop commit active drafts before closing; rejected drafts keep the editor open');
-    const requests=await app.evaluate(()=>globalThis.__ytRequests); assert.ok(requests.some(r=>r.kind==='transcription'&&r.language==='ja'&&r.bytes>10000)); assert.ok(requests.some(r=>r.kind==='image'&&r.size==='1536x864')); assert.ok(requests.filter(r=>r.kind==='metadata').every(r=>r.model==='gpt-6-astra'&&r.stored===false&&r.reasoning.effort==='low'&&r.strict===true));
+    const requests=await app.evaluate(()=>globalThis.__ytRequests); assert.ok(requests.some(r=>r.kind==='transcription'&&r.language==='ja'&&r.bytes>10000)); assert.ok(requests.some(r=>r.kind==='image'&&r.size==='1536x864')); const metadataRequests=requests.filter(r=>r.kind==='metadata'); assert.equal(metadataRequests[0].model,'gpt-6-astra'); assert.ok(metadataRequests.some(r=>r.model==='gpt-6-sol')); assert.ok(metadataRequests.every(r=>['gpt-6-astra','gpt-6-sol'].includes(r.model)&&r.stored===false&&r.reasoning.effort==='low'&&r.strict===true));
     assert.deepEqual(errors,[]); await fs.writeFile(path.join(results,'youtube-verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,api:'mocked OpenAI responses; real native IPC, encrypted settings, audio render and video exports',checks,exports:[landscape,shorts],requests,consoleErrors:errors},null,2)); console.log('YouTube studio, Japanese captions and horizontal/Shorts MP4 exports verified (OpenAI responses mocked).');
   } catch(e) { await page.screenshot({path:path.join(results,'youtube-failure.png')}).catch(()=>{}); await fs.writeFile(path.join(results,'youtube-failure.json'),JSON.stringify({message:e.message,resourceFailures,images:await page.locator('img').evaluateAll(images=>images.map(img=>({src:img.src,width:img.naturalWidth,complete:img.complete})))},null,2)); throw e; }
   finally { await app.close(); }
