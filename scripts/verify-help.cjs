@@ -12,7 +12,8 @@ async function verify(){
   await page.waitForFunction(()=>innerWidth>=1200);
   const before=await page.locator('.ruler-label .timecode').textContent();
   const help=page.getByRole('button',{name:'ヘルプ',exact:true});await help.click();await page.getByRole('menuitem',{name:'初めての動画編集',exact:true}).waitFor();
-  await page.keyboard.press('End');assert.equal(await page.evaluate(()=>document.activeElement.textContent),'アップデート');assert.equal(await page.locator('.ruler-label .timecode').textContent(),before);
+  await page.keyboard.press('End');assert.equal(await page.evaluate(()=>document.activeElement.textContent),'書き出し用マスクキャッシュを削除');
+  await page.keyboard.press('ArrowUp');assert.equal(await page.evaluate(()=>document.activeElement.textContent),'アップデート');assert.equal(await page.locator('.ruler-label .timecode').textContent(),before);
   await page.keyboard.press('Home');await page.keyboard.press('Enter');await page.getByRole('dialog',{name:'はじめての動画編集'}).waitFor();await page.keyboard.press('Escape');
   await help.click();await page.getByRole('menuitem',{name:'ショートカットキー一覧',exact:true}).click();
   const diagram=page.getByRole('region',{name:'キーボード図'});await diagram.waitFor();
@@ -32,7 +33,7 @@ async function verify(){
   await app.evaluate(({ipcMain,app})=>{ipcMain.removeHandler('check-updates');ipcMain.handle('check-updates',()=>({status:'error',currentVersion:app.getVersion(),checkedAt:Date.now(),platform:process.platform,arch:process.arch,message:'通信環境を確認してください。'}));});
   await page.getByRole('button',{name:'更新を確認',exact:true}).click();await page.getByText('通信環境を確認してください。',{exact:false}).waitFor();assert.equal(await page.locator('.update-steps').count(),0);assert.equal(await page.getByRole('button',{name:'ダウンロードページを開く'}).count(),0);
 
-  assert.deepEqual(errors,[]);await fs.writeFile(path.join(results,'help-verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,checks:['three help pages','menu keyboard does not move playhead','Mac and Windows keyboard mappings','keyboard diagram does not edit','shortcut search','startup and manual current-version check','invalid IPC rejected'],consoleErrors:errors},null,2));console.log('Help menu, keyboard diagram and update checks verified.');
+  assert.deepEqual(errors,[]);await fs.writeFile(path.join(results,'help-verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,checks:['three help pages and mask cache clearing action','menu keyboard does not move playhead','Mac and Windows keyboard mappings','keyboard diagram does not edit','shortcut search','startup and manual current-version check','invalid IPC rejected'],consoleErrors:errors},null,2));console.log('Help menu, keyboard diagram and update checks verified.');
  }catch(error){await page.screenshot({path:path.join(results,'help-failure.png')}).catch(()=>{});throw error;}finally{await app.close();}
 }
 verify().catch(error=>{console.error(error);process.exitCode=1;});

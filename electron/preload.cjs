@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld('luma', {
   finishTitleFrame: (id,png,error) => ipcRenderer.invoke('finish-title-frame',id,png,error),
   exportEncoders: (refresh = false) => ipcRenderer.invoke('export-encoders', refresh),
   cancelExport: () => ipcRenderer.invoke('cancel-export'),
+  clearExportMaskCache: () => ipcRenderer.invoke('clear-export-mask-cache'),
   reveal: file => ipcRenderer.invoke('reveal', file),
   onExportProgress: cb => listen('export-progress', cb),
   onImportProgress: cb => listen('import-progress', cb)

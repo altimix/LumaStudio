@@ -116,6 +116,7 @@ export interface DesktopAPI {
   openUpdatePage(): Promise<void>;
   exportEncoders(refresh?: boolean): Promise<EncoderCapabilities>;
   cancelExport(): Promise<void>;
+  clearExportMaskCache(): Promise<{ remainingBytes: number; inUse: boolean }>;
   reveal(path: string): Promise<void>;
   onExportProgress(cb: (progress: ExportProgress) => void): () => void;
   onImportProgress(cb: (progress: ImportProgress) => void): () => void;

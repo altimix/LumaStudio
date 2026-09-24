@@ -4,12 +4,13 @@ const path = require('node:path');
 const os = require('node:os');
 const { randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
-const { ffmpeg, run, probe } = require('./media.cjs');
+const { ffmpeg, run, probe, assertMediaRevision } = require('./media.cjs');
 const { mediaSpawnError } = require('./media-binaries.cjs');
 const { validateOpacityKeys, opacityExpression } = require('../shared/opacity.mjs');
 const { validateVisualKeys, visualClipAt, visualKeys, visualExpression, needsTitleFrames } = require('../shared/visual-keyframes.mjs');
 const { animatedColorFilter, animatedChromaFilter, animatedTransformFilter, usesAnimatedMask, usesAnimatedChroma, maskFrame } = require('./visual-animation.cjs');
 const { writeFrameSequence } = require('./frame-sequence.cjs');
+const { maskCacheKey, maskImplementationFingerprint, MaskCacheUnavailableError } = require('./export-mask-cache.cjs');
 const { validateVolumeKeys } = require('../shared/volume-automation.mjs');
 const { writeFilterScript } = require('./filter-script.cjs');
 const { validateYoutube } = require('../shared/youtube.mjs');
@@ -316,7 +317,7 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
   args.push('-filter_complex', filters.join(';'), '-map', '[vfinal]', '-map', '[afinal]', '-t', number(duration), '-r', String(fps), ...encodingArgs(settings.encoder ?? 'cpu', settings.quality), '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', output);
   return { args, duration };
 }
-async function exportProject(p, settings, output, { titleImages = {}, titleFrameProvider, audioPaths = {}, onProgress = () => {}, signal, encoders = exportEncoders, spawnProcess = spawn } = {}) {
+async function exportProject(p, settings, output, { titleImages = {}, titleFrameProvider, audioPaths = {}, onProgress = () => {}, signal, encoders = exportEncoders, spawnProcess = spawn, maskCache } = {}) {
   validateProject(p);
   finite(settings?.fps,1,120,'書き出しFPS');finite(settings?.width,128,7680,'書き出し幅');finite(settings?.height,128,4320,'書き出し高さ');
   if(!Number.isInteger(settings.fps)||settings.width%2||settings.height%2)throw new Error('書き出しサイズは偶数、FPSは整数で指定してください。');
@@ -382,8 +383,24 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
       const scale = Math.min(1, 512 / Math.max(sourceWidth, sourceHeight));
       const width = Math.max(1, Math.round(sourceWidth * scale)), height = Math.max(1, Math.round(sourceHeight * scale));
       if(usesAnimatedMask(c)){
-        const window=mediaWindow(c,asset,transitionPlan(p),'video'),file=path.join(tempDir,`${randomUUID()}.mkv`);
-        await writeFrameSequence(file,{fps:settings.fps,frames:Math.max(1,Math.ceil(window.duration*settings.fps-1e-7)),format:'pgm',signal,frame:time=>maskFrame(c,time+window.start-c.start,width,height),onFrame:progress=>onProgress({status:'preparing',progress,output})});
+        const window=mediaWindow(c,asset,transitionPlan(p),'video'),frames=Math.max(1,Math.ceil(window.duration*settings.fps-1e-7));
+        const make=file=>writeFrameSequence(file,{fps:settings.fps,frames,format:'pgm',signal,frame:time=>maskFrame(c,time+window.start-c.start,width,height),onFrame:progress=>onProgress({status:'preparing',progress,output})});
+        let file;
+        if(maskCache){
+          if(asset)await assertMediaRevision(asset);
+          try {
+            const key=maskCacheKey({ implementation:await maskImplementationFingerprint(signal),
+              project:{width:p.width,height:p.height},output:{width:settings.width,height:settings.height,fps:settings.fps},
+              asset:asset?{id:asset.id,path:asset.path,width:asset.width,height:asset.height,revision:asset.revision}:null,
+              clip:c,window,width,height,frames });
+            ({file}=await maskCache.getOrCreate(key,{width,height,frames},make,signal));
+          } catch(error){
+            if(signal?.aborted)throw new Error('書き出しをキャンセルしました。');
+            if(!(error instanceof MaskCacheUnavailableError))throw error;
+            file=path.join(tempDir,`${randomUUID()}.mkv`);
+            await make(file);
+          }
+        } else {file=path.join(tempDir,`${randomUUID()}.mkv`);await make(file);}
         masks[c.id]={path:file};continue;
       }
       const file = path.join(tempDir, `${randomUUID()}.pgm`), alpha = rasterizeBezierMask(visualClipAt(c,0), width, height);
@@ -425,7 +442,8 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
     onProgress({ status: 'complete', progress: 1, output, encoder: encoder.id, encoderLabel: encoder.label, warning }); return output;
   } finally {
     await fs.rm(partial, { force: true }).catch(() => {});
-    await fs.rm(tempDir, { recursive: true, force: true });
+    try { await fs.rm(tempDir, { recursive: true, force: true }); }
+    finally { await maskCache?.release().catch(() => {}); }
   }
 }
 module.exports = { validateProject, buildExport, exportProject, exportAssets, isEncoderFailure };
