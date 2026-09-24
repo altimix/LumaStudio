@@ -1,7 +1,14 @@
+const { app, BrowserWindow, ipcMain, protocol, net, dialog, shell, Menu, session, safeStorage, clipboard, nativeImage } = require('electron');
+app.setName('Luma Studio');
+if (process.env.LUMA_TEST_DATA) app.setPath('userData', process.env.LUMA_TEST_DATA);
+// Do this before loading modules that capture the FFmpeg paths at require time.
+if (app.isPackaged && process.platform === 'win32' && process.env.PORTABLE_EXECUTABLE_DIR) {
+  try { require('./media-binaries.cjs').preparePortableMedia(app.getPath('userData'), app.getVersion()); }
+  catch (error) { dialog.showErrorBox('Luma Studio を起動できません', error.message); app.exit(1); }
+}
 const { readStartupProject, rebaseStartupYoutube } = require('./startup-project.cjs');
 const { blackVideo } = require('./black-video.cjs');
 const { hasClipAudio } = require('../shared/clip-links.mjs');
-const { app, BrowserWindow, ipcMain, protocol, net, dialog, shell, Menu, session, safeStorage, clipboard, nativeImage } = require('electron');
 const { createUpdateChecker } = require('./updates.cjs');
 const { recentFolder, rememberFolder } = require('./recent-folder.cjs');
 const { createFrameSaver } = require('./frame-save.cjs');
@@ -31,7 +38,6 @@ const { createCredentials, createOpenAI } = require('./openai.cjs');
 const { validateTextModel } = require('../shared/ai-text-model.mjs');
 const { audioClips, totalTime, transcribeTimeline, generateMetadata, generateThumbnail } = require('./youtube.cjs');
 const { subtitleFile, youtubeText } = require('../shared/youtube.mjs');
-app.setName('Luma Studio');
 // Timeline compositing needs CPU-readable frames. On Windows, GPU-backed NV12
 // readback can stall the renderer for ~500 ms, even with software decoding.
 // Keep WebGL/canvas compositing and FFmpeg GPU encoding enabled.
@@ -39,7 +45,6 @@ if (process.platform === 'win32') {
   app.commandLine.appendSwitch('disable-accelerated-video-decode');
   app.commandLine.appendSwitch('disable-gpu-memory-buffer-video-frames');
 }
-if (process.env.LUMA_TEST_DATA) app.setPath('userData', process.env.LUMA_TEST_DATA);
 protocol.registerSchemesAsPrivileged([
   { scheme: 'luma', privileges: { standard: true, secure: true, supportFetchAPI: true } },
   { scheme: 'media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }
