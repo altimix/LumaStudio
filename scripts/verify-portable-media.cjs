@@ -26,7 +26,7 @@ async function verify() {
     const archiveDir = path.join(scratch, 'archive');
     await fs.mkdir(archiveDir);
     execFileSync(sevenZip, ['e', '-y', `-o${archiveDir}`, portableExe, '$PLUGINSDIR/app-64.7z'], { stdio: 'ignore' });
-    const listing = execFileSync(sevenZip, ['l', path.join(archiveDir, 'app-64.7z')], { encoding: 'utf8' });
+    const listing = execFileSync(sevenZip, ['l', path.join(archiveDir, 'app-64.7z')], { encoding: 'utf8' }).replaceAll('\\', '/');
     for (const name of ['ffmpeg.exe', 'ffprobe.exe']) assert.ok(listing.includes(`resources/app.asar.unpacked/vendor/media/win32-x64/${name}`), `portable EXE contains ${name}`);
 
     await fs.cp(packaged, path.join(scratch, 'extracted'), { recursive: true });
