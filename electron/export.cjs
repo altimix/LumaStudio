@@ -23,6 +23,7 @@ const { ffmpegMaskExpression, hasBezierMask, hasVideoMask, rasterizeBezierMask, 
 const { ffmpegChromaFilter, hasChromaKey, validateChromaKey } = require('../shared/chroma-key.mjs');
 const { ffmpegMosaicFilter, ffmpegMosaicRegionFilter, hasMosaic, validateMosaic } = require('../shared/mosaic.mjs');
 const { ffmpegGaussianBlend, hasGaussianBlur, validateGaussianBlur } = require('../shared/gaussian-blur.mjs');
+const { gaussianRegionFilters } = require('./gaussian-region.cjs');
 const { encodingArgs, exportEncoders, validateEncoder, ENCODERS } = require('./encoders.cjs');
 
 const { validateTransitions, transitionPlan, audioEnvelopes, mediaWindow } = require('../shared/transitions.mjs');
@@ -242,11 +243,19 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
       if (hasGaussianBlur(c)) {
         filters.push(f.join(',')+`[preblur${index}]`);
         const sourceSize=decodedDimensions[c.assetId] || asset;
-        const scaledWidth=sourceSize?.width&&sourceSize?.height?Math.max(2,Math.floor(Math.min(fitW/sourceSize.width,fitH/sourceSize.height)*sourceSize.width/2)*2):fitW;
+        const fit=sourceSize?.width&&sourceSize?.height?Math.min(fitW/sourceSize.width,fitH/sourceSize.height):null;
+        const scaledWidth=fit?Math.max(2,Math.floor(fit*sourceSize.width/2)*2):fitW;
+        const scaledHeight=fit?Math.max(2,Math.floor(fit*sourceSize.height/2)*2):fitH;
         const sigma=Math.max(.5,scaledWidth*c.gaussianBlur.sigma);
-        filters.push(`[preblur${index}]split=2[blurbase${index}][blurinput${index}]`);
-        filters.push(`[blurinput${index}]gblur=sigma=${number(sigma)}[blurred${index}]`);
-        filters.push(`[blurbase${index}][blurred${index}]${ffmpegGaussianBlend(c)}[postblur${index}]`);
+        const opaque=c.kind==='video'&&asset?.codec==='h264'&&!hasChromaKey(c)&&!usesAnimatedChroma(rawClip);
+        const exactGrid=sourceSize?.width*fitH===sourceSize?.height*fitW&&decodedDimensions[c.assetId]?.squarePixels!==false;
+        const region=gaussianRegionFilters(c,index,sigma,fitW,fitH,opaque&&exactGrid);
+        if(region)filters.push(...region);
+        else {
+          filters.push(`[preblur${index}]split=2[blurbase${index}][blurinput${index}]`);
+          filters.push(`[blurinput${index}]gblur=sigma=${number(sigma)}[blurred${index}]`);
+          filters.push(`[blurbase${index}][blurred${index}]${ffmpegGaussianBlend(c)}[postblur${index}]`);
+        }
         f.length=0;f.push(`[postblur${index}]null`);
       }
       if(c.kind!=='title'&&colorChanges)f.push(animatedColorFilter(rawClip,offset));
@@ -347,6 +356,8 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
         const radians=angle*Math.PI/180,cos=Math.abs(Math.cos(radians)),sin=Math.abs(Math.sin(radians));
         decodedDimensions[id]={width:Math.ceil(stream.width*cos+stream.height*sin),height:Math.ceil(stream.width*sin+stream.height*cos),rotation:angle};
       }
+      const [sarWidth,sarHeight]=String(stream.sample_aspect_ratio||'').split(':').map(Number);
+      decodedDimensions[id].squarePixels=!(sarWidth>0&&sarHeight>0&&sarWidth!==sarHeight);
     }
     for (const c of p.clips.filter(c => c.kind === 'title' && !p.tracks.find(t => t.id === c.trackId)?.hidden)) {
       if(needsTitleFrames(c)){
