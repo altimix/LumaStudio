@@ -35,3 +35,28 @@ export function ffmpegMosaicFilter(clip) {
   const inside = `gte(X,${left})*lt(X,${right})*gte(Y,${top})*lt(Y,${bottom})`;
   return `geq=r='if(${inside},r(${sx},${sy}),r(X,Y))':g='if(${inside},g(${sx},${sy}),g(X,Y))':b='if(${inside},b(${sx},${sy}),b(X,Y))':a='if(${inside},alpha(${sx},${sy}),alpha(X,Y))'`;
 }
+
+// For an opaque video whose scaled dimensions are known, evaluate geq only
+// inside the selected rectangle. The extra source pixel at the right/bottom
+// prevents geq's bilinear sampler from changing a clamped corner sample.
+export function ffmpegMosaicRegionFilter(clip, width, height) {
+  const m = clip.mosaic, n = value => Number(value.toFixed(8));
+  const left = Math.max(0, Math.ceil(width * n(m.x - m.width / 2)));
+  const top = Math.max(0, Math.ceil(height * n(m.y - m.height / 2)));
+  const right = Math.min(width, Math.ceil(width * n(m.x + m.width / 2)));
+  const bottom = Math.min(height, Math.ceil(height * n(m.y + m.height / 2)));
+  const regionWidth = right - left, regionHeight = bottom - top;
+  if (regionWidth < 1 || regionHeight < 1) return null;
+  const block = `max(2,round(${width}*${n(m.blockSize)}))`;
+  const sx = `min(${regionWidth - 1},floor(X/${block})*${block}+floor(${block}/2))`;
+  const sy = `min(${regionHeight - 1},floor(Y/${block})*${block}+floor(${block}/2))`;
+  const sample = `geq=r='r(${sx},${sy})':g='g(${sx},${sy})':b='b(${sx},${sy})':a='alpha(${sx},${sy})'`;
+  return {
+    area: regionWidth * regionHeight / (width * height),
+    crop: `crop=${regionWidth + (right < width ? 1 : 0)}:${regionHeight + (bottom < height ? 1 : 0)}:${left}:${top}:exact=1`,
+    sample,
+    trim: `crop=${regionWidth}:${regionHeight}:0:0:exact=1`,
+    x: left,
+    y: top,
+  };
+}
