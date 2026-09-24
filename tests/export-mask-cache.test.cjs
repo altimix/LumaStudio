@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
 const lockfile = require('proper-lockfile');
 const { writeFrameSequence } = require('../electron/frame-sequence.cjs');
 const { createExportMaskCache, maskCacheKey, maskImplementationFingerprint, fileHash, inspectMaskSequence } = require('../electron/export-mask-cache.cjs');
@@ -143,6 +144,51 @@ test('another cache instance cannot clear a mask in use', async () => {
   } finally {
     await cache.release();
     await other.release();
+    await fs.rm(dir, { recursive:true, force:true });
+  }
+});
+
+test('two app processes can publish the same mask key concurrently', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-concurrent-mask-'));
+  const key = maskCacheKey({ concurrent:true });
+  const script = `
+    const fs=require('node:fs/promises'),path=require('node:path');
+    const {createExportMaskCache}=require(process.argv[1]);
+    const {writeFrameSequence}=require(process.argv[2]);
+    const dir=process.argv[3],key=process.argv[4],cache=createExportMaskCache(dir);
+    const pgm=Buffer.concat([Buffer.from('P5\\n16 16\\n255\\n'),Buffer.alloc(256,128)]);
+    (async()=>{try{
+      const result=await cache.getOrCreate(key,{width:16,height:16,frames:2},async file=>{
+        await fs.writeFile(path.join(dir,'ready-'+process.pid),'');
+        const deadline=Date.now()+30000;
+        while((await fs.readdir(dir)).filter(name=>name.startsWith('ready-')).length<2){
+          if(Date.now()>deadline)throw Error('second process did not begin the build');
+          await new Promise(resolve=>setTimeout(resolve,20));
+        }
+        await writeFrameSequence(file,{fps:10,frames:2,format:'pgm',frame:()=>pgm});
+      });
+      console.log(result.file);
+    }finally{await cache.release()}})().catch(error=>{console.error(error);process.exitCode=1});
+  `;
+  const runChild = () => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['-e', script,
+      path.resolve('electron/export-mask-cache.cjs'), path.resolve('electron/frame-sequence.cjs'), dir, key],
+    { windowsHide:true });
+    let stdout='', stderr='';
+    child.stdout.on('data', bytes => { stdout += bytes; });
+    child.stderr.on('data', bytes => { stderr += bytes; });
+    child.on('error', reject);
+    child.on('close', code => code === 0 ? resolve(stdout.trim()) : reject(new Error(stderr || `child exited ${code}`)));
+  });
+  const cache = createExportMaskCache(dir);
+  try {
+    const paths = await Promise.all([runChild(), runChild()]);
+    assert.equal(paths.length, 2);
+    const current = await cache.getOrCreate(key, expected, makeSequence);
+    assert.equal(current.hit, true);
+    assert.ok((await fs.stat(current.file)).isFile());
+  } finally {
+    await cache.release();
     await fs.rm(dir, { recursive:true, force:true });
   }
 });

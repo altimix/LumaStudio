@@ -194,7 +194,13 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
       const digest = await fileHash(temporary, signal), name = `${key}-${digest}-${randomUUID()}.mkv`, file = path.join(dir, name);
       await keep(file);
       await fs.rename(temporary, file);
-      await atomicWrite(reportPath, JSON.stringify({ version: 2, key, digest, file: name, bytes: stat.size, ...expected }));
+      await synchronized(async () => {
+        // Distinct app processes can finish the same key concurrently. A
+        // Windows rename cannot reliably replace an existing manifest, so
+        // publish under the shared lock after removing the old name.
+        await fs.rm(reportPath, { force: true });
+        await atomicWrite(reportPath, JSON.stringify({ version: 2, key, digest, file: name, bytes: stat.size, ...expected }));
+      });
       await prune();
       return { file, hit: false };
     } finally { if (!retainTemporary) await fs.rm(temporary, { force: true }).catch(() => {}); }
