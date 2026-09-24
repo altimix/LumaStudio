@@ -6,6 +6,8 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const { setTimeout: delay } = require('node:timers/promises');
+const { inspectMedia } = require('../electron/media.cjs');
+const { bundleStartupProject } = require('./bundle-startup-project.cjs');
 
 const root = path.join(__dirname, '..');
 const version = require('../package.json').version;
@@ -27,6 +29,25 @@ async function extractedTools(previous) {
   throw new Error('ポータブルEXEの一時展開先が見つかりません。');
 }
 
+async function createStartupFixture(source, scratch, profile) {
+  // CDP-injected File objects have no OS path for Electron's webUtils. The
+  // preceding packaged-app test covers the import UI; this real NSIS run uses
+  // an existing validated startup-project bundle to test decoding and play.
+  const asset = await inspectMedia(source, path.join(scratch, 'inspect-cache'));
+  assert.ok(asset.hasAudio, 'the exported MP4 contains audio');
+  const project = {
+    version: 1, id: 'portable-exe-verification', name: 'ポータブル版の音声検証',
+    width: asset.width, height: asset.height, fps: 30,
+    assets: [asset], tracks: [{ id: 'video', kind: 'video', name: '映像', muted: false, hidden: false, locked: false, solo: false }],
+    clips: [{ id: 'exported-video', assetId: asset.id, trackId: 'video', kind: 'video', name: asset.name,
+      start: 0, in: 0, duration: Math.min(asset.duration, 2), speed: 1, x: 0, y: 0, scale: 1, rotation: 0,
+      opacity: 1, exposure: 0, contrast: 1, saturation: 1, volume: 1, fadeIn: 0, fadeOut: 0 }], markers: [],
+  };
+  const projectFile = path.join(scratch, 'exported.luma');
+  await fs.writeFile(projectFile, JSON.stringify(project));
+  await bundleStartupProject(projectFile, path.join(profile, '初期プロジェクト'));
+}
+
 async function verify() {
   if (process.platform !== 'win32') return;
   const scratch = await fs.mkdtemp(path.join(root, '.local', 'portable-exe-'));
@@ -39,9 +60,10 @@ async function verify() {
     await fs.mkdir(profile, { recursive: true });
     await fs.mkdir(results, { recursive: true });
     await fs.access(source);
+    await createStartupFixture(source, scratch, profile);
     const previous = new Set(await fs.readdir(os.tmpdir()));
     const port = await freePort();
-    const env = { ...process.env, LUMA_TEST_DATA: profile, LUMA_DEMO_FIXTURE: '0' };
+    const env = { ...process.env, LUMA_TEST_DATA: profile, LUMA_DEMO_FIXTURE: '1' };
     delete env.ELECTRON_RUN_AS_NODE;
     delete env.PORTABLE_EXECUTABLE_DIR; // The NSIS launcher must set this itself.
     launcher = spawn(exe, [`--remote-debugging-port=${port}`], { env, windowsHide: true, stdio: 'ignore' });
@@ -59,38 +81,30 @@ async function verify() {
     }
     assert.ok(page, 'portable EXE opened the editor');
     await page.locator('.loading-screen').waitFor({ state: 'hidden', timeout: 60000 });
+    const card = page.locator('.media-card').filter({ hasText: 'portable-exported.mp4' });
+    await card.waitFor({ timeout: 60000 });
+    await page.locator('.timeline-clip.video').first().waitFor({ timeout: 60000 });
     const staged = path.join(profile, 'media-tools', version);
     assert.ok((await fs.readdir(staged)).length > 0, 'the portable launcher configured persistent media tools');
     const temporary = await extractedTools(previous);
     await fs.rm(path.join(temporary, 'ffmpeg.exe'));
     await fs.rm(path.join(temporary, 'ffprobe.exe'));
 
-    await page.evaluate(() => { const input = document.createElement('input'); input.type = 'file'; input.id = 'portable-verify-file'; document.body.append(input); });
-    await page.locator('#portable-verify-file').setInputFiles(source);
-    await page.evaluate(() => {
-      const input = document.querySelector('#portable-verify-file');
-      const transfer = new DataTransfer(); transfer.items.add(input.files[0]);
-      document.querySelector('.app').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
-    });
-    const card = page.locator('.media-card').filter({ hasText: 'portable-exported.mp4' });
-    await card.waitFor({ timeout: 60000 });
     const decoded = await page.evaluate(async () => {
-      const input = document.querySelector('#portable-verify-file');
-      const result = await window.luma.importDroppedFiles([input.files[0]]);
-      if (result.errors.length || result.assets.length !== 1) throw new Error(result.errors.join('\n') || '素材の再読み込みに失敗しました。');
-      const chunk = await window.luma.readAudioChunk(result.assets[0].url, 0);
+      const result = await window.luma.bootstrap();
+      if (result.startupError || result.startupProject?.assets.length !== 1) throw new Error(result.startupError || '書き出したMP4を開けませんでした。');
+      const chunk = await window.luma.readAudioChunk(result.startupProject.assets[0].url, 0);
       let peak = 0;
       for (const value of chunk) peak = Math.max(peak, Math.abs(value));
       return { length: chunk.length, peak };
     });
     assert.equal(decoded.length, 48000 * 8 * 2);
     assert.ok(decoded.peak > 0.01, 'portable EXE decodes audible PCM after its temporary tools disappear');
-    await card.getByRole('button', { name: 'portable-exported.mp4 を追加', exact: true }).click();
     await page.getByRole('button', { name: '再生 (Space)', exact: true }).click();
     await page.waitForTimeout(900);
     assert.equal(await page.locator('.toast').filter({ hasText: '音声を再生できません' }).count(), 0);
     await page.screenshot({ path: path.join(results, 'portable-exe-audio.png') });
-    await fs.writeFile(path.join(results, 'portable-exe-verification.json'), JSON.stringify({ passed: true, checks: ['actual NSIS portable EXE started', 'portable launcher staged tools', 'temporary FFmpeg and FFprobe removed', 'media imported into timeline and audible PCM decoded without playback error'], decoded }, null, 2));
+    await fs.writeFile(path.join(results, 'portable-exe-verification.json'), JSON.stringify({ passed: true, checks: ['actual NSIS portable EXE started', 'portable launcher staged tools', 'exported MP4 loaded into timeline', 'temporary FFmpeg and FFprobe removed', 'audible PCM decoded without playback error'], decoded }, null, 2));
   } finally {
     if (browser) await browser.close().catch(() => {});
     if (launcher?.pid) try { execFileSync('taskkill', ['/PID', String(launcher.pid), '/T', '/F'], { stdio: 'ignore' }); } catch { /* Already closed. */ }
@@ -98,4 +112,5 @@ async function verify() {
   }
 }
 
-verify().catch(error => { console.error(error); process.exitCode = 1; });
+if (require.main === module) verify().catch(error => { console.error(error); process.exitCode = 1; });
+module.exports = { createStartupFixture };
