@@ -27,7 +27,8 @@ function stageMediaBinaries(sourceFolder, userData, version, platform = process.
   catch (error) { throw new Error(`同梱メディアツールを読み込めません。配布EXEを再取得してください: ${error.message}`); }
   const digest = createHash('sha256').update(hashes.join(':')).digest('hex').slice(0, 24);
   const targetFolder = path.join(userData, 'media-tools', version, digest);
-  fs.mkdirSync(targetFolder, { recursive: true });
+  try { fs.mkdirSync(targetFolder, { recursive: true }); }
+  catch (error) { throw new Error(`メディアツールを保存できません。保存先の空き容量とアクセス権を確認してください: ${error.message}`); }
   const targets = names.map(name => path.join(targetFolder, name));
   for (let index = 0; index < names.length; index++) {
     const target = targets[index];

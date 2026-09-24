@@ -41,6 +41,11 @@ async function verify() {
     await page.getByRole('button', { name: '読み込み', exact: true }).click();
     await page.locator('.media-card').filter({ hasText: 'source.mp4' }).waitFor({ timeout: 60000 });
     await page.getByRole('button', { name: 'source.mp4 を追加', exact: true }).click();
+    const originalFolder = path.join(scratch, 'extracted', 'resources', 'app.asar.unpacked', 'vendor', 'media', 'win32-x64');
+    const staged = path.join(profile, 'media-tools', version);
+    assert.ok((await fs.readdir(staged)).length > 0, 'portable startup staged the media tools');
+    await fs.rm(path.join(originalFolder, 'ffmpeg.exe'));
+    await fs.rm(path.join(originalFolder, 'ffprobe.exe'));
     await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }); }, output);
     await page.getByRole('button', { name: '書き出し', exact: true }).click();
     await page.getByLabel('書き出しサイズ', { exact: true }).selectOption('720');
@@ -49,11 +54,6 @@ async function verify() {
     await page.getByRole('button', { name: '保存先を選んで書き出す', exact: true }).click();
     await page.getByText('書き出しが完了しました', { exact: true }).waitFor({ timeout: 180000 });
 
-    const originalFolder = path.join(scratch, 'extracted', 'resources', 'app.asar.unpacked', 'vendor', 'media', 'win32-x64');
-    const staged = path.join(profile, 'media-tools', version);
-    assert.ok((await fs.readdir(staged)).length > 0, 'portable startup staged the media tools');
-    await fs.rm(path.join(originalFolder, 'ffmpeg.exe'));
-    await fs.rm(path.join(originalFolder, 'ffprobe.exe'));
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, output);
     await page.getByRole('button', { name: '読み込み', exact: true }).click();
     const card = page.locator('.media-card').filter({ hasText: 'exported.mp4' });
@@ -70,10 +70,10 @@ async function verify() {
     await page.waitForTimeout(900);
     assert.equal(await page.locator('.toast').filter({ hasText: '音声を再生できません' }).count(), 0);
     await page.getByRole('button', { name: '一時停止 (Space)', exact: true }).click();
-    await fs.writeFile(path.join(results, 'portable-media-verification.json'), JSON.stringify({ passed: true, checks: ['portable EXE contains FFmpeg and FFprobe', 'export completed', 'source FFmpeg and FFprobe removed', 'exported MP4 imported and played without audio error'] }, null, 2));
+    await fs.writeFile(path.join(results, 'portable-media-verification.json'), JSON.stringify({ passed: true, checks: ['portable EXE contains FFmpeg and FFprobe', 'source FFmpeg and FFprobe removed', 'export completed without extraction tools', 'exported MP4 imported and played without audio error'] }, null, 2));
   } finally {
     if (app) await app.close();
-    await fs.rm(scratch, { recursive: true, force: true });
+    await fs.rm(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 verify().catch(error => { console.error(error); process.exitCode = 1; });

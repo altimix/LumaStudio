@@ -26,5 +26,8 @@ test('portable media tools survive removal of the extraction directory', async (
     assert.notEqual(second.ffmpeg, first.ffmpeg, 'updated tools use their own immutable location');
     assert.equal(await fs.readFile(first.ffmpeg, 'utf8'), 'ffmpeg-version-one');
     assert.equal(await fs.readFile(second.ffmpeg, 'utf8'), 'ffmpeg-version-two');
+    const invalidDestination = path.join(root, 'not-a-directory');
+    await fs.writeFile(invalidDestination, 'occupied');
+    assert.throws(() => stageMediaBinaries(source, invalidDestination, '1.10.2', 'win32'), /保存先の空き容量とアクセス権/);
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
