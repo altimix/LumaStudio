@@ -330,6 +330,26 @@ test('re-exported animated masks reuse verified frames without changing video or
       const decode = file => run(ffmpeg, ['-v','error','-i',file,...args]);
       assert.deepEqual(await decode(outputB), await decode(outputA));
     }
+    const unavailableRoot = path.join(dir, 'unavailable-cache');
+    await fs.writeFile(unavailableRoot, 'not a directory');
+    const fallbackFolder = path.join(dir, 'folder-fallback.mp4');
+    await exportProject(project, settings, fallbackFolder, { maskCache:createExportMaskCache(unavailableRoot) });
+    const lockedRoot = path.join(dir, 'lease-denied-cache');
+    const originalLock = lockfile.lock;
+    const fallbackLease = path.join(dir, 'lease-fallback.mp4');
+    lockfile.lock = async (target, options) => target === lockedRoot
+      ? Promise.reject(Object.assign(new Error('lease denied'), { code:'EPERM' }))
+      : originalLock(target, options);
+    try {
+      await exportProject(project, settings, fallbackLease, { maskCache:createExportMaskCache(lockedRoot) });
+    } finally { lockfile.lock = originalLock; }
+    for (const args of [ ['-map','0:v:0','-pix_fmt','rgba','-f','framemd5','pipe:1'],
+      ['-map','0:a:0','-ac','2','-ar','48000','-f','s16le','pipe:1'] ]) {
+      const decode = file => run(ffmpeg, ['-v','error','-i',file,...args]);
+      for (const output of [fallbackFolder, fallbackLease]) {
+        assert.deepEqual(await decode(output), await decode(outputA), 'uncached fallback preserves video and audio');
+      }
+    }
     const cacheEntries = async () => (await fs.readdir(cacheDir)).filter(name => name.endsWith('.mkv')).length;
     await exportProject(project, { ...settings, fps:30 }, path.join(dir, 'fps-changed.mp4'), { maskCache:cache });
     assert.equal(await cacheEntries(), 2);

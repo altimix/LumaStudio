@@ -10,7 +10,7 @@ const { validateOpacityKeys, opacityExpression } = require('../shared/opacity.mj
 const { validateVisualKeys, visualClipAt, visualKeys, visualExpression, needsTitleFrames } = require('../shared/visual-keyframes.mjs');
 const { animatedColorFilter, animatedChromaFilter, animatedTransformFilter, usesAnimatedMask, usesAnimatedChroma, maskFrame } = require('./visual-animation.cjs');
 const { writeFrameSequence } = require('./frame-sequence.cjs');
-const { maskCacheKey, maskImplementationFingerprint } = require('./export-mask-cache.cjs');
+const { maskCacheKey, maskImplementationFingerprint, MaskCacheUnavailableError } = require('./export-mask-cache.cjs');
 const { validateVolumeKeys } = require('../shared/volume-automation.mjs');
 const { writeFilterScript } = require('./filter-script.cjs');
 const { validateYoutube } = require('../shared/youtube.mjs');
@@ -394,7 +394,12 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
               asset:asset?{id:asset.id,path:asset.path,width:asset.width,height:asset.height,revision:asset.revision}:null,
               clip:c,window,width,height,frames });
             ({file}=await maskCache.getOrCreate(key,{width,height,frames},make,signal));
-          } catch(error){if(signal?.aborted)throw new Error('書き出しをキャンセルしました。');throw error;}
+          } catch(error){
+            if(signal?.aborted)throw new Error('書き出しをキャンセルしました。');
+            if(!(error instanceof MaskCacheUnavailableError))throw error;
+            file=path.join(tempDir,`${randomUUID()}.mkv`);
+            await make(file);
+          }
         } else {file=path.join(tempDir,`${randomUUID()}.mkv`);await make(file);}
         masks[c.id]={path:file};continue;
       }

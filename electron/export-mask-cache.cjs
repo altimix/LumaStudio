@@ -16,6 +16,12 @@ const cacheVideoName = /^[a-f0-9]{64}-[a-f0-9]{64}-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0
 const temporaryVideoName = /^\.[a-f0-9]{64}-[a-f0-9-]{36}\.mkv$/;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const maskCacheKey = details => hash(JSON.stringify({ version: 2, ...details }));
+class MaskCacheUnavailableError extends Error {
+  constructor(cause) {
+    super('書き出し用マスクキャッシュを使用できません。', { cause });
+    this.name = 'MaskCacheUnavailableError';
+  }
+}
 let implementationFingerprint;
 async function maskImplementationFingerprint(signal) {
   signal?.throwIfAborted();
@@ -60,7 +66,7 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
   let leaseTimer;
   async function synchronized(action) {
     const dir = root();
-    await fs.mkdir(dir, { recursive: true });
+    await fs.mkdir(dir, { recursive: true }).catch(error => { throw new MaskCacheUnavailableError(error); });
     let compromised;
     const unlock = await lockfile.lock(dir, { stale:30000, update:10000,
       retries:{ retries:100, minTimeout:20, maxTimeout:100, factor:1 },
@@ -146,7 +152,7 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
         !Number.isInteger(expected.height) || expected.height < 1) throw new Error('マスクキャッシュの条件が不正です。');
     signal?.throwIfAborted();
     const dir = root();
-    await fs.mkdir(dir, { recursive: true });
+    await fs.mkdir(dir, { recursive: true }).catch(error => { throw new MaskCacheUnavailableError(error); });
     const reportPath = path.join(dir, `${key}.json`);
     let observedManifest, invalidManifest = false;
     try {
@@ -180,7 +186,7 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
     const temporary = path.join(dir, `.${key}-${randomUUID()}.mkv`);
     let retainTemporary = false;
     try {
-      await keep(temporary);
+      await keep(temporary).catch(error => { throw new MaskCacheUnavailableError(error); });
       await build(temporary);
       signal?.throwIfAborted();
       await inspectMaskSequence(temporary, expected, signal);
@@ -192,8 +198,8 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
         return { file: temporary, hit: false };
       }
       const digest = await fileHash(temporary, signal), name = `${key}-${digest}-${randomUUID()}.mkv`, file = path.join(dir, name);
-      await keep(file);
-      await fs.rename(temporary, file);
+      await keep(file).catch(error => { throw new MaskCacheUnavailableError(error); });
+      await fs.rename(temporary, file).catch(error => { throw new MaskCacheUnavailableError(error); });
       try {
         await synchronized(async () => {
           // Distinct app processes can finish the same key concurrently. A
@@ -254,4 +260,4 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
   return { getOrCreate, release, clear, prune };
 }
 
-module.exports = { createExportMaskCache, maskCacheKey, maskImplementationFingerprint, fileHash, inspectMaskSequence };
+module.exports = { createExportMaskCache, maskCacheKey, maskImplementationFingerprint, fileHash, inspectMaskSequence, MaskCacheUnavailableError };
