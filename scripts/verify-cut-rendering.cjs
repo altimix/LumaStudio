@@ -1,6 +1,7 @@
 const {_electron:electron}=require('playwright');
 const fs=require('node:fs/promises'),path=require('node:path'),assert=require('node:assert/strict');
 const {ffmpeg,run,inspectMedia}=require('../electron/media.cjs');
+const {buildExport}=require('../electron/export.cjs');
 const root=path.join(__dirname,'..');
 (async()=>{
  const results=path.join(root,'test-results','cut-rendering');await fs.mkdir(results,{recursive:true});
@@ -27,6 +28,18 @@ const root=path.join(__dirname,'..');
   await page.keyboard.press('Control+Shift+z');await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip.video').length===2);
   await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
   const cut=JSON.parse(await fs.readFile(file,'utf8'));assert.equal(cut.clips.length,2);
+  const cutOnly=path.join(results,'カットのみ.mp4');
+  const {args}=buildExport(cut,{width:320,height:180,fps:30,quality:'draft',encoder:'cpu'},{[asset.id]:source},cutOnly);
+  assert.ok(!args[args.indexOf('-filter_complex')+1].includes('overlay='),'the cut-only export should use one video decode');
+  await app.evaluate(({dialog},cutOnly)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:cutOnly});},cutOnly);
+  await page.getByRole('button',{name:'書き出し',exact:true}).click();
+  await page.getByLabel('書き出し方式',{exact:true}).selectOption('cpu');
+  await page.getByRole('button',{name:'保存先を選んで書き出す',exact:true}).click();
+  await page.getByText('書き出しが完了しました',{exact:true}).waitFor({timeout:120000});
+  const cutPixels=await run(ffmpeg,['-v','error','-i',cutOnly,'-vf','scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
+  assert.equal(cutPixels.length,120*3);
+  for(let i=0;i<120;i++)assert.ok(cutPixels[i*3+2]>180,`cut-only export black frame ${i}`);
+  await page.locator('.modal-heading').getByRole('button',{name:'閉じる'}).click();
   for(const [i,shape]of ['arrow','rectangle','ellipse'].entries())cut.clips.push({...clip,id:shape,assetId:undefined,trackId:'g',kind:'title',name:shape,start:.5+i,duration:.8,graphic:{shape,width:100,height:60,lineWidth:6,fill:false,fillColor:'#ff0000'}});
   await fs.writeFile(file,JSON.stringify(cut));await page.keyboard.press('Control+o');
   await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip.title').length===3);
