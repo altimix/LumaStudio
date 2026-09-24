@@ -250,7 +250,9 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
         const opaque=c.kind==='video'&&asset?.codec==='h264'&&!hasChromaKey(c)&&!usesAnimatedChroma(rawClip);
         const exactGrid=sourceSize?.width*fitH===sourceSize?.height*fitW&&
           decodedDimensions[c.assetId]?.squarePixels!==false&&decodedDimensions[c.assetId]?.eightBit!==false;
-        const region=gaussianRegionFilters(c,index,sigma,fitW,fitH,opaque&&exactGrid);
+        // Reassembly uses YUVA420. Keep the original RGBA path when a later
+        // geometric filter interpolates pixels, or colored edges can shift.
+        const region=gaussianRegionFilters(c,index,sigma,fitW,fitH,opaque&&exactGrid&&!moving&&!c.rotation);
         if(region)filters.push(...region);
         else {
           filters.push(`[preblur${index}]split=2[blurbase${index}][blurinput${index}]`);
