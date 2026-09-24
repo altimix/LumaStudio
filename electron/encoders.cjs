@@ -18,7 +18,9 @@ function encodingArgs(id, quality = 'standard') {
   if(id==='nvenc')return ['-c:v','h264_nvenc','-preset',quality==='draft'?'p1':quality==='high'?'p6':'p4','-tune','hq','-rc','vbr','-cq',q,'-b:v','0'];
   if(id==='qsv')return ['-c:v','h264_qsv','-preset',quality==='draft'?'veryfast':quality==='high'?'slow':'medium','-global_quality:v',q];
   if(id==='amf')return ['-c:v','h264_amf','-usage','transcoding','-quality',quality==='draft'?'speed':quality==='high'?'quality':'balanced','-rc','cqp','-qp_i',q,'-qp_p',q,'-qp_b',q];
-  return ['-c:v','libx264','-preset',quality==='draft'?'ultrafast':'medium','-crf',q,'-threads','4'];
+  // Let x264 size its worker pool for the available CPU instead of limiting
+  // every machine to four encoding threads.
+  return ['-c:v','libx264','-preset',quality==='draft'?'ultrafast':'medium','-crf',q,'-threads','0'];
 }
 function createEncoderDetector(probe = async id => {
   await run(ffmpeg,['-v','error','-f','lavfi','-i','color=s=320x180:r=30','-frames:v','3',...encodingArgs(id),'-pix_fmt','yuv420p','-f','null','-'],{signal:AbortSignal.timeout(8000)});
