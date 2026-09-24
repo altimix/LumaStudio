@@ -53,6 +53,7 @@ async function verify() {
     await page.getByLabel('品質', { exact: true }).selectOption('draft');
     await page.getByRole('button', { name: '保存先を選んで書き出す', exact: true }).click();
     await page.getByText('書き出しが完了しました', { exact: true }).waitFor({ timeout: 180000 });
+    await fs.copyFile(output, path.join(results, 'portable-exported.mp4'));
 
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, output);
     await page.getByRole('button', { name: '読み込み', exact: true }).click();
