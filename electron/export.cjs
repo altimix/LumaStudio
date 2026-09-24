@@ -26,6 +26,7 @@ const { ffmpegMosaicFilter, ffmpegMosaicRegionFilter, hasMosaic, validateMosaic 
 const { ffmpegGaussianBlend, hasGaussianBlur, validateGaussianBlur } = require('../shared/gaussian-blur.mjs');
 const { gaussianRegionFilters } = require('./gaussian-region.cjs');
 const { encodingArgs, exportEncoders, validateEncoder, ENCODERS } = require('./encoders.cjs');
+const { directCopySource, copyUnchangedMovie } = require('./export-direct-copy.cjs');
 
 const { validateTransitions, transitionPlan, audioEnvelopes, mediaWindow } = require('../shared/transitions.mjs');
 const { compositeVisuals } = require('./video-transitions.cjs');
@@ -323,6 +324,12 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
   if(!Number.isInteger(settings.fps)||settings.width%2||settings.height%2)throw new Error('書き出しサイズは偶数、FPSは整数で指定してください。');
   const requested=validateEncoder(settings?.encoder);
   if(signal?.aborted)throw new Error('書き出しをキャンセルしました。');
+  if(requested==='auto'){
+    let unchanged;
+    try { unchanged=await directCopySource(p,settings,signal); }
+    catch(error){if(signal?.aborted)throw new Error('書き出しをキャンセルしました。');throw error;}
+    if(unchanged)return copyUnchangedMovie(unchanged,output,{signal,onProgress});
+  }
   const resolveEncoder=()=>new Promise((resolve,reject)=>{
     const abort=()=>reject(new Error('書き出しをキャンセルしました。'));
     signal?.addEventListener('abort',abort,{once:true});
