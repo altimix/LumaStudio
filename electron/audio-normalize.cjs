@@ -3,6 +3,7 @@ const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { ffmpeg, probe } = require('./media.cjs');
+const { mediaSpawnError } = require('./media-binaries.cjs');
 const { progressReader, audioProgress } = require('./audio-progress.cjs');
 const { atomicWrite } = require('./persistence.cjs');
 const { validateTreatment } = require('../shared/audio-treatment.mjs');
@@ -14,7 +15,7 @@ function processAudio(args, signal, onProgress) {
     let log = ''; const abort = () => child.kill(); signal?.addEventListener('abort', abort, { once: true });
     if (onProgress) child.stdout.on('data', progressReader(onProgress)); else child.stdout.resume();
     child.stderr.on('data', b => { log = (log + b).slice(-16000); });
-    child.on('error', error => { signal?.removeEventListener('abort', abort); reject(error); });
+    child.on('error', error => { signal?.removeEventListener('abort', abort); reject(mediaSpawnError(ffmpeg, error)); });
     child.on('close', code => {
       signal?.removeEventListener('abort', abort);
       if (signal?.aborted) reject(new Error('音声の自動調整を中止しました。'));

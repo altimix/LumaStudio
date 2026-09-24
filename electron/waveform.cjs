@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
-const { ffmpeg } = require('./media-binaries.cjs');
+const { ffmpeg, mediaSpawnError } = require('./media-binaries.cjs');
 const RATE = 48000, STEP = 48, FACTOR = 16, MAX_BINS = 8192, PEAK_BYTES = 4;
 const building = new Map();
 
@@ -16,7 +16,7 @@ async function scan(file, channels, consume, { start = 0, duration, signal } = {
   const child = spawn(ffmpeg, args, { windowsHide: true, signal });
   let stderr = '', carry = Buffer.alloc(0), frame = 0;
   const completion = new Promise((resolve, reject) => {
-    child.on('error', reject); child.on('close', code => code === 0 ? resolve() : reject(new Error(stderr || '音声波形を作成できません。')));
+    child.on('error', error => reject(mediaSpawnError(ffmpeg, error))); child.on('close', code => code === 0 ? resolve() : reject(new Error(stderr || '音声波形を作成できません。')));
   });
   completion.catch(() => {});
   child.stderr.on('data', b => { stderr = (stderr + b).slice(-2000); });
@@ -35,7 +35,7 @@ async function scan(file, channels, consume, { start = 0, duration, signal } = {
       carry = Buffer.from(data.subarray(bytes));
     }
     await completion; return frame;
-  } catch (error) { child.kill(); await completion.catch(() => {}); throw error; }
+  } catch (error) { child.kill(); await completion.catch(() => {}); throw mediaSpawnError(ffmpeg, error); }
 }
 
 async function readIndex(directory, id) {

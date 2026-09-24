@@ -5,6 +5,7 @@ const os = require('node:os');
 const { randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { ffmpeg, run, probe } = require('./media.cjs');
+const { mediaSpawnError } = require('./media-binaries.cjs');
 const { validateOpacityKeys, opacityExpression } = require('../shared/opacity.mjs');
 const { validateVisualKeys, visualClipAt, visualKeys, visualExpression, needsTitleFrames } = require('../shared/visual-keyframes.mjs');
 const { animatedColorFilter, animatedChromaFilter, animatedTransformFilter, usesAnimatedMask, usesAnimatedChroma, maskFrame } = require('./visual-animation.cjs');
@@ -326,7 +327,7 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
         }
       });
       child.stderr.on('data', b => { stderr = (stderr + b).slice(-16000); });
-      child.on('error', error => { signal?.removeEventListener('abort', cancel); reject(error); });
+      child.on('error', error => { signal?.removeEventListener('abort', cancel); reject(mediaSpawnError(ffmpeg, error)); });
       child.on('close', code => {
         signal?.removeEventListener('abort', cancel);
         if (signal?.aborted) reject(new Error('書き出しをキャンセルしました。'));

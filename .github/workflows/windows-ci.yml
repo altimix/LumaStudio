@@ -49,6 +49,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: npm run package
+      - name: Verify portable media tools after temporary extraction cleanup
+        run: node scripts/verify-portable-media.cjs
+      - name: Verify audio in the actual portable EXE
+        run: node scripts/verify-portable-exe.cjs
       - name: Verify packaged editing, export and recovery
         run: npm run verify:packaged
       - name: Create distribution checksums
