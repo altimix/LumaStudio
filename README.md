@@ -5,6 +5,11 @@ altimixが開発する、Windows・macOS向けの日本語動画編集ソフト�
 
 [公式サイト](https://lumastudio.altimix.jp/) · [ダウンロード](https://github.com/altimix/LumaStudio/releases/latest) · [操作ガイド](README.html) · [開発手順](docs/DEVELOPMENT.md) · [開発に参加](CONTRIBUTING.md)
 
+## 1.10.2
+
+- CPUのMP4書き出しで、H.264圧縮と映像合成のスレッド数をFFmpegが利用可能なCPUに合わせて選ぶようにしました。特に高解像度やモザイクを使う書き出しで、待ち時間を短縮できます。効果はPCや素材によって変わります。
+- 品質設定、エフェクト、音声、FPS、既存ファイルを保護する保存手順は従来どおりです。
+
 ## 1.10.1
 
 - モザイクとガウスぼかしの中心 X・Y、幅・高さ、粗さ／強さを、他の数値欄と同じく左右ドラッグで調整できます。直接入力、範囲制限、Undo / Redoにも対応します。
