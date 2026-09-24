@@ -21,7 +21,7 @@ const { validateGraphic } = require('../shared/graphics.mjs');
 const { validateTreatment } = require('../shared/audio-treatment.mjs');
 const { ffmpegMaskExpression, hasBezierMask, hasVideoMask, rasterizeBezierMask, validateVideoMask } = require('../shared/video-mask.mjs');
 const { ffmpegChromaFilter, hasChromaKey, validateChromaKey } = require('../shared/chroma-key.mjs');
-const { ffmpegMosaicFilter, hasMosaic, validateMosaic } = require('../shared/mosaic.mjs');
+const { ffmpegMosaicFilter, ffmpegMosaicRegionFilter, hasMosaic, validateMosaic } = require('../shared/mosaic.mjs');
 const { ffmpegGaussianBlend, hasGaussianBlur, validateGaussianBlur } = require('../shared/gaussian-blur.mjs');
 const { encodingArgs, exportEncoders, validateEncoder, ENCODERS } = require('./encoders.cjs');
 
@@ -180,7 +180,22 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
       if (usesAnimatedChroma(rawClip)) f.push('format=rgba',animatedChromaFilter(rawClip,offset));
       else if (hasChromaKey(c)) f.push('format=rgba', ffmpegChromaFilter(c));
       f.push(`scale=${fitW}:${fitH}:force_original_aspect_ratio=decrease:force_divisible_by=2`, 'setsar=1', ...(directVideo ? [`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`] : ['format=rgba']));
-      if (hasMosaic(c)) f.push(ffmpegMosaicFilter(c));
+      if (hasMosaic(c)) {
+        // H.264 carries no alpha here; replacing a small opaque rectangle via
+        // overlay avoids evaluating the per-pixel geq over the entire frame.
+        const sourceSize = decodedDimensions[c.assetId];
+        const region = c.kind === 'video' && asset?.codec === 'h264' && !moving && !hasChromaKey(c) && !usesAnimatedChroma(rawClip)
+          && Math.abs(sourceSize?.rotation ?? Infinity) < .01
+          && sourceSize?.width * fitH === sourceSize?.height * fitW
+          ? ffmpegMosaicRegionFilter(c, fitW, fitH) : null;
+        if (region && region.area <= .25) {
+          filters.push(f.join(',') + `[mosaicSource${index}]`);
+          filters.push(`[mosaicSource${index}]split=2[mosaicBase${index}][mosaicCrop${index}]`);
+          filters.push(`[mosaicCrop${index}]${region.crop},${region.sample},${region.trim}[mosaicPatch${index}]`);
+          filters.push(`[mosaicBase${index}][mosaicPatch${index}]overlay=x=${region.x}:y=${region.y}:format=auto:shortest=1[mosaic${index}]`);
+          f.length = 0; f.push(`[mosaic${index}]null`);
+        } else f.push(ffmpegMosaicFilter(c));
+      }
       if (hasGaussianBlur(c)) {
         filters.push(f.join(',')+`[preblur${index}]`);
         const sourceSize=decodedDimensions[c.assetId] || asset;
@@ -266,21 +281,25 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
       await run(ffmpeg, ['-v', 'error', '-i', a.path, '-frames:v', '1', file], { signal });
       sources[a.id] = file;
     }
-    // Probe the actual decoded input for each blurred asset. Still images have
-    // already become autorotated PNGs; video display rotation is applied by
-    // FFmpeg before the scale filter. Older projects only store encoded size.
-    const blurredIds=new Set(p.clips.filter(c=>['video','image'].includes(c.kind)&&!p.tracks.find(t=>t.id===c.trackId)?.hidden&&hasGaussianBlur(visualClipAt(c,0))).map(c=>c.assetId));
+    // Probe the decoded dimensions for blurred assets and eligible H.264 mosaic
+    // clips. Still images are now autorotated PNGs; video rotation is applied
+    // by FFmpeg before scaling. Older projects only store encoded dimensions.
+    const effectIds=new Set(p.clips.filter(c=>{
+      if(!['video','image'].includes(c.kind)||p.tracks.find(t=>t.id===c.trackId)?.hidden)return false;
+      const shown=visualClipAt(c,0),asset=p.assets.find(a=>a.id===c.assetId);
+      return hasGaussianBlur(shown)||(c.kind==='video'&&asset?.codec==='h264'&&hasMosaic(shown));
+    }).map(c=>c.assetId));
     const decodedDimensions={};
-    for(const id of blurredIds){
+    for(const id of effectIds){
       const asset=p.assets.find(a=>a.id===id),stream=(await probe(sources[id],{signal})).streams.find(s=>s.codec_type==='video'&&!s.disposition?.attached_pic);
       if(!stream?.width||!stream?.height)throw new Error(`素材の映像サイズを取得できません: ${asset.name}`);
       const angle=asset.kind==='image'?0:Number(stream.side_data_list?.find(s=>Number.isFinite(s.rotation))?.rotation??stream.tags?.rotate??0);
       const turn=Math.abs(angle%180);
-      if(Math.abs(turn-90)<.01)decodedDimensions[id]={width:stream.height,height:stream.width};
-      else if(turn<.01||Math.abs(turn-180)<.01)decodedDimensions[id]={width:stream.width,height:stream.height};
+      if(Math.abs(turn-90)<.01)decodedDimensions[id]={width:stream.height,height:stream.width,rotation:angle};
+      else if(turn<.01||Math.abs(turn-180)<.01)decodedDimensions[id]={width:stream.width,height:stream.height,rotation:angle};
       else{
         const radians=angle*Math.PI/180,cos=Math.abs(Math.cos(radians)),sin=Math.abs(Math.sin(radians));
-        decodedDimensions[id]={width:Math.ceil(stream.width*cos+stream.height*sin),height:Math.ceil(stream.width*sin+stream.height*cos)};
+        decodedDimensions[id]={width:Math.ceil(stream.width*cos+stream.height*sin),height:Math.ceil(stream.width*sin+stream.height*cos),rotation:angle};
       }
     }
     for (const c of p.clips.filter(c => c.kind === 'title' && !p.tracks.find(t => t.id === c.trackId)?.hidden)) {
