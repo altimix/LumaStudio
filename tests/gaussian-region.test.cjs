@@ -115,5 +115,6 @@ test('nonopaque and aspect-mismatched sources keep the original filter', () => {
   letterboxed.assets[0] = { ...letterboxed.assets[0], width:800 };
   assert.ok(!graph(letterboxed).includes('hstack=inputs=3'));
   assert.ok(!graph(project(blur), { [asset.id]:{width:640,height:360,squarePixels:false} }).includes('hstack=inputs=3'));
+  assert.ok(!graph(project(blur), { [asset.id]:{width:640,height:360,squarePixels:true,eightBit:false} }).includes('hstack=inputs=3'));
   assert.ok(!graph(project({ x:.5, y:.5, width:1, height:1, sigma:.01 })).includes('hstack=inputs=3'));
 });

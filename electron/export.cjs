@@ -248,7 +248,8 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
         const scaledHeight=fit?Math.max(2,Math.floor(fit*sourceSize.height/2)*2):fitH;
         const sigma=Math.max(.5,scaledWidth*c.gaussianBlur.sigma);
         const opaque=c.kind==='video'&&asset?.codec==='h264'&&!hasChromaKey(c)&&!usesAnimatedChroma(rawClip);
-        const exactGrid=sourceSize?.width*fitH===sourceSize?.height*fitW&&decodedDimensions[c.assetId]?.squarePixels!==false;
+        const exactGrid=sourceSize?.width*fitH===sourceSize?.height*fitW&&
+          decodedDimensions[c.assetId]?.squarePixels!==false&&decodedDimensions[c.assetId]?.eightBit!==false;
         const region=gaussianRegionFilters(c,index,sigma,fitW,fitH,opaque&&exactGrid);
         if(region)filters.push(...region);
         else {
@@ -358,6 +359,7 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
       }
       const [sarWidth,sarHeight]=String(stream.sample_aspect_ratio||'').split(':').map(Number);
       decodedDimensions[id].squarePixels=!(sarWidth>0&&sarHeight>0&&sarWidth!==sarHeight);
+      decodedDimensions[id].eightBit=['yuv420p','yuvj420p'].includes(stream.pix_fmt);
     }
     for (const c of p.clips.filter(c => c.kind === 'title' && !p.tracks.find(t => t.id === c.trackId)?.hidden)) {
       if(needsTitleFrames(c)){
