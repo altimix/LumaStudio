@@ -1,7 +1,10 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
 const { median, summarize, compareReports } = require('../scripts/export-benchmark-report.cjs');
-const { projects, definitionHash } = require('../scripts/benchmark-export-suite.cjs');
+const { projects, definitionHash, writeReportAtomically } = require('../scripts/benchmark-export-suite.cjs');
 
 const report = (seconds, videoHash = 'video') => ({
   schema: 3, platform: 'darwin', arch: 'arm64', osRelease: 'test',
@@ -46,4 +49,20 @@ test('workload identity ignores imported asset IDs but detects changed cuts', ()
   assert.equal(definitionHash(first), definitionHash(second));
   second.clips.pop();
   assert.notEqual(definitionHash(first), definitionHash(second));
+});
+
+test('report replacement preserves the previous report if serialization fails', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-benchmark-report-'));
+  const reportPath = path.join(directory, 'results.json');
+  try {
+    await fs.writeFile(reportPath, '{"previous":true}\n');
+    const circular = {}; circular.self = circular;
+    await assert.rejects(writeReportAtomically(reportPath, circular), /circular/i);
+    assert.equal(await fs.readFile(reportPath, 'utf8'), '{"previous":true}\n');
+    await writeReportAtomically(reportPath, { current: true });
+    assert.deepEqual(JSON.parse(await fs.readFile(reportPath, 'utf8')), { current: true });
+    assert.deepEqual(await fs.readdir(directory), ['results.json']);
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
 });

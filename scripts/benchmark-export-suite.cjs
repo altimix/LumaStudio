@@ -2,7 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { spawn, execFileSync } = require('node:child_process');
-const { createHash } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const { performance } = require('node:perf_hooks');
 const { inspectMedia, probe, run, ffmpeg, ffprobe } = require('../electron/media.cjs');
 const { exportProject } = require('../electron/export.cjs');
@@ -80,6 +80,16 @@ async function verifyOutput(output) {
   return { frames, videoHash: sha256(framesText), audioHash, duration: Number(info.format.duration) };
 }
 
+async function writeReportAtomically(reportPath, report) {
+  const temporaryPath = `${reportPath}.${randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(temporaryPath, JSON.stringify(report, null, 2) + '\n', { flag: 'wx' });
+    await fs.rename(temporaryPath, reportPath);
+  } finally {
+    await fs.rm(temporaryPath, { force: true });
+  }
+}
+
 async function benchmark(outputDir, iterations, only) {
   if (!Number.isInteger(iterations) || iterations < 1 || iterations > 10) throw new Error('測定回数は1〜10回で指定してください。');
   if (execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { encoding: 'utf8' }).trim()) {
@@ -130,7 +140,7 @@ async function benchmark(outputDir, iterations, only) {
     })) });
   }
   const reportPath = path.join(outputDir, 'results.json');
-  await fs.writeFile(reportPath, JSON.stringify(report, null, 2) + '\n');
+  await writeReportAtomically(reportPath, report);
   for (const item of report.scenarios) console.log(`${item.name}: median ${roundedSeconds(summarize(item.samples).medianSeconds)} s`);
   console.log(reportPath);
 }
@@ -150,4 +160,4 @@ async function main(args) {
 }
 
 if (require.main === module) main(process.argv.slice(2)).catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { projects, definitionHash, measure, verifyOutput, benchmark };
+module.exports = { projects, definitionHash, measure, verifyOutput, writeReportAtomically, benchmark };
