@@ -4,8 +4,10 @@ const { median, summarize, compareReports } = require('../scripts/export-benchma
 const { projects, definitionHash } = require('../scripts/benchmark-export-suite.cjs');
 
 const report = (seconds, videoHash = 'video') => ({
-  schema: 2, platform: 'darwin', arch: 'arm64', osRelease: 'test',
-  cpuModel: 'test CPU', logicalCpus: 10, ffmpegVersion: 'ffmpeg test', sourceSha256: 'source',
+  schema: 3, platform: 'darwin', arch: 'arm64', osRelease: 'test',
+  cpuModel: 'test CPU', logicalCpus: 10, nodeVersion: 'v22', ffmpegVersion: 'ffmpeg test',
+  ffmpegSha256: 'ffmpeg', ffprobeSha256: 'ffprobe', benchmarkScriptSha256: 'script',
+  sourceSha256: 'source', iterations: 3,
   settings: { width: 960, height: 540, fps: 24, encoder: 'cpu' },
   scenarios: [{ name: 'plain', definitionHash: 'same-workload', frames: 48, duration: 2, videoHash, audioHash: 'audio',
     samples: seconds.map(totalSeconds => ({ totalSeconds, ffmpegSeconds: totalSeconds / 2 })) }],
@@ -30,6 +32,10 @@ test('comparison checks source and machine before reporting a speed change', () 
   assert.throws(() => compareReports(report([2]), { ...report([1]), sourceSha256:'other' }), /比較条件/);
   assert.throws(() => compareReports(report([2]), { ...report([1]), cpuModel:'other' }), /比較条件/);
   assert.throws(() => compareReports(report([2]), { ...report([1]), logicalCpus:8 }), /比較条件/);
+  assert.throws(() => compareReports(report([2]), { ...report([1]), ffmpegSha256:'other-build' }), /比較条件/);
+  assert.throws(() => compareReports(report([2]), { ...report([1]), ffprobeSha256:'other-probe' }), /比較条件/);
+  assert.throws(() => compareReports(report([2]), { ...report([1]), iterations:5 }), /比較条件/);
+  assert.throws(() => compareReports(report([2]), { ...report([1]), benchmarkScriptSha256:'other-script' }), /比較条件/);
   const changedWorkload = report([1]); changedWorkload.scenarios[0].definitionHash = 'other-workload';
   assert.throws(() => compareReports(report([2]), changedWorkload), /比較条件/);
 });

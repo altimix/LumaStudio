@@ -4,7 +4,7 @@ const os = require('node:os');
 const { spawn, execFileSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
 const { performance } = require('node:perf_hooks');
-const { inspectMedia, probe, run, ffmpeg } = require('../electron/media.cjs');
+const { inspectMedia, probe, run, ffmpeg, ffprobe } = require('../electron/media.cjs');
 const { exportProject } = require('../electron/export.cjs');
 const { summarize, compareReports } = require('./export-benchmark-report.cjs');
 
@@ -92,10 +92,12 @@ async function benchmark(outputDir, iterations, only) {
   const suite = projects(asset);
   const names = only ? [only] : Object.keys(suite);
   if (names.some(name => !suite[name])) throw new Error(`未定義のケースです: ${only}`);
-  const report = { schema: 2, gitCommit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+  const report = { schema: 3, gitCommit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     platform: process.platform, arch: process.arch, osRelease: os.release(),
-    cpuModel: os.cpus()[0]?.model, logicalCpus: os.cpus().length,
+    cpuModel: os.cpus()[0]?.model, logicalCpus: os.cpus().length, nodeVersion: process.version,
     ffmpegVersion: (await run(ffmpeg, ['-version'])).toString().split('\n')[0],
+    ffmpegSha256: sha256(await fs.readFile(ffmpeg)), ffprobeSha256: sha256(await fs.readFile(ffprobe)),
+    benchmarkScriptSha256: sha256(await fs.readFile(__filename)),
     sourceSha256: sha256(await fs.readFile(source)), source: 'public/demo/01-journey.mp4',
     settings, iterations, scenarios: [] };
   const samples = new Map(names.map(name => [name, []]));
