@@ -1,12 +1,13 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { median, summarize, compareReports } = require('../scripts/export-benchmark-report.cjs');
+const { projects, definitionHash } = require('../scripts/benchmark-export-suite.cjs');
 
 const report = (seconds, videoHash = 'video') => ({
-  schema: 1, platform: 'darwin', arch: 'arm64', osRelease: 'test',
-  cpuModel: 'test CPU', ffmpegVersion: 'ffmpeg test', sourceSha256: 'source',
+  schema: 2, platform: 'darwin', arch: 'arm64', osRelease: 'test',
+  cpuModel: 'test CPU', logicalCpus: 10, ffmpegVersion: 'ffmpeg test', sourceSha256: 'source',
   settings: { width: 960, height: 540, fps: 24, encoder: 'cpu' },
-  scenarios: [{ name: 'plain', frames: 48, duration: 2, videoHash, audioHash: 'audio',
+  scenarios: [{ name: 'plain', definitionHash: 'same-workload', frames: 48, duration: 2, videoHash, audioHash: 'audio',
     samples: seconds.map(totalSeconds => ({ totalSeconds, ffmpegSeconds: totalSeconds / 2 })) }],
 });
 
@@ -28,4 +29,15 @@ test('comparison checks source and machine before reporting a speed change', () 
   assert.equal(changed[0].qualityMatch, false);
   assert.throws(() => compareReports(report([2]), { ...report([1]), sourceSha256:'other' }), /比較条件/);
   assert.throws(() => compareReports(report([2]), { ...report([1]), cpuModel:'other' }), /比較条件/);
+  assert.throws(() => compareReports(report([2]), { ...report([1]), logicalCpus:8 }), /比較条件/);
+  const changedWorkload = report([1]); changedWorkload.scenarios[0].definitionHash = 'other-workload';
+  assert.throws(() => compareReports(report([2]), changedWorkload), /比較条件/);
+});
+
+test('workload identity ignores imported asset IDs but detects changed cuts', () => {
+  const first = projects({ id:'first-import' }).continuousCuts;
+  const second = projects({ id:'second-import' }).continuousCuts;
+  assert.equal(definitionHash(first), definitionHash(second));
+  second.clips.pop();
+  assert.notEqual(definitionHash(first), definitionHash(second));
 });

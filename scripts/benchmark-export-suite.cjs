@@ -13,6 +13,14 @@ const duration = 2;
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const roundedSeconds = value => Math.round(value * 1000) / 1000;
 
+function definitionHash(project) {
+  // The source bytes are checked separately. Asset IDs depend on import paths
+  // and mtimes, but the clip geometry and effect values define the workload.
+  const { version, width, height, fps, tracks, markers, clips } = project;
+  return sha256(JSON.stringify({ version, width, height, fps, tracks, markers,
+    clips: clips.map(clip => ({ ...clip, assetId: 'SOURCE' })) }));
+}
+
 function projects(asset) {
   const base = { id: 'base', assetId: asset.id, trackId: 'video', kind: 'video', name: 'デモ映像',
     start: 0, in: 0, duration, speed: 1, scale: 1, x: 0, y: 0, rotation: 0,
@@ -74,6 +82,9 @@ async function verifyOutput(output) {
 
 async function benchmark(outputDir, iterations, only) {
   if (!Number.isInteger(iterations) || iterations < 1 || iterations > 10) throw new Error('測定回数は1〜10回で指定してください。');
+  if (execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { encoding: 'utf8' }).trim()) {
+    throw new Error('計測前に変更をコミットしてください。未コミットの作業ツリーは結果の実装を特定できません。');
+  }
   await fs.mkdir(outputDir, { recursive: true });
   const runDir = await fs.mkdtemp(path.join(outputDir, 'run-'));
   const source = path.resolve('public/demo/01-journey.mp4');
@@ -81,9 +92,10 @@ async function benchmark(outputDir, iterations, only) {
   const suite = projects(asset);
   const names = only ? [only] : Object.keys(suite);
   if (names.some(name => !suite[name])) throw new Error(`未定義のケースです: ${only}`);
-  const report = { schema: 1, gitCommit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+  const report = { schema: 2, gitCommit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     platform: process.platform, arch: process.arch, osRelease: os.release(),
-    cpuModel: os.cpus()[0]?.model, ffmpegVersion: (await run(ffmpeg, ['-version'])).toString().split('\n')[0],
+    cpuModel: os.cpus()[0]?.model, logicalCpus: os.cpus().length,
+    ffmpegVersion: (await run(ffmpeg, ['-version'])).toString().split('\n')[0],
     sourceSha256: sha256(await fs.readFile(source)), source: 'public/demo/01-journey.mp4',
     settings, iterations, scenarios: [] };
   const samples = new Map(names.map(name => [name, []]));
@@ -111,7 +123,7 @@ async function benchmark(outputDir, iterations, only) {
       verified.some(result => JSON.stringify(result) !== JSON.stringify(first))) {
       throw new Error(`${name}: フレーム数、音声、長さ、または反復間の画素が一致しません。`);
     }
-    report.scenarios.push({ name, ...first, samples: measured.map(({ output, ...sample }) => ({
+    report.scenarios.push({ name, definitionHash: definitionHash(suite[name]), ...first, samples: measured.map(({ output, ...sample }) => ({
       ...sample, output: path.relative(outputDir, output),
     })) });
   }
@@ -136,4 +148,4 @@ async function main(args) {
 }
 
 if (require.main === module) main(process.argv.slice(2)).catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { projects, measure, verifyOutput, benchmark };
+module.exports = { projects, definitionHash, measure, verifyOutput, benchmark };
