@@ -1,6 +1,7 @@
 const { spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const { ffmpeg } = require('./media.cjs');
+const { mediaSpawnError } = require('./media-binaries.cjs');
 const canceled=()=>new Error('書き出しをキャンセルしました。');
 
 function pngFrame(data,width,height) {
@@ -42,7 +43,7 @@ async function writeFrameSequence(file,{fps,frames,format='png',frame,signal,onF
   let stderr='',failure;
   child.stderr.on('data',data=>{stderr=(stderr+data).slice(-4000);});
   child.stdin.on('error',error=>{failure=error;});
-  const done=new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',code=>signal?.aborted?reject(canceled()):code===0?resolve():reject(new Error(stderr||`フレーム動画を作成できませんでした (${code})。`)));});
+  const done=new Promise((resolve,reject)=>{child.once('error',error=>reject(mediaSpawnError(ffmpeg,error)));child.once('close',code=>signal?.aborted?reject(canceled()):code===0?resolve():reject(new Error(stderr||`フレーム動画を作成できませんでした (${code})。`)));});
   done.catch(()=>{});
   const abort=()=>child.kill();signal?.addEventListener('abort',abort,{once:true});
   const early=done.then(()=>{throw new Error('フレーム動画の作成が途中で終了しました。');});early.catch(()=>{});

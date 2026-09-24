@@ -8,6 +8,7 @@ const os = require('node:os');
 const { randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { ffmpeg, run, probe } = require('./media.cjs');
+const { mediaSpawnError } = require('./media-binaries.cjs');
 const { thumbnailFormat, thumbnailFrames, thumbnailBrief, thumbnailReference } = require('../shared/youtube-thumbnail.mjs');
 const { thumbnailReferenceJpeg } = require('./thumbnail-reference.cjs');
 const { thumbnailJpeg } = require('./thumbnail-jpeg.cjs');
@@ -61,7 +62,7 @@ async function runAudio(args, signal) {
     const child = spawn(ffmpeg, processArgs, { windowsHide: true }); let error = '';
     const cancel = () => child.kill(); signal?.addEventListener('abort', cancel, { once: true });
     child.stdout.resume(); child.stderr.on('data', b => { error = (error + b).slice(-2000); });
-    child.on('error', e => { signal?.removeEventListener('abort', cancel); reject(e); });
+    child.on('error', e => { signal?.removeEventListener('abort', cancel); reject(mediaSpawnError(ffmpeg, e)); });
     child.on('close', code => { signal?.removeEventListener('abort', cancel); if (signal?.aborted) reject(new Error('AI処理を中止しました。')); else if (code) reject(new Error(`音声の準備に失敗しました: ${error}`)); else resolve(); });
   });
   } finally { if (directory) await fs.rm(directory, { recursive: true, force: true }); }

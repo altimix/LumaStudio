@@ -3,7 +3,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { createHash } = require('node:crypto');
 const { ensureWaveform, overview } = require('./waveform.cjs');
-const { ffmpeg, ffprobe } = require('./media-binaries.cjs');
+const { ffmpeg, ffprobe, mediaSpawnError } = require('./media-binaries.cjs');
 
 function run(binary, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -13,11 +13,7 @@ function run(binary, args, options = {}) {
     const chunks = []; let size = 0; let stderr = '';
     child.stdout?.on('data', b => { size += b.length; if (size > 64 * 1024 * 1024) child.kill(); else chunks.push(b); });
     child.stderr?.on('data', b => { stderr = (stderr + b).slice(-12000); });
-    child.on('error', error => {
-      failure = error.code === 'ENOENT' && (binary === ffmpeg || binary === ffprobe)
-        ? new Error(`同梱メディアツール（${path.basename(binary)}）を起動できません。アプリを終了し、配布EXEを再取得してください。`, { cause: error })
-        : error;
-    });
+    child.on('error', error => { failure = mediaSpawnError(binary, error); });
     child.on('close', code => failure || options.signal?.aborted ? reject(failure || options.signal.reason) : code === 0 ? resolve(Buffer.concat(chunks)) : reject(new Error(stderr || `Media process exited: ${code}`)));
   });
 }

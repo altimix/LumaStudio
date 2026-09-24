@@ -55,4 +55,11 @@ function preparePortableMedia(userData, version) {
   return staged;
 }
 
-module.exports = { ...binaries, stageMediaBinaries, preparePortableMedia };
+function mediaSpawnError(binary, error) {
+  const distribution = process.platform === 'win32' ? '配布EXE' : '配布ファイル';
+  return error?.code === 'ENOENT' && (binary === binaries.ffmpeg || binary === binaries.ffprobe)
+    ? new Error(`同梱メディアツール（${path.basename(binary)}）を起動できません。アプリを終了し、${distribution}を再取得してください。`, { cause: error })
+    : error;
+}
+
+module.exports = { ...binaries, stageMediaBinaries, preparePortableMedia, mediaSpawnError };

@@ -3,7 +3,17 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { stageMediaBinaries } = require('../electron/media-binaries.cjs');
+const { stageMediaBinaries, mediaSpawnError, ffmpeg } = require('../electron/media-binaries.cjs');
+
+test('a missing bundled media tool gets a Japanese recovery message', () => {
+  const missing = Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' });
+  const mapped = mediaSpawnError(ffmpeg, missing);
+  assert.match(mapped.message, /同梱メディアツール.*再取得/);
+  assert.equal(mapped.cause, missing);
+  assert.equal(mediaSpawnError('/other/tool', missing), missing);
+  const permission = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+  assert.equal(mediaSpawnError(ffmpeg, permission), permission);
+});
 
 test('portable media tools survive removal of the extraction directory', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-portable-media-'));
