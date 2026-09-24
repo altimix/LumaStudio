@@ -6,7 +6,7 @@ const path = require('node:path');
 const { ffmpeg, run, inspectMedia } = require('../electron/media.cjs');
 const { buildExport, exportProject } = require('../electron/export.cjs');
 
-let folder, red, blue;
+let folder, red, blue, striped;
 const settings = { width: 320, height: 180, fps: 24, quality: 'draft', encoder: 'cpu' };
 
 before(async () => {
@@ -20,6 +20,12 @@ before(async () => {
     if (name === 'red') red = asset;
     else blue = asset;
   }
+  const stripedFile = path.join(folder, '赤と青の連続映像.mp4');
+  await run(ffmpeg, ['-v','error','-y','-i',red.path,'-i',blue.path,
+    '-f','lavfi','-i','sine=frequency=440:duration=2:sample_rate=48000',
+    '-filter_complex','[0:v]trim=duration=1,setpts=PTS-STARTPTS[r];[1:v]trim=duration=1,setpts=PTS-STARTPTS[b];[r][b]concat=n=2:v=1:a=0[v]',
+    '-map','[v]','-map','2:a','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac','-shortest',stripedFile]);
+  striped = await inspectMedia(stripedFile, path.join(folder, 'striped-cache'));
 });
 after(async () => { if (folder) await fs.rm(folder, { recursive: true, force: true }); });
 
@@ -66,8 +72,8 @@ test('continuous frame-aligned splits share one video decode and keep original a
   assert.ok(await audioRms(output, 1.1) > 0.02);
 });
 
-test('full-frame cuts between different H.264 sources use concat with exact boundaries', async () => {
-  const p = project([clip(red, 'a', 0, 0), clip(blue, 'b', 1, 0)]);
+test('full-frame jumps within one H.264 source use concat with exact boundaries', async () => {
+  const p = project([clip(striped, 'a', 0, 1), clip(striped, 'b', 1, 0)], [striped]);
   const { filters } = graph(p);
   assert.match(filters, /concat=n=2:v=1:a=0/);
   assert.ok(!filters.includes('overlay='));
@@ -77,7 +83,7 @@ test('full-frame cuts between different H.264 sources use concat with exact boun
   assert.equal(pixels.length, 48 * 3);
   for (let frame = 0; frame < 48; frame++) {
     const pixel = pixels.subarray(frame * 3, frame * 3 + 3);
-    assert.ok(frame < 24 ? pixel[0] > 180 && pixel[2] < 30 : pixel[2] > 180 && pixel[0] < 30,
+    assert.ok(frame < 24 ? pixel[2] > 180 && pixel[0] < 30 : pixel[0] > 180 && pixel[2] < 30,
       `wrong color at frame ${frame}: ${[...pixel]}`);
   }
   assert.ok(await audioRms(output, 0.9) > 0.02);
@@ -87,8 +93,8 @@ test('full-frame cuts between different H.264 sources use concat with exact boun
 test('short alternating cuts retain every ordered frame', async () => {
   for (const frameCount of [1, 2]) {
     const clips = Array.from({ length: 12 }, (_, i) =>
-      ({ ...clip(i % 2 ? blue : red, `frame${i}`, i * frameCount / 24, 0, frameCount / 24), audioMuted: true }));
-    const p = project(clips), { filters } = graph(p);
+      ({ ...clip(striped, `frame${i}`, i * frameCount / 24, i % 2 ? 1 : 0, frameCount / 24), audioMuted: true }));
+    const p = project(clips, [striped]), { filters } = graph(p);
     if (frameCount === 1) assert.ok(filters.includes('overlay='));
     else assert.match(filters, /concat=n=12:v=1:a=0/);
     const output = path.join(folder, `${frameCount}-frame-cuts.mp4`);
@@ -105,6 +111,7 @@ test('short alternating cuts retain every ordered frame', async () => {
 
 test('effects, gaps, and sub-frame output cuts retain the compositing path', () => {
   const base = [clip(red, 'a', 0, 0), clip(blue, 'b', 1, 0)];
+  assert.ok(graph(project(base)).filters.includes('overlay='),'distinct assets may have incompatible color metadata');
   for (const clips of [
     [{ ...base[0], mosaic: { x: .5, y: .5, width: 1, height: 1, blockSize: .02 } }, base[1]],
     [base[0], { ...base[1], start: 1.25 }],

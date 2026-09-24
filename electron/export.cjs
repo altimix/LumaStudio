@@ -149,7 +149,10 @@ function directCutPlan(visible, assets, duration, width, height, fps, transition
   // Matching source FPS avoids shifted or repeated frames after input seeking.
   // concat assigns no duration to a one-frame segment, so keep those edits
   // on the compositor to avoid dropping all but the first few frames.
-  if (ordered.every(clip => clip.duration * fps >= 2 - 1e-6 &&
+  // Different assets may carry incompatible range/matrix metadata. Keep them
+  // on the compositor until each input can be normalized before concatenation.
+  if (ordered.every(clip => clip.assetId === ordered[0].assetId &&
+      clip.duration * fps >= 2 - 1e-6 &&
       Math.abs(assetById.get(clip.assetId).fps - fps) < 1e-6))
     return { kind: 'concat', ordered };
   return null;
