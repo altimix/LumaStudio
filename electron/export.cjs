@@ -126,7 +126,9 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
   // Keep the final partial output frame so short trailing audio is not lost.
   // Ignore only floating-point noise at an already exact frame boundary.
   const duration = Math.max(1,Math.ceil(authoredDuration*fps-1e-7))/fps;
-  const args = ['-hide_banner', '-y', '-filter_complex_threads', '2', '-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:r=${fps}:d=${number(duration)}`, '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${number(duration)}`];
+  // A two-thread filter pool can dominate region effects such as mosaic.
+  // Let FFmpeg use the available CPU for the complex graph.
+  const args = ['-hide_banner', '-y', '-filter_complex_threads', '0', '-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:r=${fps}:d=${number(duration)}`, '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${number(duration)}`];
   const visible = p.clips.filter(c => c.kind !== 'audio' && !p.tracks.find(t => t.id === c.trackId)?.hidden);
   const only = visible.length === 1 ? visible[0] : null, onlyAsset = p.assets.find(a => a.id === only?.assetId);
   const directVideo = onlyAsset?.codec === 'h264' && only?.kind === 'video' && only.start === 0 && only.duration === duration && only.scale === 1 && only.x === 0 && only.y === 0 && only.rotation === 0 && only.opacity === 1 && !only.opacityKeyframes?.length && !only.visualKeyframes?.length && !only.fadeIn && !only.fadeOut && only.exposure === 0 && only.contrast === 1 && only.saturation === 1 && !hasVideoMask(only) && !hasChromaKey(only) && !hasMosaic(only) && !hasGaussianBlur(only) && !p.transitions?.length && onlyAsset?.width * height === onlyAsset?.height * width;
