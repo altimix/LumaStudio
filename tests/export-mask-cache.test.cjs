@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const lockfile = require('proper-lockfile');
 const { writeFrameSequence } = require('../electron/frame-sequence.cjs');
-const { createExportMaskCache, maskCacheKey } = require('../electron/export-mask-cache.cjs');
+const { createExportMaskCache, maskCacheKey, fileHash, inspectMaskSequence } = require('../electron/export-mask-cache.cjs');
 const { ffmpeg, run, inspectMedia } = require('../electron/media.cjs');
 const { exportProject } = require('../electron/export.cjs');
 const { setVisualKey } = require('../shared/visual-keyframes.mjs');
@@ -83,6 +83,26 @@ test('failed rebuilding removes a corrupted entry instead of keeping it referenc
     await assert.rejects(fs.stat(path.join(dir, `${key}.json`)), { code:'ENOENT' });
   } finally {
     await cache.release();
+    await fs.rm(dir, { recursive:true, force:true });
+  }
+});
+
+test('mask validation and hashing stop when export is cancelled', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-cancel-mask-validation-'));
+  try {
+    const video = path.join(dir, 'long-mask.mkv');
+    await writeFrameSequence(video, { fps:24, frames:800, format:'pgm', frame:() => pgm });
+    const probeController = new AbortController();
+    const inspection = inspectMaskSequence(video, { width:16, height:16, frames:800 }, probeController.signal);
+    setImmediate(() => probeController.abort());
+    await assert.rejects(inspection, { name:'AbortError' });
+    const largeFile = path.join(dir, 'large-mask.bin');
+    await fs.writeFile(largeFile, Buffer.alloc(16 * 1024 * 1024));
+    const hashController = new AbortController();
+    const hashing = fileHash(largeFile, hashController.signal);
+    setImmediate(() => hashController.abort());
+    await assert.rejects(hashing, { name:'AbortError' });
+  } finally {
     await fs.rm(dir, { recursive:true, force:true });
   }
 });

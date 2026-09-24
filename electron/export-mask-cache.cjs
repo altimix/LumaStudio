@@ -22,20 +22,27 @@ function maskImplementationFingerprint() {
     const files = [ffmpeg, __filename, path.join(__dirname, 'export.cjs'), path.join(__dirname, 'frame-sequence.cjs'),
       path.join(__dirname, 'visual-animation.cjs'), path.join(__dirname, '..', 'shared', 'video-mask.mjs'),
       path.join(__dirname, '..', 'shared', 'visual-keyframes.mjs')];
-    return hash((await Promise.all(files.map(fileHash))).join(':'));
+    return hash((await Promise.all(files.map(file => fileHash(file)))).join(':'));
   })();
   return implementationFingerprint;
 }
 
-async function fileHash(file) {
+async function fileHash(file, signal) {
+  signal?.throwIfAborted();
   const digest = createHash('sha256');
-  for await (const chunk of createReadStream(file)) digest.update(chunk);
+  for await (const chunk of createReadStream(file, { signal })) {
+    signal?.throwIfAborted();
+    digest.update(chunk);
+  }
+  signal?.throwIfAborted();
   return digest.digest('hex');
 }
 
-async function inspectMaskSequence(file, expected) {
+async function inspectMaskSequence(file, expected, signal) {
+  signal?.throwIfAborted();
   const result = JSON.parse((await run(ffprobe, ['-v', 'error', '-count_frames', '-select_streams', 'v:0',
-    '-show_entries', 'stream=codec_name,width,height,pix_fmt,nb_read_frames', '-of', 'json', file])).toString());
+    '-show_entries', 'stream=codec_name,width,height,pix_fmt,nb_read_frames', '-of', 'json', file], { signal })).toString());
+  signal?.throwIfAborted();
   const stream = result.streams?.[0];
   if (stream?.codec_name !== 'ffv1' || stream.width !== expected.width || stream.height !== expected.height ||
       stream.pix_fmt !== 'gray' || Number(stream.nb_read_frames) !== expected.frames) {
@@ -154,7 +161,7 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
       await keep(file);
       const stat = await fs.stat(file).catch(() => null);
       if (!stat?.isFile() || stat.size !== report.bytes || stat.size < 1 || stat.size > Math.min(MAX_ENTRY_BYTES, maxBytes) ||
-          await fileHash(file).catch(() => null) !== report.digest) {
+          await fileHash(file, signal).catch(error => { if (signal?.aborted) throw error; return null; }) !== report.digest) {
         invalidManifest = true; throw new Error('cache');
       }
       signal?.throwIfAborted();
@@ -174,7 +181,7 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
       await keep(temporary);
       await build(temporary);
       signal?.throwIfAborted();
-      await inspectMaskSequence(temporary, expected);
+      await inspectMaskSequence(temporary, expected, signal);
       const stat = await fs.stat(temporary);
       if (!stat.isFile() || stat.size < 1) throw new Error('動くマスクのキャッシュ動画が不正です。');
       if (stat.size > Math.min(MAX_ENTRY_BYTES, maxBytes)) {
@@ -182,7 +189,7 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
         retainTemporary = true;
         return { file: temporary, hit: false };
       }
-      const digest = await fileHash(temporary), name = `${key}-${digest}-${randomUUID()}.mkv`, file = path.join(dir, name);
+      const digest = await fileHash(temporary, signal), name = `${key}-${digest}-${randomUUID()}.mkv`, file = path.join(dir, name);
       await keep(file);
       await fs.rename(temporary, file);
       await atomicWrite(reportPath, JSON.stringify({ version: 2, key, digest, file: name, bytes: stat.size, ...expected }));
