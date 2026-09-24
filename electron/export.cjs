@@ -115,6 +115,45 @@ function exportAssets(p) {
   }
   return p.assets.filter(a => ids.has(a.id));
 }
+function directCutPlan(visible, assets, duration, width, height, fps, transitions) {
+  if (!visible.length || transitions?.length) return null;
+  const ordered = [...visible].sort((a, b) => a.start - b.start);
+  const assetById = new Map(assets.map(asset => [asset.id, asset]));
+  const frameAligned = seconds => Math.abs(seconds * fps - Math.round(seconds * fps)) < 1e-6;
+  const multiple = ordered.length > 1;
+  let end = 0;
+  for (const clip of ordered) {
+    const asset = assetById.get(clip.assetId);
+    if (clip.kind !== 'video' || clip.trackId !== ordered[0].trackId ||
+        asset?.codec !== 'h264' || asset.width * height !== asset.height * width ||
+        (multiple && (!frameAligned(clip.start) || !frameAligned(clip.start + clip.duration) ||
+          !asset.fps || Math.abs(clip.in * asset.fps - Math.round(clip.in * asset.fps)) >= 1e-6 ||
+          Math.abs((clip.in + clip.duration) * asset.fps - Math.round((clip.in + clip.duration) * asset.fps)) >= 1e-6)) ||
+        Math.abs(clip.start - end) > 1e-7 || clip.speed !== 1 ||
+        clip.scale !== 1 || clip.x !== 0 || clip.y !== 0 || clip.rotation !== 0 ||
+        clip.opacity !== 1 || clip.opacityKeyframes?.length || clip.visualKeyframes?.length ||
+        clip.fadeIn || clip.fadeOut || clip.exposure !== 0 || clip.contrast !== 1 ||
+        clip.saturation !== 1 || hasVideoMask(clip) || hasChromaKey(clip) ||
+        hasMosaic(clip) || hasGaussianBlur(clip)) return null;
+    end = clip.start + clip.duration;
+  }
+  if (Math.abs(end - duration) > 1e-7) return null;
+  if (ordered.length === 1) return { kind: 'single', ordered };
+  // Rejoin splits of one continuous source without changing the audio graph.
+  const continuous = ordered.every((clip, i) => i === 0 || (
+    clip.assetId === ordered[0].assetId &&
+    Math.abs(clip.in - (ordered[i - 1].in + ordered[i - 1].duration)) < 1e-7
+  ));
+  if (continuous) return { kind: 'merged', ordered };
+  // The concat filter requires one whole output frame at every clip edge.
+  // Matching source FPS avoids shifted or repeated frames after input seeking.
+  // concat assigns no duration to a one-frame segment, so keep those edits
+  // on the compositor to avoid dropping all but the first few frames.
+  if (ordered.every(clip => clip.duration * fps >= 2 - 1e-6 &&
+      Math.abs(assetById.get(clip.assetId).fps - fps) < 1e-6))
+    return { kind: 'concat', ordered };
+  return null;
+}
 function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPaths = {}, decodedDimensions = {}) {
   validateProject(p);
   if (settings.target === 'shorts' && p.width * 16 !== p.height * 9) throw new Error('Shortsは縦型9:16のシーケンスで書き出してください。シーケンス設定を確認してください。');
@@ -131,8 +170,8 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
   // Let FFmpeg use the available CPU for the complex graph.
   const args = ['-hide_banner', '-y', '-filter_complex_threads', '0', '-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:r=${fps}:d=${number(duration)}`, '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${number(duration)}`];
   const visible = p.clips.filter(c => c.kind !== 'audio' && !p.tracks.find(t => t.id === c.trackId)?.hidden);
-  const only = visible.length === 1 ? visible[0] : null, onlyAsset = p.assets.find(a => a.id === only?.assetId);
-  const directVideo = onlyAsset?.codec === 'h264' && only?.kind === 'video' && only.start === 0 && only.duration === duration && only.scale === 1 && only.x === 0 && only.y === 0 && only.rotation === 0 && only.opacity === 1 && !only.opacityKeyframes?.length && !only.visualKeyframes?.length && !only.fadeIn && !only.fadeOut && only.exposure === 0 && only.contrast === 1 && only.saturation === 1 && !hasVideoMask(only) && !hasChromaKey(only) && !hasMosaic(only) && !hasGaussianBlur(only) && !p.transitions?.length && onlyAsset?.width * height === onlyAsset?.height * width;
+  const cutPlan = directCutPlan(visible, p.assets, duration, width, height, fps, p.transitions);
+  const directVideo = !!cutPlan;
   const filters = directVideo ? [] : ['[0:v]format=rgba[base]'];
   let base = 'base'; const audios = ['[1:a]']; let input = 2;
   const envelopes=audioEnvelopes(p), plans=transitionPlan(p), transitionClips=new Set(plans.filter(t=>t.video).flatMap(t=>[t.fromId,t.toId])), visuals=[];
@@ -146,13 +185,14 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
     const colorChanges=animated&&values.some(value=>['exposure','contrast','saturation'].some(field=>value[field]!==c[field]));
     const track = p.tracks.find(t => t.id === c.trackId);
     const asset = p.assets.find(a => a.id === c.assetId);
-    const visual = c.kind !== 'audio' && !track.hidden;
+    const visual = c.kind !== 'audio' && !track.hidden && (cutPlan?.kind !== 'merged' || c.id === cutPlan.ordered[0].id);
     const audio = hasClipAudio(c,asset) && !c.audioMuted && !track.muted && (!anySolo || track.solo) && c.volume > 0;
     if (!visual && !audio) continue;
     if (asset?.offline) throw new Error(`素材がオフラインです。再リンクしてください: ${asset.name}`);
     const source = sourcePaths[c.kind === 'title' ? c.id : c.assetId];
     if (!source) throw new Error(`素材が見つかりません: ${c.name}`);
-    const videoWindow=mediaWindow(c,asset,plans,'video'),audioWindow=mediaWindow(c,asset,plans,'audio');
+    const videoClip = cutPlan?.kind === 'merged' && c.id === cutPlan.ordered[0].id ? {...c,duration} : c;
+    const videoWindow=mediaWindow(videoClip,asset,plans,'video'),audioWindow=mediaWindow(c,asset,plans,'audio');
     const window=visual?videoWindow:audioWindow;
     if (visual) {
       const sequence=typeof source==='object',offset=c.start-videoWindow.start,animatedMask=usesAnimatedMask(rawClip);
@@ -252,7 +292,10 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
       filters.push(clipAudioFilter(c, audioIndex, envelopes.get(c.id),audioWindow,sourceTrim)); audios.push(`[a${audioIndex}]`);
     }
   }
-  base=directVideo ? visuals[0].label : compositeVisuals(filters,visuals,plans,fps);
+  if (cutPlan?.kind === 'concat') {
+    filters.push(`${visuals.map(item => `[${item.label}]`).join('')}concat=n=${visuals.length}:v=1:a=0[cutvideo]`);
+    base = 'cutvideo';
+  } else base=directVideo ? visuals[0].label : compositeVisuals(filters,visuals,plans,fps);
   filters.push(`[${base}]format=yuv420p[vfinal]`);
   filters.push(mixAudioFilter(audios));
   args.push('-filter_complex', filters.join(';'), '-map', '[vfinal]', '-map', '[afinal]', '-t', number(duration), '-r', String(fps), ...encodingArgs(settings.encoder ?? 'cpu', settings.quality), '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', output);
