@@ -30,6 +30,15 @@ function project(patch = {}) {
       hidden: false, muted: false, locked: false, solo: false }] };
 }
 
+function importedProject() {
+  const p = project({ audioDetached: true, linkId: 'linked-av' });
+  p.tracks.push({ id: 'a1', name: 'Audio 1', kind: 'audio', hidden: false,
+    muted: false, locked: false, solo: false });
+  p.clips.push({ ...p.clips[0], id: 'a1', trackId: 'a1', kind: 'audio',
+    name: `${asset.name}（音声）`, audioDetached: undefined });
+  return p;
+}
+
 test('an untouched MP4 skips encoder detection and preserves video and audio bytes', async () => {
   const p = project(), output = path.join(dir, '複製.mp4');
   assert.ok(directCopyClip(p, settings));
@@ -45,6 +54,32 @@ test('an untouched MP4 skips encoder detection and preserves video and audio byt
   assert.equal(info.streams.find(stream => stream.codec_type === 'audio').sample_rate, '48000');
   const audio = file => run(ffmpeg, ['-v', 'error', '-i', file, '-vn', '-f', 'f32le', '-ar', '48000', '-ac', '2', 'pipe:1']);
   assert.deepEqual(await audio(output), await audio(asset.path));
+});
+
+test('the linked video and audio created by a normal import use direct copy', async () => {
+  const p = importedProject(), output = path.join(dir, 'リンクした無編集.mp4');
+  assert.ok(directCopyClip(p, settings));
+  assert.equal((await directCopySource(p, settings)).path, asset.path);
+  await exportProject(p, settings, output, { encoders: { resolve: () => {
+    throw Error('encoder detected');
+  } } });
+  assert.deepEqual(await fs.readFile(output), await fs.readFile(asset.path));
+});
+
+test('edits to either half of the linked pair keep the normal export path', () => {
+  const edits = [
+    p => { p.clips[1].volume = .8; },
+    p => { p.clips[1].fadeIn = .2; },
+    p => { p.clips[1].audioTreatment = 'normalize'; },
+    p => { p.clips[1].audioMuted = true; },
+    p => { p.clips[1].start = .1; },
+    p => { p.clips[1].linkId = 'other'; },
+    p => { p.tracks[1].muted = true; },
+  ];
+  for (const edit of edits) {
+    const p = importedProject(); edit(p);
+    assert.equal(directCopyClip(p, settings), null);
+  }
 });
 
 test('edits and manual encoder selection keep the normal export path', async () => {

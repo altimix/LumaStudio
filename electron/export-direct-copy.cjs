@@ -18,10 +18,12 @@ const ratio = value => {
 // Audio and video then come from the same MP4, so no timeline processing is lost.
 function directCopyClip(project, settings) {
   if (settings.encoder !== 'auto' || settings.target || settings.quality !== 'standard' ||
-      project.clips.length !== 1 || project.transitions?.length ||
+      ![1, 2].includes(project.clips.length) || project.transitions?.length ||
       project.width !== settings.width || project.height !== settings.height || project.fps !== settings.fps ||
       project.tracks.some(track => track.solo)) return null;
-  const clip = project.clips[0], asset = project.assets.find(item => item.id === clip.assetId);
+  const clip = project.clips.find(item => item.kind === 'video');
+  if (!clip) return null;
+  const asset = project.assets.find(item => item.id === clip.assetId);
   const track = project.tracks.find(item => item.id === clip.trackId);
   if (clip.kind !== 'video' || !asset || asset.kind !== 'video' || asset.offline || asset.codec !== 'h264' ||
       !asset.hasAudio || !/^.+\.mp4$/i.test(asset.path) || !track || track.kind !== 'video' || track.hidden || track.muted ||
@@ -29,9 +31,21 @@ function directCopyClip(project, settings) {
       clip.duration > 3600 || clip.speed !== 1 || clip.x !== 0 || clip.y !== 0 || clip.scale !== 1 ||
       clip.rotation !== 0 || clip.opacity !== 1 || clip.exposure !== 0 || clip.contrast !== 1 ||
       clip.saturation !== 1 || clip.volume !== 1 || clip.fadeIn !== 0 || clip.fadeOut !== 0 ||
-      clip.audioDetached || clip.audioMuted || clip.audioTreatment || clip.crop || clip.videoMask ||
+      clip.audioMuted || clip.audioTreatment || clip.crop || clip.videoMask ||
       clip.chromaKey || clip.mosaic || clip.gaussianBlur || clip.graphic ||
       !noKeys(clip.visualKeyframes) || !noKeys(clip.opacityKeyframes) || !noKeys(clip.volumeKeyframes)) return null;
+  if (project.clips.length === 1) {
+    if (clip.audioDetached || clip.linkId) return null;
+  } else {
+    const audio = project.clips.find(item => item.kind === 'audio');
+    const audioTrack = project.tracks.find(item => item.id === audio?.trackId);
+    if (!audio || !clip.audioDetached || !clip.linkId || audio.linkId !== clip.linkId ||
+        audio.assetId !== asset.id || !audioTrack || audioTrack.kind !== 'audio' || audioTrack.muted ||
+        !near(audio.start, clip.start) || !near(audio.in, clip.in) ||
+        !near(audio.duration, clip.duration) || audio.speed !== 1 ||
+        audio.volume !== 1 || audio.fadeIn !== 0 || audio.fadeOut !== 0 ||
+        audio.audioMuted || audio.audioTreatment || !noKeys(audio.volumeKeyframes)) return null;
+  }
   return { clip, asset };
 }
 

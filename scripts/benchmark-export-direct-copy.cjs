@@ -20,10 +20,14 @@ async function trial(seconds, directory) {
   const clip = { id: 'clip', assetId: asset.id, trackId: 'video', name: asset.name, kind: 'video',
     start: 0, in: 0, duration: asset.duration, speed: 1, x: 0, y: 0, scale: 1, rotation: 0,
     opacity: 1, exposure: 0, contrast: 1, saturation: 1, volume: 1, fadeIn: 0, fadeOut: 0,
-    text: '', fontSize: 94, color: '#ffffff', textStyle: 'hero' };
+    text: '', fontSize: 94, color: '#ffffff', textStyle: 'hero', audioDetached: true,
+    linkId: 'linked-av' };
+  const audio = { ...clip, id: 'audio', trackId: 'audio', kind: 'audio',
+    name: `${asset.name}（音声）`, audioDetached: undefined };
   const project = { version: 1, id: 'benchmark', name: 'Direct copy', width: settings.width,
-    height: settings.height, fps: settings.fps, assets: [asset], clips: [clip], markers: [],
-    tracks: [{ id: 'video', name: 'Video 1', kind: 'video', muted: false, hidden: false, locked: false, solo: false }] };
+    height: settings.height, fps: settings.fps, assets: [asset], clips: [clip, audio], markers: [],
+    tracks: [{ id: 'video', name: 'Video 1', kind: 'video', muted: false, hidden: false, locked: false, solo: false },
+      { id: 'audio', name: 'Audio 1', kind: 'audio', muted: false, hidden: false, locked: false, solo: false }] };
   const runs = { cpu: [], copy: [] };
   for (let iteration = -1; iteration < 5; iteration++) {
     for (const kind of iteration % 2 ? ['copy', 'cpu'] : ['cpu', 'copy']) {

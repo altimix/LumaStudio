@@ -2,7 +2,7 @@ const { _electron: electron } = require('playwright');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { ffmpeg, run, inspectMedia, probe } = require('../electron/media.cjs');
+const { ffmpeg, run, probe } = require('../electron/media.cjs');
 
 const root = path.join(__dirname, '..');
 async function verify() {
@@ -18,15 +18,11 @@ async function verify() {
     'sine=frequency=440:duration=2:sample_rate=48000', '-c:v', 'libx264',
     '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', '-ac', '2',
     '-t', '2', '-movflags', '+faststart', source]);
-  const asset = await inspectMedia(source, path.join(profile, 'media-cache'));
-  const clip = { id: 'video', assetId: asset.id, trackId: 'video', name: asset.name,
-    kind: 'video', start: 0, in: 0, duration: asset.duration, speed: 1,
-    x: 0, y: 0, scale: 1, rotation: 0, opacity: 1, exposure: 0, contrast: 1,
-    saturation: 1, volume: 1, fadeIn: 0, fadeOut: 0, text: '', fontSize: 94,
-    color: '#ffffff', textStyle: 'hero' };
   const project = { version: 1, id: 'direct-copy', name: '無編集の動画',
-    width: 640, height: 360, fps: 24, assets: [asset], clips: [clip], markers: [],
+    width: 640, height: 360, fps: 24, assets: [], clips: [], markers: [],
     tracks: [{ id: 'video', name: '映像', kind: 'video', muted: false,
+      hidden: false, locked: false, solo: false },
+    { id: 'audio', name: '音声', kind: 'audio', muted: false,
       hidden: false, locked: false, solo: false }] };
   await fs.writeFile(projectFile, JSON.stringify(project));
   const env = { ...process.env, LUMA_TEST_DATA: profile, LUMA_DEMO_FIXTURE: '0' };
@@ -43,6 +39,21 @@ async function verify() {
     await page.getByRole('button', { name: 'ファイル', exact: true }).click();
     await page.getByRole('button', { name: /^プロジェクトを開く/ }).click();
     await page.getByRole('button', { name: project.name, exact: true }).waitFor({ timeout: 60000 });
+    await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () =>
+      ({ canceled: false, filePaths: [file] }); }, source);
+    await page.getByRole('button', { name: '読み込み', exact: true }).click();
+    await page.locator('.media-card').filter({ hasText: path.basename(source) }).waitFor({ timeout: 60000 });
+    await page.getByRole('button', { name: `${path.basename(source)} を追加`, exact: true }).click();
+    await page.keyboard.press('Control+s');
+    await page.waitForFunction(() => !document.querySelector('.unsaved-dot'));
+    const imported = JSON.parse(await fs.readFile(projectFile, 'utf8'));
+    assert.equal(imported.clips.length, 2);
+    const video = imported.clips.find(clip => clip.kind === 'video');
+    const audio = imported.clips.find(clip => clip.kind === 'audio');
+    assert.equal(video.audioDetached, true);
+    assert.ok(video.linkId);
+    assert.equal(audio.linkId, video.linkId);
+    assert.equal(audio.assetId, video.assetId);
     await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () =>
       ({ canceled: false, filePath: file }); }, output);
     await page.getByRole('button', { name: '書き出し', exact: true }).click();
@@ -78,8 +89,8 @@ async function verify() {
     assert.deepEqual(errors, []);
     await fs.writeFile(path.join(results, 'export-direct-copy-verification.json'), JSON.stringify({
       passed: true, packaged: !!executablePath, sourceBytes: (await fs.stat(source)).size,
-      checks: ['strict route selected', 'output bytes equal source', '48 frames and AAC 48 kHz',
-        'MP4 reimport and audio playback'],
+      checks: ['UI import creates linked video and audio', 'strict route selected',
+        'output bytes equal source', '48 frames and AAC 48 kHz', 'MP4 reimport and audio playback'],
     }, null, 2));
     console.log('Direct-copy export verified in', executablePath ? 'packaged app' : 'development app');
   } finally {
