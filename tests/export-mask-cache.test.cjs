@@ -256,6 +256,37 @@ test('an undeletable stale cache file cannot stop a new mask export', async () =
   }
 });
 
+test('an undeletable manifest cannot stop use of a newly generated mask', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-held-manifest-mask-'));
+  const cache = createExportMaskCache(dir), key = maskCacheKey({ heldManifest:true });
+  const originalRemove = fs.rm;
+  try {
+    const old = await cache.getOrCreate(key, expected, makeSequence);
+    await cache.release();
+    await fs.writeFile(old.file, 'damaged');
+    const report = path.join(dir, `${key}.json`);
+    fs.rm = async (file, options) => {
+      if (file === report) throw Object.assign(new Error('scanner holds manifest'), { code:'EPERM' });
+      return originalRemove(file, options);
+    };
+    const current = await cache.getOrCreate(key, expected, makeSequence);
+    assert.equal(current.hit, false);
+    assert.notEqual(current.file, old.file);
+    await inspectMaskSequence(current.file, expected);
+    await cache.release();
+    await assert.rejects(fs.stat(current.file), { code:'ENOENT' }, 'unpublished file is removed after export');
+    assert.ok((await fs.stat(report)).isFile(), 'the protected old manifest remains untouched');
+    fs.rm = originalRemove;
+    const repaired = await cache.getOrCreate(key, expected, makeSequence);
+    assert.equal(repaired.hit, false, 'the invalid entry can be repaired once the manifest is released');
+    await cache.release();
+  } finally {
+    fs.rm = originalRemove;
+    await cache.release();
+    await fs.rm(dir, { recursive:true, force:true });
+  }
+});
+
 test('oversized masks are used for the current export and discarded afterwards', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-large-mask-cache-'));
   const cache = createExportMaskCache(dir, { maxBytes: 1 });

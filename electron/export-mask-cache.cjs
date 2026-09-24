@@ -174,7 +174,7 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
         if (await fs.readFile(reportPath, 'utf8').catch(() => null) === observedManifest) {
           await fs.rm(reportPath, { force: true });
         }
-      });
+      }).catch(cleanupError => { if (signal?.aborted) throw cleanupError; });
       if (signal?.aborted) throw error;
     }
     const temporary = path.join(dir, `.${key}-${randomUUID()}.mkv`);
@@ -194,13 +194,23 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
       const digest = await fileHash(temporary, signal), name = `${key}-${digest}-${randomUUID()}.mkv`, file = path.join(dir, name);
       await keep(file);
       await fs.rename(temporary, file);
-      await synchronized(async () => {
-        // Distinct app processes can finish the same key concurrently. A
-        // Windows rename cannot reliably replace an existing manifest, so
-        // publish under the shared lock after removing the old name.
-        await fs.rm(reportPath, { force: true });
-        await atomicWrite(reportPath, JSON.stringify({ version: 2, key, digest, file: name, bytes: stat.size, ...expected }));
-      });
+      try {
+        await synchronized(async () => {
+          // Distinct app processes can finish the same key concurrently. A
+          // Windows rename cannot reliably replace an existing manifest, so
+          // publish under the shared lock after removing the old name.
+          await fs.rm(reportPath, { force: true });
+          await atomicWrite(reportPath, JSON.stringify({ version: 2, key, digest, file: name, bytes: stat.size, ...expected }));
+        });
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        // Publishing only makes this mask reusable. The completed, leased MKV
+        // is still valid for the current export if a scanner holds the manifest.
+        let current;
+        try { current = JSON.parse(await fs.readFile(reportPath, 'utf8')); } catch {}
+        if (current?.file !== name) ephemeral.add(file);
+        return { file, hit: false };
+      }
       try { await prune(); }
       catch {
         // A stale file held by another program must not stop this export.
@@ -220,7 +230,7 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
     ephemeral.clear();
     if (leaseTimer) { clearInterval(leaseTimer); leaseTimer = undefined; }
     await synchronized(() => fs.rm(path.join(root(), leaseName), { force: true })).catch(() => {});
-    await prune(maxBytes, true);
+    await prune(maxBytes, true).catch(() => {});
   }
   async function clear() {
     return synchronized(async () => {
