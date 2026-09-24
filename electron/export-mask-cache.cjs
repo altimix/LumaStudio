@@ -217,7 +217,13 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
           await fs.rm(path.join(root(), name), { force: true });
         }
       }
-      return { remainingBytes: (await entries()).reduce((sum, item) => sum + item.size, 0) };
+      let remainingBytes = 0;
+      for (const name of protectedFiles) {
+        const stat = await fs.stat(path.join(root(), name)).catch(() => null);
+        if (stat?.isFile()) remainingBytes += stat.size;
+      }
+      // A leased build may not have written its first byte yet.
+      return { remainingBytes, inUse: protectedFiles.size > 0 };
     });
   }
   return { getOrCreate, release, clear, prune };

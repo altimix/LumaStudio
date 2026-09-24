@@ -26,7 +26,9 @@ test('completed masks survive reuse and damaged data is rebuilt', async () => {
     const first = await cache.getOrCreate(key, expected, build);
     assert.equal(first.hit, false);
     assert.equal(builds, 1);
-    assert.ok((await cache.clear()).remainingBytes > 0);
+    const active = await cache.clear();
+    assert.equal(active.inUse, true);
+    assert.ok(active.remainingBytes > 0);
     assert.ok((await fs.stat(first.file)).isFile());
     await cache.release();
     const restarted = createExportMaskCache(dir);
@@ -46,6 +48,7 @@ test('completed masks survive reuse and damaged data is rebuilt', async () => {
     await fs.writeFile(path.join(dir, `${'a'.repeat(64)}.json`), 'damaged manifest');
     const cleared = await cache.clear();
     assert.equal(cleared.remainingBytes, 0);
+    assert.equal(cleared.inUse, false);
     assert.equal((await fs.readdir(dir)).some(name => name.endsWith('.mkv')), false);
     assert.equal((await fs.readdir(dir)).some(name => name.endsWith('.json') && !name.startsWith('.lease')), false);
   } finally {
@@ -120,14 +123,23 @@ test('another cache instance cannot clear a mask in use', async () => {
   const cache = createExportMaskCache(dir), other = createExportMaskCache(dir);
   try {
     const result = await cache.getOrCreate(maskCacheKey({ leased:true }), expected, async file => {
+      const beforeFirstFrame = await other.clear();
+      assert.equal(beforeFirstFrame.remainingBytes, 0);
+      assert.equal(beforeFirstFrame.inUse, true, 'an empty leased build is still active');
       await makeSequence(file);
-      await other.clear();
+      const building = await other.clear();
+      assert.equal(building.inUse, true);
+      assert.ok(building.remainingBytes > 0, 'include protected temporary files in the size');
       assert.ok((await fs.stat(file)).isFile());
     });
-    assert.ok((await other.clear()).remainingBytes > 0);
+    const completed = await other.clear();
+    assert.equal(completed.inUse, true);
+    assert.ok(completed.remainingBytes > 0);
     assert.ok((await fs.stat(result.file)).isFile());
     await cache.release();
-    assert.equal((await other.clear()).remainingBytes, 0);
+    const cleared = await other.clear();
+    assert.equal(cleared.remainingBytes, 0);
+    assert.equal(cleared.inUse, false);
   } finally {
     await cache.release();
     await other.release();
