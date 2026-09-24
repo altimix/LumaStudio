@@ -388,12 +388,13 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
         let file;
         if(maskCache){
           if(asset)await assertMediaRevision(asset);
-          const key=maskCacheKey({ implementation:await maskImplementationFingerprint(),
-            project:{width:p.width,height:p.height},output:{width:settings.width,height:settings.height,fps:settings.fps},
-            asset:asset?{id:asset.id,path:asset.path,width:asset.width,height:asset.height,revision:asset.revision}:null,
-            clip:c,window,width,height,frames });
-          try { ({file}=await maskCache.getOrCreate(key,{width,height,frames},make,signal)); }
-          catch(error){if(signal?.aborted)throw new Error('書き出しをキャンセルしました。');throw error;}
+          try {
+            const key=maskCacheKey({ implementation:await maskImplementationFingerprint(signal),
+              project:{width:p.width,height:p.height},output:{width:settings.width,height:settings.height,fps:settings.fps},
+              asset:asset?{id:asset.id,path:asset.path,width:asset.width,height:asset.height,revision:asset.revision}:null,
+              clip:c,window,width,height,frames });
+            ({file}=await maskCache.getOrCreate(key,{width,height,frames},make,signal));
+          } catch(error){if(signal?.aborted)throw new Error('書き出しをキャンセルしました。');throw error;}
         } else {file=path.join(tempDir,`${randomUUID()}.mkv`);await make(file);}
         masks[c.id]={path:file};continue;
       }
@@ -436,8 +437,8 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
     onProgress({ status: 'complete', progress: 1, output, encoder: encoder.id, encoderLabel: encoder.label, warning }); return output;
   } finally {
     await fs.rm(partial, { force: true }).catch(() => {});
-    await fs.rm(tempDir, { recursive: true, force: true });
-    await maskCache?.release().catch(() => {});
+    try { await fs.rm(tempDir, { recursive: true, force: true }); }
+    finally { await maskCache?.release().catch(() => {}); }
   }
 }
 module.exports = { validateProject, buildExport, exportProject, exportAssets, isEncoderFailure };

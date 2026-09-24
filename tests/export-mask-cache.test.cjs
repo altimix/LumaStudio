@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const lockfile = require('proper-lockfile');
 const { writeFrameSequence } = require('../electron/frame-sequence.cjs');
-const { createExportMaskCache, maskCacheKey, fileHash, inspectMaskSequence } = require('../electron/export-mask-cache.cjs');
+const { createExportMaskCache, maskCacheKey, maskImplementationFingerprint, fileHash, inspectMaskSequence } = require('../electron/export-mask-cache.cjs');
 const { ffmpeg, run, inspectMedia } = require('../electron/media.cjs');
 const { exportProject } = require('../electron/export.cjs');
 const { setVisualKey } = require('../shared/visual-keyframes.mjs');
@@ -105,6 +105,14 @@ test('mask validation and hashing stop when export is cancelled', async () => {
   } finally {
     await fs.rm(dir, { recursive:true, force:true });
   }
+});
+
+test('implementation fingerprint hashing stops on cancellation and can be retried', async () => {
+  const controller = new AbortController();
+  const fingerprint = maskImplementationFingerprint(controller.signal);
+  queueMicrotask(() => controller.abort());
+  await assert.rejects(fingerprint, { name:'AbortError' });
+  assert.match(await maskImplementationFingerprint(), /^[a-f0-9]{64}$/);
 });
 
 test('another cache instance cannot clear a mask in use', async () => {
@@ -219,6 +227,26 @@ test('re-exported animated masks reuse verified frames without changing video or
       maskCache:{ getOrCreate:async () => { controller.abort(); controller.signal.throwIfAborted(); }, release:async () => {} },
     }), /書き出しをキャンセルしました/);
     assert.ok((await fs.stat(outputB)).size > 0);
+    const originalRemove = fs.rm;
+    let stranded, released = 0;
+    fs.rm = async (file, options) => {
+      if (options?.recursive && path.basename(String(file)).startsWith('luma-render-')) {
+        stranded = file;
+        throw new Error('simulated temporary cleanup failure');
+      }
+      return originalRemove(file, options);
+    };
+    try {
+      await assert.rejects(exportProject(project, settings, outputB, { maskCache:{
+        getOrCreate:async () => { throw new Error('simulated preparation failure'); },
+        release:async () => { released++; },
+      } }), /simulated temporary cleanup failure/);
+      assert.equal(released, 1, 'cache lease must be released even when temp cleanup fails');
+      assert.ok((await fs.stat(outputB)).size > 0);
+    } finally {
+      fs.rm = originalRemove;
+      if (stranded) await fs.rm(stranded, { recursive:true, force:true });
+    }
     await fs.appendFile(source, Buffer.from('changed'));
     await assert.rejects(exportProject(project, settings, outputB, { maskCache:cache }), /変更または削除/);
     assert.ok((await fs.stat(outputB)).size > 0);

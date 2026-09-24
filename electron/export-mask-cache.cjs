@@ -17,13 +17,15 @@ const temporaryVideoName = /^\.[a-f0-9]{64}-[a-f0-9-]{36}\.mkv$/;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const maskCacheKey = details => hash(JSON.stringify({ version: 2, ...details }));
 let implementationFingerprint;
-function maskImplementationFingerprint() {
-  if (!implementationFingerprint) implementationFingerprint = (async () => {
-    const files = [ffmpeg, __filename, path.join(__dirname, 'export.cjs'), path.join(__dirname, 'frame-sequence.cjs'),
-      path.join(__dirname, 'visual-animation.cjs'), path.join(__dirname, '..', 'shared', 'video-mask.mjs'),
-      path.join(__dirname, '..', 'shared', 'visual-keyframes.mjs')];
-    return hash((await Promise.all(files.map(file => fileHash(file)))).join(':'));
-  })();
+async function maskImplementationFingerprint(signal) {
+  signal?.throwIfAborted();
+  if (implementationFingerprint) return implementationFingerprint;
+  const files = [ffmpeg, __filename, path.join(__dirname, 'export.cjs'), path.join(__dirname, 'frame-sequence.cjs'),
+    path.join(__dirname, 'visual-animation.cjs'), path.join(__dirname, '..', 'shared', 'video-mask.mjs'),
+    path.join(__dirname, '..', 'shared', 'visual-keyframes.mjs')];
+  const fingerprints = await Promise.all(files.map(file => fileHash(file, signal)));
+  signal?.throwIfAborted();
+  implementationFingerprint = hash(fingerprints.join(':'));
   return implementationFingerprint;
 }
 
