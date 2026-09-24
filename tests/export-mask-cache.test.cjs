@@ -70,6 +70,23 @@ test('cancellation leaves no reusable partial mask', async () => {
   }
 });
 
+test('failed rebuilding removes a corrupted entry instead of keeping it referenced', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-failed-repair-mask-'));
+  const cache = createExportMaskCache(dir), key = maskCacheKey({ repairFails:true });
+  try {
+    const first = await cache.getOrCreate(key, expected, makeSequence);
+    await cache.release();
+    await fs.writeFile(first.file, 'corrupted');
+    await assert.rejects(cache.getOrCreate(key, expected, async () => { throw new Error('build failed'); }), /build failed/);
+    await cache.release();
+    await assert.rejects(fs.stat(first.file), { code:'ENOENT' });
+    await assert.rejects(fs.stat(path.join(dir, `${key}.json`)), { code:'ENOENT' });
+  } finally {
+    await cache.release();
+    await fs.rm(dir, { recursive:true, force:true });
+  }
+});
+
 test('another cache instance cannot clear a mask in use', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-leased-mask-'));
   const cache = createExportMaskCache(dir), other = createExportMaskCache(dir);

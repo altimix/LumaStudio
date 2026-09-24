@@ -139,20 +139,33 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
     const dir = root();
     await fs.mkdir(dir, { recursive: true });
     const reportPath = path.join(dir, `${key}.json`);
+    let observedManifest, invalidManifest = false;
     try {
-      const report = JSON.parse(await fs.readFile(reportPath, 'utf8'));
-      if (report.version !== 2 || report.key !== key || !hex(report.digest) ||
+      observedManifest = await fs.readFile(reportPath, 'utf8');
+      let report;
+      try { report = JSON.parse(observedManifest); }
+      catch (error) { invalidManifest = true; throw error; }
+      if (!report || typeof report !== 'object' || report.version !== 2 || report.key !== key || !hex(report.digest) ||
           !cacheVideoName.test(report.file) || !report.file.startsWith(`${key}-${report.digest}-`) ||
-          report.frames !== expected.frames || report.width !== expected.width || report.height !== expected.height) throw new Error('cache');
+          report.frames !== expected.frames || report.width !== expected.width || report.height !== expected.height) {
+        invalidManifest = true; throw new Error('cache');
+      }
       const file = path.join(dir, report.file);
       await keep(file);
-      const stat = await fs.stat(file);
-      if (!stat.isFile() || stat.size !== report.bytes || stat.size < 1 || stat.size > Math.min(MAX_ENTRY_BYTES, maxBytes) ||
-          await fileHash(file) !== report.digest) throw new Error('cache');
+      const stat = await fs.stat(file).catch(() => null);
+      if (!stat?.isFile() || stat.size !== report.bytes || stat.size < 1 || stat.size > Math.min(MAX_ENTRY_BYTES, maxBytes) ||
+          await fileHash(file).catch(() => null) !== report.digest) {
+        invalidManifest = true; throw new Error('cache');
+      }
       signal?.throwIfAborted();
       await fs.utimes(reportPath, new Date(), new Date()).catch(() => {});
       return { file, hit: true };
     } catch (error) {
+      if (invalidManifest) await synchronized(async () => {
+        if (await fs.readFile(reportPath, 'utf8').catch(() => null) === observedManifest) {
+          await fs.rm(reportPath, { force: true });
+        }
+      });
       if (signal?.aborted) throw error;
     }
     const temporary = path.join(dir, `.${key}-${randomUUID()}.mkv`);
