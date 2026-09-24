@@ -2,6 +2,7 @@ const fs = require('node:fs/promises');
 const { createReadStream } = require('node:fs');
 const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
+const lockfile = require('proper-lockfile');
 const { ffmpeg, ffprobe, run } = require('./media.cjs');
 const { atomicWrite } = require('./persistence.cjs');
 
@@ -10,8 +11,11 @@ const MAX_CACHE_BYTES = 512 * 1024 * 1024;
 const MAX_ENTRY_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const LEASE_AGE_MS = 2 * 60 * 60 * 1000;
 const hex = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+const legacyVideoName = /^[a-f0-9]{64}-[a-f0-9]{64}\.mkv$/;
+const cacheVideoName = /^[a-f0-9]{64}-[a-f0-9]{64}-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.mkv$/;
+const temporaryVideoName = /^\.[a-f0-9]{64}-[a-f0-9-]{36}\.mkv$/;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-const maskCacheKey = details => hash(JSON.stringify({ version: 1, ...details }));
+const maskCacheKey = details => hash(JSON.stringify({ version: 2, ...details }));
 let implementationFingerprint;
 function maskImplementationFingerprint() {
   if (!implementationFingerprint) implementationFingerprint = (async () => {
@@ -45,11 +49,22 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
   const ephemeral = new Set();
   const leaseName = `.lease-${process.pid}-${randomUUID()}.json`;
   let leaseTimer;
-  async function lease() {
-    if (!held.size) return;
+  async function synchronized(action) {
     const dir = root();
     await fs.mkdir(dir, { recursive: true });
-    await atomicWrite(path.join(dir, leaseName), JSON.stringify([...held]));
+    let compromised;
+    const unlock = await lockfile.lock(dir, { stale:30000, update:10000,
+      retries:{ retries:100, minTimeout:20, maxTimeout:100, factor:1 },
+      onCompromised:error => { compromised = error; } });
+    try {
+      const result = await action();
+      if (compromised) throw compromised;
+      return result;
+    } finally { await unlock(); }
+  }
+  async function lease() {
+    if (!held.size) return;
+    await synchronized(() => atomicWrite(path.join(root(), leaseName), JSON.stringify([...held])));
   }
   function keep(file) {
     held.add(path.basename(file));
@@ -71,7 +86,7 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
       try {
         const listed = JSON.parse(await fs.readFile(file, 'utf8'));
         if (Array.isArray(listed)) for (const item of listed) if (typeof item === 'string' && (
-          /^[a-f0-9]{64}-[a-f0-9]{64}\.mkv$/.test(item) || /^\.[a-f0-9]{64}-[a-f0-9-]{36}\.mkv$/.test(item)
+          legacyVideoName.test(item) || cacheVideoName.test(item) || temporaryVideoName.test(item)
         )) protectedFiles.add(item);
       } catch { /* An incomplete lease cannot name a cache entry. */ }
     }
@@ -83,21 +98,22 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
       if (!/^[a-f0-9]{64}\.json$/.test(name)) continue;
       try {
         const report = JSON.parse(await fs.readFile(path.join(dir, name), 'utf8'));
-        if (report.version !== 1 || !hex(report.key) || !hex(report.digest) || report.key !== name.slice(0, -5)) continue;
-        const video = `${report.key}-${report.digest}.mkv`, stat = await fs.stat(path.join(dir, video));
+        if (report.version !== 2 || !hex(report.key) || !hex(report.digest) || report.key !== name.slice(0, -5) ||
+            !cacheVideoName.test(report.file) || !report.file.startsWith(`${report.key}-${report.digest}-`)) continue;
+        const video = report.file, stat = await fs.stat(path.join(dir, video));
         if (!stat.isFile()) continue;
         result.push({ report: path.join(dir, name), video: path.join(dir, video), name: video, size: stat.size, time: (await fs.stat(path.join(dir, name))).mtimeMs });
       } catch { /* Damaged manifests are excluded from reuse. */ }
     }
     return result;
   }
-  async function prune(limit = maxBytes, removeOrphans = false) {
+  async function pruneLocked(limit = maxBytes, removeOrphans = false) {
     const protectedFiles = await protectedNames();
     const items = await entries();
     const referenced = new Set(items.map(item => item.name));
     const dir = root();
     for (const name of await fs.readdir(dir).catch(() => [])) {
-      if (!(/^[a-f0-9]{64}-[a-f0-9]{64}\.mkv$/.test(name) || /^\.[a-f0-9]{64}-[a-f0-9-]{36}\.mkv$/.test(name)) ||
+      if (!(legacyVideoName.test(name) || cacheVideoName.test(name) || temporaryVideoName.test(name)) ||
           referenced.has(name) || protectedFiles.has(name)) continue;
       const file = path.join(dir, name), stat = await fs.stat(file).catch(() => null);
       if (stat && (removeOrphans || Date.now() - stat.mtimeMs > 24 * 60 * 60 * 1000)) {
@@ -114,6 +130,7 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
     }
     return total;
   }
+  const prune = (limit = maxBytes, removeOrphans = false) => synchronized(() => pruneLocked(limit, removeOrphans));
   async function getOrCreate(key, expected, build, signal) {
     if (!hex(key) || !Number.isInteger(expected?.frames) || expected.frames < 1 ||
         !Number.isInteger(expected.width) || expected.width < 1 ||
@@ -124,9 +141,10 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
     const reportPath = path.join(dir, `${key}.json`);
     try {
       const report = JSON.parse(await fs.readFile(reportPath, 'utf8'));
-      if (report.version !== 1 || report.key !== key || !hex(report.digest) ||
+      if (report.version !== 2 || report.key !== key || !hex(report.digest) ||
+          !cacheVideoName.test(report.file) || !report.file.startsWith(`${key}-${report.digest}-`) ||
           report.frames !== expected.frames || report.width !== expected.width || report.height !== expected.height) throw new Error('cache');
-      const file = path.join(dir, `${key}-${report.digest}.mkv`);
+      const file = path.join(dir, report.file);
       await keep(file);
       const stat = await fs.stat(file);
       if (!stat.isFile() || stat.size !== report.bytes || stat.size < 1 || stat.size > Math.min(MAX_ENTRY_BYTES, maxBytes) ||
@@ -151,10 +169,10 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
         retainTemporary = true;
         return { file: temporary, hit: false };
       }
-      const digest = await fileHash(temporary), file = path.join(dir, `${key}-${digest}.mkv`);
+      const digest = await fileHash(temporary), name = `${key}-${digest}-${randomUUID()}.mkv`, file = path.join(dir, name);
       await keep(file);
       await fs.rename(temporary, file);
-      await atomicWrite(reportPath, JSON.stringify({ version: 1, key, digest, bytes: stat.size, ...expected }));
+      await atomicWrite(reportPath, JSON.stringify({ version: 2, key, digest, file: name, bytes: stat.size, ...expected }));
       await prune();
       return { file, hit: false };
     } finally { if (!retainTemporary) await fs.rm(temporary, { force: true }).catch(() => {}); }
@@ -164,19 +182,21 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
     for (const file of ephemeral) await fs.rm(file, { force: true }).catch(() => {});
     ephemeral.clear();
     if (leaseTimer) { clearInterval(leaseTimer); leaseTimer = undefined; }
-    await fs.rm(path.join(root(), leaseName), { force: true }).catch(() => {});
+    await synchronized(() => fs.rm(path.join(root(), leaseName), { force: true })).catch(() => {});
     await prune(maxBytes, true);
   }
   async function clear() {
-    await prune(0, true);
-    const protectedFiles = await protectedNames();
-    const protectedReports = new Set((await entries()).filter(item => protectedFiles.has(item.name)).map(item => path.basename(item.report)));
-    for (const name of await fs.readdir(root()).catch(() => [])) {
-      if (/^[a-f0-9]{64}\.json$/.test(name) && !protectedReports.has(name)) {
-        await fs.rm(path.join(root(), name), { force: true });
+    return synchronized(async () => {
+      await pruneLocked(0, true);
+      const protectedFiles = await protectedNames();
+      const protectedReports = new Set((await entries()).filter(item => protectedFiles.has(item.name)).map(item => path.basename(item.report)));
+      for (const name of await fs.readdir(root()).catch(() => [])) {
+        if (/^[a-f0-9]{64}\.json$/.test(name) && !protectedReports.has(name)) {
+          await fs.rm(path.join(root(), name), { force: true });
+        }
       }
-    }
-    return { remainingBytes: (await entries()).reduce((sum, item) => sum + item.size, 0) };
+      return { remainingBytes: (await entries()).reduce((sum, item) => sum + item.size, 0) };
+    });
   }
   return { getOrCreate, release, clear, prune };
 }

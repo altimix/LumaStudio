@@ -47,7 +47,7 @@ async function verify() {
     await page.locator('.timeline-clip').filter({ hasText:'動くマスク' }).waitFor({ timeout:15000 });
     await exportTo(first);
     const dir = path.join(profile, 'media-cache', 'export-masks');
-    const videos = (await fs.readdir(dir)).filter(name => /^[a-f0-9]{64}-[a-f0-9]{64}\.mkv$/.test(name));
+    const videos = (await fs.readdir(dir)).filter(name => /^[a-f0-9]{64}-[a-f0-9]{64}-[a-f0-9-]{36}\.mkv$/.test(name));
     assert.equal(videos.length, 1);
     const cached = path.join(dir, videos[0]), before = (await fs.stat(cached)).mtimeMs;
     await exportTo(second);

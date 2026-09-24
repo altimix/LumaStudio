@@ -18,6 +18,7 @@ Sintel — © copyright Blender Foundation | https://www.sintel.org
 - React / React DOM: MIT. https://github.com/facebook/react
 - Zustand: MIT. https://github.com/pmndrs/zustand
 - Lucide icons: ISC. https://github.com/lucide-icons/lucide
+- proper-lockfile: MIT. https://github.com/moxystudio/node-proper-lockfile
 - FFmpeg / FFprobe: FFmpeg 6.1.1 with GPL-enabled x264. Built from the pinned sources in shared/media-sources.json, without nonfree components. https://ffmpeg.org/
 - x264: GPL-2.0-or-later. https://www.videolan.org/developers/x264.html
 - LAME 3.100: LGPL-2.0-or-later. https://lame.sourceforge.io/

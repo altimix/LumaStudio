@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
+const lockfile = require('proper-lockfile');
 const { writeFrameSequence } = require('../electron/frame-sequence.cjs');
 const { createExportMaskCache, maskCacheKey } = require('../electron/export-mask-cache.cjs');
 const { ffmpeg, run, inspectMedia } = require('../electron/media.cjs');
@@ -37,6 +38,7 @@ test('completed masks survive reuse and damaged data is rebuilt', async () => {
     const repaired = await cache.getOrCreate(key, expected, build);
     assert.equal(repaired.hit, false);
     assert.equal(builds, 2);
+    assert.notEqual(repaired.file, reused.file, 'repair publishes a new filename even for identical source frames');
     await cache.release();
     await assert.rejects(fs.stat(reused.file), { code:'ENOENT' });
     assert.notEqual(maskCacheKey({ clip: { id: 'mask', x: .6 }, fps: 10 }), key);
@@ -84,6 +86,25 @@ test('another cache instance cannot clear a mask in use', async () => {
   } finally {
     await cache.release();
     await other.release();
+    await fs.rm(dir, { recursive:true, force:true });
+  }
+});
+
+test('cache clearing waits for another process holding the write lock', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-locked-mask-'));
+  const cache = createExportMaskCache(dir);
+  const unlock = await lockfile.lock(dir, { stale:30000, update:10000 });
+  let finished = false;
+  try {
+    const clearing = cache.clear().then(() => { finished = true; });
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(finished, false);
+    await unlock();
+    await clearing;
+    assert.equal(finished, true);
+  } finally {
+    await lockfile.unlock(dir).catch(() => {});
+    await cache.release();
     await fs.rm(dir, { recursive:true, force:true });
   }
 });
