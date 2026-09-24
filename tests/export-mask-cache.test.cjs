@@ -1,0 +1,166 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const { writeFrameSequence } = require('../electron/frame-sequence.cjs');
+const { createExportMaskCache, maskCacheKey } = require('../electron/export-mask-cache.cjs');
+const { ffmpeg, run, inspectMedia } = require('../electron/media.cjs');
+const { exportProject } = require('../electron/export.cjs');
+const { setVisualKey } = require('../shared/visual-keyframes.mjs');
+
+const expected = { width: 16, height: 16, frames: 2 };
+const pgm = Buffer.concat([Buffer.from('P5\n16 16\n255\n'), Buffer.alloc(16 * 16, 128)]);
+async function makeSequence(file) {
+  await writeFrameSequence(file, { fps: 10, frames: 2, format: 'pgm', frame: () => pgm });
+}
+
+test('completed masks survive reuse and damaged data is rebuilt', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-mask-cache-'));
+  const cache = createExportMaskCache(dir);
+  const key = maskCacheKey({ clip: { id: 'mask', x: .5 }, fps: 10 });
+  let builds = 0;
+  const build = file => { builds++; return makeSequence(file); };
+  try {
+    const first = await cache.getOrCreate(key, expected, build);
+    assert.equal(first.hit, false);
+    assert.equal(builds, 1);
+    assert.ok((await cache.clear()).remainingBytes > 0);
+    assert.ok((await fs.stat(first.file)).isFile());
+    await cache.release();
+    const restarted = createExportMaskCache(dir);
+    const reused = await restarted.getOrCreate(key, expected, build);
+    assert.equal(reused.hit, true);
+    assert.equal(builds, 1);
+    await restarted.release();
+    await fs.writeFile(reused.file, 'damaged');
+    const repaired = await cache.getOrCreate(key, expected, build);
+    assert.equal(repaired.hit, false);
+    assert.equal(builds, 2);
+    await cache.release();
+    await assert.rejects(fs.stat(reused.file), { code:'ENOENT' });
+    assert.notEqual(maskCacheKey({ clip: { id: 'mask', x: .6 }, fps: 10 }), key);
+    assert.notEqual(maskCacheKey({ clip: { id: 'mask', x: .5 }, fps: 24 }), key);
+    await fs.writeFile(path.join(dir, `${'a'.repeat(64)}.json`), 'damaged manifest');
+    const cleared = await cache.clear();
+    assert.equal(cleared.remainingBytes, 0);
+    assert.equal((await fs.readdir(dir)).some(name => name.endsWith('.mkv')), false);
+    assert.equal((await fs.readdir(dir)).some(name => name.endsWith('.json') && !name.startsWith('.lease')), false);
+  } finally {
+    await cache.release();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('cancellation leaves no reusable partial mask', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-canceled-mask-'));
+  const cache = createExportMaskCache(dir);
+  const controller = new AbortController();
+  try {
+    await assert.rejects(cache.getOrCreate(maskCacheKey({ canceled:true }), expected, async file => {
+      await makeSequence(file);
+      controller.abort();
+    }, controller.signal), { name:'AbortError' });
+    assert.equal((await fs.readdir(dir)).some(name => name.endsWith('.mkv') || /^[a-f0-9]{64}\.json$/.test(name)), false);
+  } finally {
+    await cache.release();
+    await fs.rm(dir, { recursive:true, force:true });
+  }
+});
+
+test('another cache instance cannot clear a mask in use', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-leased-mask-'));
+  const cache = createExportMaskCache(dir), other = createExportMaskCache(dir);
+  try {
+    const result = await cache.getOrCreate(maskCacheKey({ leased:true }), expected, async file => {
+      await makeSequence(file);
+      await other.clear();
+      assert.ok((await fs.stat(file)).isFile());
+    });
+    assert.ok((await other.clear()).remainingBytes > 0);
+    assert.ok((await fs.stat(result.file)).isFile());
+    await cache.release();
+    assert.equal((await other.clear()).remainingBytes, 0);
+  } finally {
+    await cache.release();
+    await other.release();
+    await fs.rm(dir, { recursive:true, force:true });
+  }
+});
+
+test('unused cache entries expire after thirty days', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-expired-mask-'));
+  const cache = createExportMaskCache(dir), key = maskCacheKey({ expired:true });
+  try {
+    const result = await cache.getOrCreate(key, expected, makeSequence);
+    await cache.release();
+    const old = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
+    await fs.utimes(path.join(dir, `${key}.json`), old, old);
+    await cache.prune();
+    await assert.rejects(fs.stat(result.file), { code:'ENOENT' });
+  } finally {
+    await cache.release();
+    await fs.rm(dir, { recursive:true, force:true });
+  }
+});
+
+test('oversized masks are used for the current export and discarded afterwards', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-large-mask-cache-'));
+  const cache = createExportMaskCache(dir, { maxBytes: 1 });
+  try {
+    const result = await cache.getOrCreate(maskCacheKey({ large:true }), expected, makeSequence);
+    assert.equal(result.hit, false);
+    assert.ok((await fs.stat(result.file)).size > 1);
+    await cache.release();
+    await assert.rejects(fs.stat(result.file), { code:'ENOENT' });
+    assert.equal((await fs.readdir(dir)).some(name => name.endsWith('.json') && !name.startsWith('.lease')), false);
+  } finally {
+    await cache.release();
+    await fs.rm(dir, { recursive:true, force:true });
+  }
+});
+
+test('re-exported animated masks reuse verified frames without changing video or audio', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-mask-export-'));
+  const cacheDir = path.join(dir, 'export-masks'), cache = createExportMaskCache(cacheDir);
+  try {
+    const source = path.join(dir, 'source.mp4');
+    await fs.copyFile(path.resolve('public/demo/01-journey.mp4'), source);
+    const asset = await inspectMedia(source, path.join(dir, 'media'));
+    const mask = { type: 'rectangle', x: .25, y: .5, width: .25, height: .5, feather: .05, inverted: false };
+    let clip = { id:'video', assetId:asset.id, trackId:'video', kind:'video', name:'動くマスク',
+      start:0, in:0, duration:1, speed:1, x:0, y:0, scale:1, rotation:0, opacity:1,
+      exposure:0, contrast:1, saturation:1, volume:1, fadeIn:0, fadeOut:0, videoMask:mask };
+    clip = setVisualKey(setVisualKey(clip, 0), .5, { videoMask:{ ...mask, x:.75 } });
+    const project = { version:1, id:'mask-cache', name:'動くマスク', width:960, height:540, fps:24,
+      assets:[asset], tracks:[{ id:'video', kind:'video', name:'映像' }], markers:[], clips:[clip] };
+    const settings = { width:960, height:540, fps:24, quality:'standard', encoder:'cpu' };
+    const outputA = path.join(dir, 'first.mp4'), outputB = path.join(dir, 'second.mp4');
+    await exportProject(project, settings, outputA, { maskCache:cache });
+    const entries = (await fs.readdir(cacheDir)).filter(name => name.endsWith('.mkv'));
+    assert.equal(entries.length, 1);
+    const cached = path.join(cacheDir, entries[0]), before = (await fs.stat(cached)).mtimeMs;
+    await exportProject(project, settings, outputB, { maskCache:cache });
+    assert.equal((await fs.stat(cached)).mtimeMs, before);
+    for (const args of [ ['-map','0:v:0','-pix_fmt','rgba','-f','framemd5','pipe:1'],
+      ['-map','0:a:0','-ac','2','-ar','48000','-f','s16le','pipe:1'] ]) {
+      const decode = file => run(ffmpeg, ['-v','error','-i',file,...args]);
+      assert.deepEqual(await decode(outputB), await decode(outputA));
+    }
+    const cacheEntries = async () => (await fs.readdir(cacheDir)).filter(name => name.endsWith('.mkv')).length;
+    await exportProject(project, { ...settings, fps:30 }, path.join(dir, 'fps-changed.mp4'), { maskCache:cache });
+    assert.equal(await cacheEntries(), 2);
+    await exportProject(project, { ...settings, width:1280, height:720 }, path.join(dir, 'size-changed.mp4'), { maskCache:cache });
+    assert.equal(await cacheEntries(), 3);
+    const changedMask = structuredClone(project);
+    changedMask.clips[0].visualKeyframes.at(-1).values.videoMask.x = .65;
+    await exportProject(changedMask, settings, path.join(dir, 'mask-changed.mp4'), { maskCache:cache });
+    assert.equal(await cacheEntries(), 4);
+    await fs.appendFile(source, Buffer.from('changed'));
+    await assert.rejects(exportProject(project, settings, outputB, { maskCache:cache }), /変更または削除/);
+    assert.ok((await fs.stat(outputB)).size > 0);
+  } finally {
+    await cache.release();
+    await fs.rm(dir, { recursive:true, force:true });
+  }
+});

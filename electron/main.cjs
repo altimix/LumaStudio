@@ -29,6 +29,7 @@ const { SOUNDS } = require('../shared/sounds.mjs');
 const { exportEncoders, validateEncoder } = require('./encoders.cjs');
 const { validateTreatment } = require('../shared/audio-treatment.mjs');
 const { validateProject, exportProject, exportAssets } = require('./export.cjs');
+const { createExportMaskCache } = require('./export-mask-cache.cjs');
 const { assertDestination, atomicWrite } = require('./persistence.cjs');
 const { resolveProjectMedia, serializeAt, collectProject, relinkFolder } = require('./portable-project.cjs');
 const { assertReplacement, hydrateProject, parseProjectJson, serializeProject, MAX_PROJECT_BYTES } = require('./project.cjs');
@@ -75,6 +76,7 @@ async function persistentDemoDir() {
   return dest;
 }
 const cacheDir = () => path.join(app.getPath('userData'), 'media-cache');
+const exportMaskCache = createExportMaskCache(() => path.join(cacheDir(), 'export-masks'));
 const waveformReader = createWaveformReader(cacheDir,async(file,treatment,signal)=>(await audioProcessor.get(file,treatment,signal)).file);
 const autosavePath = () => path.join(app.getPath('userData'), 'autosave.luma');
 function present(a) {
@@ -402,11 +404,15 @@ function installIPC() {
       if (!window.isDestroyed()) window.webContents.send('export-progress', { status: 'preparing', progress: 0, output });
       const audioPaths = await preparedAudioPaths(p, exportController.signal);
       const signal=exportController.signal;
-      const completed = await exportProject(p, settings, output, { titleImages, titleFrameProvider:(clip,time,width,height)=>titleFrames.request(clip,time,width,height,p.width,signal), audioPaths, signal, onProgress: progress => { if (!window.isDestroyed()) window.webContents.send('export-progress', progress); } });
+      const completed = await exportProject(p, settings, output, { titleImages, titleFrameProvider:(clip,time,width,height)=>titleFrames.request(clip,time,width,height,p.width,signal), audioPaths, maskCache:exportMaskCache, signal, onProgress: progress => { if (!window.isDestroyed()) window.webContents.send('export-progress', progress); } });
       completedExports.add(completed); return completed;
     } finally { exportController = null; finishExport(); }
   });
   handle('cancel-export', () => exportController?.abort());
+  handle('clear-export-mask-cache', () => {
+    if (exportController) throw new Error('書き出し中はマスクキャッシュを削除できません。');
+    return exportMaskCache.clear();
+  });
   handle('export-encoders', (refresh = false) => exportEncoders.detect(refresh === true));
   handle('reveal', output => { if (completedExports.has(output)) shell.showItemInFolder(output); });
 }
