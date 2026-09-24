@@ -16,7 +16,7 @@ async function rgba(graph, input) {
     '-pix_fmt', 'rgba', '-f', 'rawvideo', 'pipe:1']);
 }
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-let folder, asset;
+let folder, asset, fullRangeAsset;
 before(async () => {
   folder = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-gaussian-region-'));
   const source = path.join(folder, '変化する映像.mp4');
@@ -24,11 +24,16 @@ before(async () => {
     'testsrc2=size=640x360:rate=24:duration=0.5', '-c:v', 'libx264',
     '-pix_fmt', 'yuv420p', source]);
   asset = await inspectMedia(source, path.join(folder, 'cache'));
+  const fullRange = path.join(folder, 'フルレンジ映像.mp4');
+  await run(ffmpeg, ['-v','error','-y','-f','lavfi','-i',
+    'testsrc2=size=640x360:rate=24:duration=0.5','-vf','format=yuv420p',
+    '-color_range','pc','-c:v','libx264','-pix_fmt','yuv420p',fullRange]);
+  fullRangeAsset = await inspectMedia(fullRange, path.join(folder, 'full-range-cache'));
 });
 after(async () => { if (folder) await fs.rm(folder, { recursive: true, force: true }); });
 
-function project(gaussianBlur, codec = 'h264') {
-  const input = { ...asset, codec };
+function project(gaussianBlur, codec = 'h264', sourceAsset = asset) {
+  const input = { ...sourceAsset, codec };
   const clip = { id:'clip', assetId:input.id, trackId:'video', kind:'video', name:'clip',
     start:0, in:0, duration:.5, speed:1, scale:1, x:0, y:0, rotation:0,
     opacity:1, volume:0, exposure:0, contrast:1, saturation:1,
@@ -56,6 +61,15 @@ test('real H.264 export matches the original complete-frame blend at every pixel
     assert.equal(result.length, 12 * 640 * 360 * 4);
     assert.equal(hash(result), hash(original), JSON.stringify(gaussianBlur));
   }
+});
+
+test('full-range H.264 keeps the exact rendered frames', async () => {
+  const gaussianBlur = { x:.5,y:.5,width:.3,height:.3,sigma:.01 };
+  const old = path.join(folder,'full-range-original.mp4'), fast = path.join(folder,'full-range-fast.mp4');
+  await exportProject(project(gaussianBlur,'other',fullRangeAsset),settings,old);
+  await exportProject(project(gaussianBlur,'h264',fullRangeAsset),settings,fast);
+  const pixels = file => run(ffmpeg,['-v','error','-i',file,'-map','0:v:0','-pix_fmt','rgba','-f','rawvideo','pipe:1']);
+  assert.equal(hash(await pixels(fast)),hash(await pixels(old)));
 });
 
 test('opaque region assembly exactly matches the full-frame Gaussian blend', async () => {
