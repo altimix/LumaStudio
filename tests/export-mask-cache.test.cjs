@@ -214,6 +214,11 @@ test('re-exported animated masks reuse verified frames without changing video or
     changedMask.clips[0].visualKeyframes.at(-1).values.videoMask.x = .65;
     await exportProject(changedMask, settings, path.join(dir, 'mask-changed.mp4'), { maskCache:cache });
     assert.equal(await cacheEntries(), 4);
+    const controller = new AbortController();
+    await assert.rejects(exportProject(project, settings, outputB, { signal:controller.signal,
+      maskCache:{ getOrCreate:async () => { controller.abort(); controller.signal.throwIfAborted(); }, release:async () => {} },
+    }), /書き出しをキャンセルしました/);
+    assert.ok((await fs.stat(outputB)).size > 0);
     await fs.appendFile(source, Buffer.from('changed'));
     await assert.rejects(exportProject(project, settings, outputB, { maskCache:cache }), /変更または削除/);
     assert.ok((await fs.stat(outputB)).size > 0);

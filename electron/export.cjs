@@ -392,7 +392,8 @@ async function exportProject(p, settings, output, { titleImages = {}, titleFrame
             project:{width:p.width,height:p.height},output:{width:settings.width,height:settings.height,fps:settings.fps},
             asset:asset?{id:asset.id,path:asset.path,width:asset.width,height:asset.height,revision:asset.revision}:null,
             clip:c,window,width,height,frames });
-          ({file}=await maskCache.getOrCreate(key,{width,height,frames},make,signal));
+          try { ({file}=await maskCache.getOrCreate(key,{width,height,frames},make,signal)); }
+          catch(error){if(signal?.aborted)throw new Error('書き出しをキャンセルしました。');throw error;}
         } else {file=path.join(tempDir,`${randomUUID()}.mkv`);await make(file);}
         masks[c.id]={path:file};continue;
       }
