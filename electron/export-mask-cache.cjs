@@ -201,7 +201,16 @@ function createExportMaskCache(directory, { maxBytes = MAX_CACHE_BYTES } = {}) {
         await fs.rm(reportPath, { force: true });
         await atomicWrite(reportPath, JSON.stringify({ version: 2, key, digest, file: name, bytes: stat.size, ...expected }));
       });
-      await prune();
+      try { await prune(); }
+      catch {
+        // A stale file held by another program must not stop this export.
+        // Keep the completed MKV leased for this job, but avoid registering a
+        // new reusable entry when the cache limit cannot be maintained.
+        await synchronized(async () => {
+          const current = JSON.parse(await fs.readFile(reportPath, 'utf8'));
+          if (current.file === name) await fs.rm(reportPath, { force: true });
+        }).catch(() => {});
+      }
       return { file, hit: false };
     } finally { if (!retainTemporary) await fs.rm(temporary, { force: true }).catch(() => {}); }
   }

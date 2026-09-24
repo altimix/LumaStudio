@@ -228,6 +228,34 @@ test('unused cache entries expire after thirty days', async () => {
   }
 });
 
+test('an undeletable stale cache file cannot stop a new mask export', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-held-stale-mask-'));
+  const cache = createExportMaskCache(dir), oldKey = maskCacheKey({ stale:true });
+  const originalRemove = fs.rm;
+  try {
+    const stale = await cache.getOrCreate(oldKey, expected, makeSequence);
+    await cache.release();
+    const old = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
+    await fs.utimes(path.join(dir, `${oldKey}.json`), old, old);
+    fs.rm = async (file, options) => {
+      if (file === stale.file) throw Object.assign(new Error('temporarily held'), { code:'EPERM' });
+      return originalRemove(file, options);
+    };
+    const key = maskCacheKey({ next:true });
+    const current = await cache.getOrCreate(key, expected, makeSequence);
+    assert.ok((await fs.stat(current.file)).isFile(), 'the current export keeps its completed mask');
+    await assert.rejects(fs.stat(path.join(dir, `${key}.json`)), { code:'ENOENT' });
+    fs.rm = originalRemove;
+    await cache.release();
+    await assert.rejects(fs.stat(stale.file), { code:'ENOENT' });
+    await assert.rejects(fs.stat(current.file), { code:'ENOENT' });
+  } finally {
+    fs.rm = originalRemove;
+    await cache.release();
+    await fs.rm(dir, { recursive:true, force:true });
+  }
+});
+
 test('oversized masks are used for the current export and discarded afterwards', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-large-mask-cache-'));
   const cache = createExportMaskCache(dir, { maxBytes: 1 });
