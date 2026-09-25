@@ -29,6 +29,7 @@ const { SOUNDS } = require('../shared/sounds.mjs');
 const { exportEncoders, validateEncoder } = require('./encoders.cjs');
 const { validateTreatment } = require('../shared/audio-treatment.mjs');
 const { validateProject, exportProject, exportAssets } = require('./export.cjs');
+const { exportMp3 } = require('./audio-export.cjs');
 const { createExportMaskCache } = require('./export-mask-cache.cjs');
 const { assertDestination, atomicWrite } = require('./persistence.cjs');
 const { resolveProjectMedia, serializeAt, collectProject, relinkFolder } = require('./portable-project.cjs');
@@ -167,15 +168,21 @@ function installIPC() {
     await assertMediaRevision(known);
     return known;
   };
-  const validateExportSources = async p => {
-    for (const asset of exportAssets(p)) {
+  const validateExportSources = async (p, format = 'mp4') => {
+    const assets = format === 'mp3'
+      ? [...new Map(audioClips(p, { audibleOnly: true }).map(clip => {
+        const asset = p.assets.find(item => item.id === clip.assetId);
+        return [asset.id, asset];
+      })).values()]
+      : exportAssets(p);
+    for (const asset of assets) {
       if (asset.offline) throw new Error(`素材がオフラインです。再リンクしてください: ${asset.name}`);
       await registered(asset);
     }
   };
-  const preparedAudioPaths = async (p, signal) => {
+  const preparedAudioPaths = async (p, signal, { audibleOnly = false } = {}) => {
     const result = {};
-    for (const c of audioClips(p)) if (c.audioTreatment) {
+    for (const c of audioClips(p, { audibleOnly })) if (c.audioTreatment) {
       const a = await registered(p.assets.find(a => a.id === c.assetId));
       result[c.id] = (await audioProcessor.get(a.path, c.audioTreatment, signal)).file;
     }
@@ -391,20 +398,30 @@ function installIPC() {
   handle('export', async (p, settings, titleImages) => {
     if (exportController) throw new Error('書き出しはすでに実行中です。');
     validateProject(p);
-    await validateExportSources(p);
-    validateEncoder(settings?.encoder);
-    const result = await dialog.showSaveDialog(window, { title: '動画を書き出す', defaultPath: `${p.name.replace(/[<>:"/\\|?*]/g, '_')}.mp4`, filters: [{ name: 'H.264 / AAC', extensions: ['mp4'] }] });
+    const format = settings?.format ?? 'mp4';
+    if (!['mp4', 'mp3'].includes(format)) throw new Error('書き出し形式を選び直してください。');
+    if (format === 'mp4') validateEncoder(settings?.encoder);
+    if (format === 'mp3' && !audioClips(p, { audibleOnly: true }).length) throw new Error('書き出せる音声がありません。音声トラックのミュート・ソロ・音量を確認してください。');
+    await validateExportSources(p, format);
+    const result = await dialog.showSaveDialog(window, {
+      title: format === 'mp3' ? '音声をMP3で書き出す' : '動画を書き出す',
+      defaultPath: `${p.name.replace(/[<>:"/\\|?*]/g, '_')}.${format}`,
+      filters: [format === 'mp3' ? { name: 'MP3 音声', extensions: ['mp3'] } : { name: 'H.264 / AAC', extensions: ['mp4'] }],
+    });
     if (result.canceled) return null;
     const output = result.filePath;
-    await validateExportSources(p);
-    await assertDestination(output, '.mp4', [...p.assets.map(a => a.path),...startupProtectedPaths,...protectedSourcePaths]);
+    await validateExportSources(p, format);
+    await assertDestination(output, `.${format}`, [...p.assets.map(a => a.path),...startupProtectedPaths,...protectedSourcePaths]);
     exportController = new AbortController();
     let finishExport; exportFinished = new Promise(resolve => { finishExport = resolve; });
     try {
       if (!window.isDestroyed()) window.webContents.send('export-progress', { status: 'preparing', progress: 0, output });
-      const audioPaths = await preparedAudioPaths(p, exportController.signal);
+      const audioPaths = await preparedAudioPaths(p, exportController.signal, { audibleOnly: format === 'mp3' });
       const signal=exportController.signal;
-      const completed = await exportProject(p, settings, output, { titleImages, titleFrameProvider:(clip,time,width,height)=>titleFrames.request(clip,time,width,height,p.width,signal), audioPaths, maskCache:exportMaskCache, signal, onProgress: progress => { if (!window.isDestroyed()) window.webContents.send('export-progress', progress); } });
+      const onProgress = progress => { if (!window.isDestroyed()) window.webContents.send('export-progress', progress); };
+      const completed = format === 'mp3'
+        ? await exportMp3(p, output, { audioPaths, signal, onProgress })
+        : await exportProject(p, settings, output, { titleImages, titleFrameProvider:(clip,time,width,height)=>titleFrames.request(clip,time,width,height,p.width,signal), audioPaths, maskCache:exportMaskCache, signal, onProgress });
       completedExports.add(completed); return completed;
     } finally { exportController = null; finishExport(); }
   });

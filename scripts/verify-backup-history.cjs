@@ -7,7 +7,7 @@ const root=path.join(__dirname,'..');
  const executablePath=process.env.LUMA_VERIFY_EXE,app=await electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000}),page=await app.firstWindow();const errors=[];page.on('pageerror',e=>errors.push(e.message));
  try{
  await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});
- assert.equal(await page.locator('.recovery-banner').count(),1);
+ await page.locator('.recovery-banner').waitFor({state:'visible',timeout:60000});
  const imported=await page.evaluate(()=>window.luma.listBackups());assert.equal(imported.length,1);assert.equal(imported[0].savedAt,legacy.savedAt);
  await page.evaluate(()=>window.luma.bootstrap());assert.equal((await page.evaluate(()=>window.luma.listBackups())).length,1);assert.deepEqual(JSON.parse(await fs.readFile(path.join(profile,'autosave.luma'),'utf8')),legacy);
  await page.evaluate(async p=>{await window.luma.clearRecovery();await window.luma.autosave({...p,name:'以前の版'});await window.luma.autosave(p);},project);
