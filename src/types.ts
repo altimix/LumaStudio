@@ -55,7 +55,7 @@ export interface Project { version: 1; id: string; name: string; width: number; 
 export interface UpdateInfo { status: 'current' | 'available' | 'unsupported' | 'error'; currentVersion: string; latestVersion?: string; checkedAt: number; platform: string; arch: string; releaseUrl?: string; message?: string }
 export type ExportEncoder = 'auto' | 'cpu' | 'videotoolbox' | 'nvenc' | 'qsv' | 'amf';
 export interface EncoderCapabilities { recommended: ExportEncoder; encoders: { id: Exclude<ExportEncoder, 'auto'>; label: string; available: boolean; reason?: string }[] }
-export interface ExportSettings { width: number; height: number; fps: number; quality: 'draft' | 'standard' | 'high'; target?: 'youtube' | 'shorts'; encoder?: ExportEncoder }
+export interface ExportSettings { width: number; height: number; fps: number; quality: 'draft' | 'standard' | 'high'; format?: 'mp4' | 'mp3'; target?: 'youtube' | 'shorts'; encoder?: ExportEncoder }
 export interface ExportProgress { status: 'preparing' | 'rendering' | 'complete'; progress: number; output: string; encoder?: ExportEncoder; encoderLabel?: string; warning?: string }
 export interface ImportProgress { index: number; total: number; name: string; completed?: number; stage?: string }
 export interface Bootstrap { startupProject?:Project|null; startupError?:string; assets: Asset[]; recovery: { project: Project; savedAt: string } | null; version: string }

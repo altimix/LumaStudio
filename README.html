@@ -218,11 +218,12 @@
       <p>字幕原稿と投稿素材もCtrl+Sで保存します。音声編集後に古い結果の案内が出た場合は文字起こしを再実行し、固有名詞と字幕時刻を確認してください。</p>
     </section>
     <section id="export">
-      <h2>プロジェクトの保存・MP4の書き出し</h2>
+      <h2>プロジェクトの保存・MP4／MP3の書き出し</h2>
       <p><kbd>Ctrl</kbd> + <kbd>S</kbd> で保存、<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> で名前を付けて保存します。<code>.luma</code> は編集情報と素材の参照先を保存し、動画・画像・BGM本体を埋め込みません。素材を移動した場合は素材一覧から再リンクしてください。保存・読込・素材読込・再リンクの処理中は、操作名とスピナーを中央に表示して完了を待ちます。</p>
       <p>「ファイル → バックアップ履歴」からプロジェクトごとの最大10世代を確認し、選んで復元できます。復元前に現在の編集を保存するか確認します。バックアップは手動保存とは別です。</p>
       <p>編集が止まって約1.5秒後に自動保存します。次回起動時に復元の案内が出ますが、手動のプロジェクト保存とは別です。未保存で右上の×を押すと<strong>「編集を続ける」「保存せずに終了」「保存して終了」</strong>を選べます。保存のキャンセルや失敗では編集画面へ戻ります。</p>
       <p>「書き出し」または <kbd>Ctrl</kbd> + <kbd>E</kbd> から、H.264映像＋AAC音声のMP4を作成します。横1920×1080、Shorts1080×1920、HD、4Kなどの設定に対応します。Shortsプリセットは縦型9:16・3分以内を確認し、長さを勝手に切り詰めません。</p>
+      <p>書き出し形式で「音声のみ（MP3）」を選ぶと、タイムラインの音声を48kHz・ステレオ・192kbpsのMP3にまとめます。動画内の音声、音声トラック、BGM、音量、ミュート・ソロ、フェード、自動調整を反映し、映像は含みません。音声だけのタイムラインでも利用できます。音声がない場合は書き出せません。</p>
       <p>書き出し方式「自動」は利用できるGPUを検出します。MacのVideoToolbox、WindowsのNVIDIA NVENC・Intel Quick Sync・AMD AMF、CPUに対応し、自動設定でGPUが失敗した場合はCPUで再試行します。GPUは主にH.264圧縮を担当し、合成・音声処理はCPUも使用します。</p>
       <p>1.10.2ではCPUのH.264圧縮と映像合成の並列処理を、PCのCPUに合わせてFFmpegが自動調整します。高解像度やモザイクを使う書き出しの待ち時間を短くできますが、効果は素材、エフェクト、PCの性能などで変わります。画質設定や完成動画の長さは変わりません。</p>
       <p>1.10.3では、条件の合うH.264映像について、小さいモザイクとガウスぼかしの指定範囲だけを効率よく合成します。同じ素材を連続分割したカットや、同じ素材内で位置を切り替えるカットも不要な映像合成を減らします。モザイクの四角い粒とガウスぼかしの設定、音声、フレーム数、長さは維持し、対応しない編集内容は従来方式で書き出します。短縮幅は素材・解像度・効果・PCにより異なります。</p>
@@ -280,7 +281,7 @@
             <tr class="command-row" data-command="save"><th scope="row">保存</th><td class="key" data-label="キー（別キーを含む）"><kbd data-key="s" data-ctrl>Ctrl+S</kbd></td><td data-label="動作・対象">編集情報を保存。初回は保存先を選びます。</td></tr>
             <tr class="command-row" data-command="saveAs"><th scope="row">名前を付けて保存</th><td class="key" data-label="キー（別キーを含む）"><kbd data-key="s" data-ctrl data-shift>Ctrl+Shift+S</kbd></td><td data-label="動作・対象">別の名前・保存先へ保存します。</td></tr>
             <tr class="command-row" data-command="import"><th scope="row">素材を読み込む</th><td class="key" data-label="キー（別キーを含む）"><kbd data-key="i" data-ctrl>Ctrl+I</kbd></td><td data-label="動作・対象">動画・音声・画像を読み込みます。</td></tr>
-            <tr class="command-row" data-command="export"><th scope="row">動画を書き出す</th><td class="key" data-label="キー（別キーを含む）"><kbd data-key="e" data-ctrl>Ctrl+E</kbd></td><td data-label="動作・対象">MP4書き出しの設定画面を開きます。</td></tr>
+            <tr class="command-row" data-command="export"><th scope="row">動画・音声を書き出す</th><td class="key" data-label="キー（別キーを含む）"><kbd data-key="e" data-ctrl>Ctrl+E</kbd></td><td data-label="動作・対象">MP4または音声のみのMP3を書き出す設定画面を開きます。</td></tr>
             <tr class="command-row" data-command="help"><th scope="row">ショートカット一覧</th><td class="key" data-label="キー（別キーを含む）"><kbd data-key="?">?</kbd></td><td data-label="動作・対象">アプリ内の一覧を開きます。?を入力するためのShift併用も可能です。</td></tr>
           </tbody></table>
         </div>
