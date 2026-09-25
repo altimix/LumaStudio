@@ -6,7 +6,7 @@ const path = require('node:path');
 const { ffmpeg, run, probe, inspectMedia } = require('../electron/media.cjs');
 const { exportProject } = require('../electron/export.cjs');
 const { exportMp3 } = require('../electron/audio-export.cjs');
-const { buildMp3Audio } = require('../electron/timeline-audio.cjs');
+const { audioClips, buildMp3Audio } = require('../electron/timeline-audio.cjs');
 
 let dir, video, voice;
 before(async () => {
@@ -76,6 +76,16 @@ test('an audio-only timeline exports MP3 without preparing any visual input', as
   assert.equal((await probe(out)).streams[0].codec_name, 'mp3');
   assert.ok(await rms(out, .4) < .005);
   assert.ok(await rms(out, 1.7) > .01);
+});
+
+test('fully-zero volume points count as no exportable audio before choosing a destination', async () => {
+  const p = project();
+  p.clips = [{ ...p.clips[1], volumeKeyframes: [{ time: 0, value: 0 }, { time: 2, value: 0 }] }];
+  assert.equal(audioClips(p).length, 0);
+  assert.throws(() => buildMp3Audio(p, path.join(dir, '無音.mp3')), /書き出せる音声がありません/);
+  await assert.rejects(exportMp3(p, path.join(dir, '無音.mp3')), /書き出せる音声がありません/);
+  p.clips[0].volumeKeyframes[1].value = .5;
+  assert.equal(audioClips(p).length, 1, 'a rising envelope remains audible');
 });
 
 test('no audible clips, missing media, cancellation and source overwrite preserve existing files', async () => {

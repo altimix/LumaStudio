@@ -16,7 +16,9 @@ function audioClips(p) {
   const solo = p.tracks.some(t => t.solo);
   return p.clips.filter(c => {
     const a = p.assets.find(a => a.id === c.assetId), t = p.tracks.find(t => t.id === c.trackId);
-    return hasClipAudio(c, a) && !c.audioMuted && c.volume > 0 && !t.muted && (!solo || t.solo);
+    return hasClipAudio(c, a) && !c.audioMuted && c.volume > 0 &&
+      (!c.volumeKeyframes?.length || c.volumeKeyframes.some(key => key.value > 0)) &&
+      !t.muted && (!solo || t.solo);
   });
 }
 
