@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="luma-version" content="1.10.3">
-  <meta name="description" content="Luma Studio 1.10.3 の日本語操作ガイド。クロップ、マスク、範囲指定モザイク、ガウスぼかし、クロマキー、全35コマンドのショートカット、字幕、BGM、YouTube制作、動画の書き出しを説明します。">
-  <title>Luma Studio 1.10.3 — 操作ガイド・全ショートカット一覧</title>
+  <meta name="luma-version" content="1.10.4">
+  <meta name="description" content="Luma Studio 1.10.4 の日本語操作ガイド。クロップ、マスク、範囲指定モザイク、ガウスぼかし、クロマキー、全35コマンドのショートカット、字幕、BGM、YouTube制作、動画の書き出しを説明します。">
+  <title>Luma Studio 1.10.4 — 操作ガイド・全ショートカット一覧</title>
   <style>
     :root{color-scheme:light;--ink:#182b35;--muted:#526570;--paper:#f5f7f5;--line:#d7e1dc;--accent:#235942;--soft:#e8f1e9}
     *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.85 "Yu Gothic UI","Meiryo",sans-serif}
@@ -29,10 +29,10 @@
 <body>
 <a class="skip" href="#main">本文へ移動</a>
 <header id="top"><div class="inner">
-  <div class="brand">LUMA STUDIO <span class="version">v1.10.3 / Windows・Mac</span></div>
+  <div class="brand">LUMA STUDIO <span class="version">v1.10.4 / Windows・Mac</span></div>
   <h1>編集を、迷わず進める。<br>操作ガイドと全ショートカット</h1>
   <p>素材の読み込みから字幕・BGM・YouTube用の投稿素材、MP4の書き出しまで。現在の実装に沿った日本語ガイドです。</p>
-  <p class="small">対応バージョン：1.10.3 · 更新日：2026年9月24日 · このHTMLはオフラインで閲覧できます。</p>
+  <p class="small">対応バージョン：1.10.4 · 更新日：2026年9月25日 · このHTMLはオフラインで閲覧できます。</p>
   <p class="small">Mac開発版ではCtrlをCommand（⌘）、Deleteをdeleteと読み替えてください。Windowsから移した素材は再リンクが必要です。</p>
   <div class="hero-actions"><a href="#commands">全コマンド・キー一覧へ</a><a class="secondary" href="#start">最初の動画を作る</a><button type="button" id="print" data-enhanced hidden>印刷 / PDFに保存</button></div>
 </div></header>
@@ -53,7 +53,7 @@
     <section id="start">
       <h2>起動と編集の流れ</h2>
       <p>1.0.0以降のWindows・Mac配布版は、素材・クリップ・マーカーが空の新規プロジェクトで起動します。初期設定は1920×1080・30fpsです。BGMライブラリにはbgm001.mp3〜bgm005.mp3の5曲を同梱し、必要な曲を選んで追加できます。「読み込み」から動画・画像・音声を追加してください。旧版の初期素材や外部「初期プロジェクト」は自動配置しません。保存済みプロジェクトは「開く」、自動保存は「復元する」で再開できます。</p>
-      <p>Windowsでは <code>Luma-Studio-1.10.3-Windows.exe</code> を起動します。Macでは配布ZIPを解凍し、<code>Luma Studio.app</code>を「アプリケーション」へ移動して起動します。Macの初回起動で開発元の確認が表示される場合は、別添のMac用手順を参照してください。Node.jsやFFmpegの別途インストールは不要です。MP4出力はCPUに加え、MacのVideoToolbox、WindowsのNVENC・Quick Sync・AMFに対応します。実際に使える方式はGPU・ドライバー・環境により異なります。</p>
+      <p>Windowsでは <code>Luma-Studio-1.10.4-Windows.exe</code> を起動します。Macでは配布ZIPを解凍し、<code>Luma Studio.app</code>を「アプリケーション」へ移動して起動します。Macの初回起動で開発元の確認が表示される場合は、別添のMac用手順を参照してください。Node.jsやFFmpegの別途インストールは不要です。MP4出力はCPUに加え、MacのVideoToolbox、WindowsのNVENC・Quick Sync・AMFに対応します。実際に使える方式はGPU・ドライバー・環境により異なります。</p>
       <ol>
         <li><strong>画面の向きを選ぶ：</strong>「ファイル → 新規プロジェクト」で横動画 <strong>1920×1080</strong> または Shorts <strong>1080×1920</strong> を選びます。初期値は30fps。後から「シーケンス」で変更できます。</li>
         <li><strong>素材を入れる：</strong>「読み込み」または <kbd>Ctrl</kbd> + <kbd>I</kbd>。動画・画像・音声のファイルをウィンドウへドラッグしても読み込めます。</li>
@@ -226,12 +226,13 @@
       <p>書き出し方式「自動」は利用できるGPUを検出します。MacのVideoToolbox、WindowsのNVIDIA NVENC・Intel Quick Sync・AMD AMF、CPUに対応し、自動設定でGPUが失敗した場合はCPUで再試行します。GPUは主にH.264圧縮を担当し、合成・音声処理はCPUも使用します。</p>
       <p>1.10.2ではCPUのH.264圧縮と映像合成の並列処理を、PCのCPUに合わせてFFmpegが自動調整します。高解像度やモザイクを使う書き出しの待ち時間を短くできますが、効果は素材、エフェクト、PCの性能などで変わります。画質設定や完成動画の長さは変わりません。</p>
       <p>1.10.3では、条件の合うH.264映像について、小さいモザイクとガウスぼかしの指定範囲だけを効率よく合成します。同じ素材を連続分割したカットや、同じ素材内で位置を切り替えるカットも不要な映像合成を減らします。モザイクの四角い粒とガウスぼかしの設定、音声、フレーム数、長さは維持し、対応しない編集内容は従来方式で書き出します。短縮幅は素材・解像度・効果・PCにより異なります。</p>
+      <p>1.10.4では、動くマスクの再書き出し準備に検証済みの中間ファイルを再利用し、「ヘルプ → 書き出し用マスクキャッシュを削除」で消せます。同じ条件の再書き出しだけに適用し、素材や設定が変わると作り直します。また、無編集のH.264/AAC MP4は、素材・寸法・FPS・音声などが厳密に一致し、方式が「自動」・品質が「標準」の場合に再圧縮なしで複製します。通常の読み込みでできるリンク済み映像・音声ペアも対象です。編集・音量調整・可変FPSなどで条件が外れると、従来の方式で書き出します。複製でも保存先の一時ファイルが完成してから置き換え、元素材と既存の出力を守ります。</p>
       <p>旧版との画素単位の比較では、モザイクとカットの出力に差があります。ガウスぼかし単独の出力は一致し、連続分割の出力は無加工の単一クリップと一致しました。音声・フレーム数・長さも比較して確認しています。</p>
       <p>Windowsポータブル版では、書き出したMP4を再び素材として読み込んだ後に、同梱FFmpegの一時展開先が消えて音声を再生できなくなる問題を修正しました。映像の読み込み、波形、音声の再生、再書き出しに同じ安定した処理ツールを使います。</p>
       <p>進捗表示、中止、保存先を開く操作に対応します。新しい出力が完成するまで既存の出力は置き換えません。元の素材と同じ場所・ファイル名への書き出しはできません。</p>
       <p>キーフレームで動くマスクは、同じ内容を再び書き出すと準備済みのマスクを再利用します。マスクや素材、書き出しサイズ、FPSを変えた場合は作り直します。不要になった準備データは「ヘルプ → 書き出し用マスクキャッシュを削除」から消せます。素材と完成したMP4は削除されません。</p>
     </section>
-    <section id="updates"><h2>ヘルプとアップデート</h2><p>ヘルプメニューから「初めての動画編集」「ショートカットキー一覧」「アップデート」を開けます。ショートカット一覧にはWindows / Macと修飾キーを切り替えられるキーボード図があります。</p><p>起動時にGitHubの最新安定版を確認し、対応する新しい配布版があると「更新あり」を表示します。「アップデート」から再確認とダウンロードページの表示ができます。自動でアプリを置き換える機能ではありません。編集を保存し、書き出しを終えてアプリを終了してから入れ替えてください。1.0.0からの初回更新は公式サイトから1.10.3を取得してください。</p></section><section id="commands">
+    <section id="updates"><h2>ヘルプとアップデート</h2><p>ヘルプメニューから「初めての動画編集」「ショートカットキー一覧」「アップデート」を開けます。ショートカット一覧にはWindows / Macと修飾キーを切り替えられるキーボード図があります。</p><p>起動時にGitHubの最新安定版を確認し、対応する新しい配布版があると「更新あり」を表示します。「アップデート」から再確認とダウンロードページの表示ができます。自動でアプリを置き換える機能ではありません。編集を保存し、書き出しを終えてアプリを終了してから入れ替えてください。1.0.0からの初回更新は公式サイトから1.10.4を取得してください。</p></section><section id="commands">
       <h2>全コマンド・ショートカット一覧</h2>
       <p><strong>通常のキー割り当ては全35コマンド。</strong>別キーも併記しています。続けて、特定の場所で使うキー、マウス操作、キー未割り当てのコマンドと操作場所を掲載しています。</p>
       <div class="note"><p><strong>キーが効く場所に注意：</strong>入力欄・日本語変換中・ダイアログやメニューの表示中は、通常の編集ショートカットを実行しません。音量ポイントなどにフォーカスがあると、その場所の操作が優先されます。Windows用のCtrl表記です。</p><p>コマ送り・ズームは押し続けて連続操作できます。削除・分割・J/Lの加速は押し直して操作します。<kbd>?</kbd> でアプリ内のショートカット検索を開けます。</p></div>
@@ -418,7 +419,7 @@
       <h2>対応範囲・開発用の確認</h2>
       <p>Windows用の日本語マルチトラック動画編集アプリです。編集と動画書き出しはローカルで処理し、AI機能の実行時はOpenAI APIへ送信します。追加フォントの初回取得にもインターネットを使います。</p>
       <p>Premiere Proのプロジェクト読込、After Effects連携、外部プラグイン、マルチカム、ベジェ補間のグラフエディター、モーショントラッキング、人物の自動リフレーム、HDRの色管理は未実装です。音量ラインと、位置・回転・不透明度・見た目を変える共通キーフレームは実装済みです。</p>
-      <p>このガイドはv1.10.3の実装を基準としています。長時間4K・大量素材の耐久性能は未確認です。動画素材の長さ制限を外したことは、メモリやディスク使用量が無制限という意味ではありません。</p>
+      <p>このガイドはv1.10.4の実装を基準としています。長時間4K・大量素材の耐久性能は未確認です。動画素材の長さ制限を外したことは、メモリやディスク使用量が無制限という意味ではありません。</p>
       <h3>ソースから起動する</h3>
       <p>Node.js 22.12以上を使い、リポジトリで次を実行します。</p>
       <pre><code>npm ci
@@ -430,7 +431,7 @@ npm start</code></pre>
       <p>開発用は <code>npm run dev</code>。ブラウザーの画面確認は <code>npm run dev:web</code> です。ネイティブのMP4出力などはWindows・Macアプリで利用します。</p>
       <p>ガイドのコマンドとキー割り当ては <code>npm run verify:readme</code> で実装と照合できます。通常の検証は <code>npm test</code>、<code>npm run build</code>。操作仕様とレビュー記録は <a href="https://github.com/altimix/LumaStudio">GitHubリポジトリ</a>で管理します。</p>
     </section>
-    <footer><p>Luma Studio v1.10.3 · README.html · 2026年9月24日更新<br>外部フォント・画像・CDNを使わない単体HTMLです。検索はこのページ内で行います。印刷では絞り込みにかかわらず全一覧を出力します。</p><a href="#top">ページの先頭へ戻る</a></footer>
+    <footer><p>Luma Studio v1.10.4 · README.html · 2026年9月25日更新<br>外部フォント・画像・CDNを使わない単体HTMLです。検索はこのページ内で行います。印刷では絞り込みにかかわらず全一覧を出力します。</p><a href="#top">ページの先頭へ戻る</a></footer>
   <p>トラック名の横のごみ箱からトラックを削除できます。素材がある場合は確認を表示します。元ファイルと別トラックの素材は残り、Ctrl+Zで戻せます。最後の1本とロック中のトラックは削除できません。</p><p>素材・図形・字幕の追加や移動で同じトラック内に重なる場合は、新しいトラックへ時間位置を保って自動配置します。ドラッグではマウスを離した時に整理します。Ctrl+Zで自動追加トラックも一緒に戻せます（最大24本）。</p></main>
 </div>
 <script>
