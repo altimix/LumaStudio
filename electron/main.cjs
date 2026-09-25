@@ -170,7 +170,7 @@ function installIPC() {
   };
   const validateExportSources = async (p, format = 'mp4') => {
     const assets = format === 'mp3'
-      ? [...new Map(audioClips(p).map(clip => {
+      ? [...new Map(audioClips(p, { audibleOnly: true }).map(clip => {
         const asset = p.assets.find(item => item.id === clip.assetId);
         return [asset.id, asset];
       })).values()]
@@ -180,9 +180,9 @@ function installIPC() {
       await registered(asset);
     }
   };
-  const preparedAudioPaths = async (p, signal) => {
+  const preparedAudioPaths = async (p, signal, { audibleOnly = false } = {}) => {
     const result = {};
-    for (const c of audioClips(p)) if (c.audioTreatment) {
+    for (const c of audioClips(p, { audibleOnly })) if (c.audioTreatment) {
       const a = await registered(p.assets.find(a => a.id === c.assetId));
       result[c.id] = (await audioProcessor.get(a.path, c.audioTreatment, signal)).file;
     }
@@ -401,7 +401,7 @@ function installIPC() {
     const format = settings?.format ?? 'mp4';
     if (!['mp4', 'mp3'].includes(format)) throw new Error('書き出し形式を選び直してください。');
     if (format === 'mp4') validateEncoder(settings?.encoder);
-    if (format === 'mp3' && !audioClips(p).length) throw new Error('書き出せる音声がありません。音声トラックのミュート・ソロ・音量を確認してください。');
+    if (format === 'mp3' && !audioClips(p, { audibleOnly: true }).length) throw new Error('書き出せる音声がありません。音声トラックのミュート・ソロ・音量を確認してください。');
     await validateExportSources(p, format);
     const result = await dialog.showSaveDialog(window, {
       title: format === 'mp3' ? '音声をMP3で書き出す' : '動画を書き出す',
@@ -416,7 +416,7 @@ function installIPC() {
     let finishExport; exportFinished = new Promise(resolve => { finishExport = resolve; });
     try {
       if (!window.isDestroyed()) window.webContents.send('export-progress', { status: 'preparing', progress: 0, output });
-      const audioPaths = await preparedAudioPaths(p, exportController.signal);
+      const audioPaths = await preparedAudioPaths(p, exportController.signal, { audibleOnly: format === 'mp3' });
       const signal=exportController.signal;
       const onProgress = progress => { if (!window.isDestroyed()) window.webContents.send('export-progress', progress); };
       const completed = format === 'mp3'

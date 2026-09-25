@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { ffmpeg, run, probe, inspectMedia } = require('../electron/media.cjs');
-const { exportProject } = require('../electron/export.cjs');
+const { buildExport, exportProject } = require('../electron/export.cjs');
 const { exportMp3 } = require('../electron/audio-export.cjs');
 const { audioClips, buildMp3Audio } = require('../electron/timeline-audio.cjs');
 
@@ -80,12 +80,17 @@ test('an audio-only timeline exports MP3 without preparing any visual input', as
 
 test('fully-zero volume points count as no exportable audio before choosing a destination', async () => {
   const p = project();
-  p.clips = [{ ...p.clips[1], volumeKeyframes: [{ time: 0, value: 0 }, { time: 2, value: 0 }] }];
-  assert.equal(audioClips(p).length, 0);
+  p.clips = [{ ...p.clips[1], audioTreatment: 'speech', volumeKeyframes: [{ time: 0, value: 0 }, { time: 2, value: 0 }] }];
+  assert.equal(audioClips(p).length, 1, 'MP4 preparation still includes treated clips in its graph');
+  const mp4Settings = { width: 320, height: 180, fps: 30, quality: 'draft' };
+  const mp4Sources = { [voice.id]: voice.path }, mp4Output = path.join(dir, '音量0.mp4');
+  assert.throws(() => buildExport(p, mp4Settings, mp4Sources, mp4Output), /自動調整した音声を準備できませんでした/);
+  assert.doesNotThrow(() => buildExport(p, mp4Settings, mp4Sources, mp4Output, { [p.clips[0].id]: voice.path }));
+  assert.equal(audioClips(p, { audibleOnly: true }).length, 0);
   assert.throws(() => buildMp3Audio(p, path.join(dir, '無音.mp3')), /書き出せる音声がありません/);
   await assert.rejects(exportMp3(p, path.join(dir, '無音.mp3')), /書き出せる音声がありません/);
   p.clips[0].volumeKeyframes[1].value = .5;
-  assert.equal(audioClips(p).length, 1, 'a rising envelope remains audible');
+  assert.equal(audioClips(p, { audibleOnly: true }).length, 1, 'a rising envelope remains audible');
 });
 
 test('no audible clips, missing media, cancellation and source overwrite preserve existing files', async () => {

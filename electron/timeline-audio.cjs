@@ -12,19 +12,19 @@ const { mediaSpawnError } = require('./media-binaries.cjs');
 const { validateProject } = require('./export.cjs');
 
 const totalTime = p => Math.max(0, ...p.clips.map(c => c.start + c.duration));
-function audioClips(p) {
+function audioClips(p, { audibleOnly = false } = {}) {
   const solo = p.tracks.some(t => t.solo);
   return p.clips.filter(c => {
     const a = p.assets.find(a => a.id === c.assetId), t = p.tracks.find(t => t.id === c.trackId);
     return hasClipAudio(c, a) && !c.audioMuted && c.volume > 0 &&
-      (!c.volumeKeyframes?.length || c.volumeKeyframes.some(key => key.value > 0)) &&
+      (!audibleOnly || !c.volumeKeyframes?.length || c.volumeKeyframes.some(key => key.value > 0)) &&
       !t.muted && (!solo || t.solo);
   });
 }
 
 function buildAudioGraph(p, output, audioPaths, range, mp3) {
   validateProject(p);
-  const duration = totalTime(p), clips = audioClips(p);
+  const duration = totalTime(p), clips = audioClips(p, { audibleOnly: mp3 });
   if (!clips.length) throw new Error(mp3
     ? '書き出せる音声がありません。音声トラックのミュート・ソロ・音量を確認してください。'
     : '文字起こしできる音声がありません。音声トラックのミュート・ソロ・音量を確認してください。');
