@@ -27,9 +27,10 @@ export function canSplitAt(clip: Clip, time: number, fps: number) {
 }
 
 /** Screen edges constrain free frame positions but must not move a visible snap target. */
-export function timelineScrubTime(project: Project, rawTime: number, zoom: number, snapping: boolean, start: number, end: number) {
-  const target = timelinePointerTime(project, rawTime, zoom, snapping, undefined, {start,end});
+export function timelineScrubTime(project: Project, rawTime: number, zoom: number, snapping: boolean, start: number, end: number, clip?: Clip) {
+  const target = timelinePointerTime(project, rawTime, zoom, snapping, clip, {start,end});
   if (target.snapped) return target;
-  const firstFrame = Math.ceil(start * project.fps) / project.fps, lastFrame = Math.floor(end * project.fps) / project.fps;
+  const origin = clip?.start || 0;
+  const firstFrame = origin + Math.ceil((start - origin) * project.fps) / project.fps, lastFrame = origin + Math.floor((end - origin) * project.fps) / project.fps;
   return { time: clamp(target.time, firstFrame, Math.max(firstFrame,lastFrame)), snapped:false };
 }

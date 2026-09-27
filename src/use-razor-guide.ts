@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { useEditor } from './store';
-import { canSplitAt, timelinePointerTime } from './timeline-pointer';
+import { canSplitAt, timelineScrubTime } from './timeline-pointer';
 import { clipsLocked, linkedIds } from '../shared/clip-links.mjs';
 
 type Guide = { clipId: string; time: number; snapped: boolean; cuttable: boolean };
@@ -18,7 +18,8 @@ export function useRazorGuide(scroller: RefObject<HTMLDivElement | null>) {
     const clip = element && view.contains(element) ? state.project.clips.find(item => item.id === element.dataset.clipId) : undefined;
     if (!clip || clipsLocked(state.project, linkedIds(state.project, [clip.id]))) { setGuide(null); return; }
     const raw = (position.x - view.getBoundingClientRect().left - view.clientLeft + view.scrollLeft) / state.zoom;
-    const match = timelinePointerTime(state.project, raw, state.zoom, state.snapping, clip);
+    const match = timelineScrubTime(state.project, raw, state.zoom, state.snapping,
+      view.scrollLeft / state.zoom, (view.scrollLeft + view.clientWidth - 1) / state.zoom, clip);
     const next = { clipId: clip.id, ...match, cuttable: canSplitAt(clip, match.time, state.project.fps) };
     setGuide(previous => previous && Object.keys(next).every(key => previous[key as keyof Guide] === next[key as keyof Guide]) ? previous : next);
   }, [scroller]);

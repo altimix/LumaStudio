@@ -62,3 +62,10 @@ it('preserves visible fractional targets at either viewport edge and ignores tar
   expect(timelineScrubTime(p,1.016,100,false,1.015,9.99)).toEqual({time:31/30,snapped:false});
   p.markers=p.markers.slice(2);expect(timelineScrubTime(p,9.99,100,true,1.015,9.99)).toEqual({time:299/30,snapped:false});
 });
+
+it('keeps unsnapped razor cuts on their relative frame grid inside the visible viewport',()=>{
+  const p=fixture(),clip={...p.clips[0],start:.015};p.clips=[clip];p.markers=[{id:'outside',label:'範囲外',time:9.995}];
+  const target=timelineScrubTime(p,9.99,100,true,1.015,9.99,clip);
+  expect(target).toEqual({time:.015+299/30,snapped:false});
+  expect(timelineScrubTime(p,1.016,100,false,1.018,9.99,clip)).toEqual({time:.015+31/30,snapped:false});
+});

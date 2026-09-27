@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react';
 import { clamp } from './model';
 import { useEditor } from './store';
-import { timelinePointerTime } from './timeline-pointer';
+import { timelineScrubTime } from './timeline-pointer';
 import { clipsInSelection, selectionRect, selectionScrollSpeed } from './timeline-selection';
 import type { SelectionCandidate, SelectionRect } from './timeline-selection';
 
@@ -53,7 +53,12 @@ export function useTimelineSelection(scroller: RefObject<HTMLDivElement | null>)
       current.endGesture(owner); setBox(null);
       if (!owns || current.project !== state.project) return;
       if (cancelled) state.select(previous);
-      else if (!moved && !additive) { state.select([]); const target = timelinePointerTime(state.project, origin.x / state.zoom, state.zoom, current.snapping); state.seek(target.time, target.snapped); }
+      else if (!moved && !additive) {
+        state.select([]);
+        const target = timelineScrubTime(state.project, origin.x / state.zoom, state.zoom, current.snapping,
+          view.scrollLeft / state.zoom, (view.scrollLeft + view.clientWidth - 1) / state.zoom);
+        state.seek(target.time, target.snapped);
+      }
     };
     const cancel = () => finish(true);
     const cancelPointer = (event: PointerEvent) => { if (event.pointerId === pointerId) cancel(); };

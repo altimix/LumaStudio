@@ -117,6 +117,21 @@ const root = path.join(__dirname, '..');
       await page.mouse.click(bounds.x+viewportWidth-2,rulerBounds.y+8);assert.ok(Math.abs(await head()-boundary)<1e-4,'screen-edge snap keeps the exact fractional cut');
       checks.push('ruler snapping preserves a visible fractional cut beyond the viewport last whole frame');
     }
+    {
+      const viewport=page.locator('.timeline-scroll'),z=await zoom(),w=await viewport.evaluate(el=>el.clientWidth),left=Math.ceil(z*5),start=left/z,end=(left+w-1)/z;
+      const offscreen={...project,id:'offscreen-snap',name:'画面外の吸着を防ぐ',clips:[project.clips[0]],markers:[{id:'left',label:'左外',time:start-2/z},{id:'right',label:'右外',time:end+2/z}]};
+      await fs.writeFile(file,JSON.stringify(offscreen));await page.locator('.brand').click();await page.keyboard.press('Control+o');await button(offscreen.name).waitFor();
+      const follow=button('再生ヘッドの自動追従');if(await follow.getAttribute('aria-pressed')==='true')await follow.click();
+      for(const offset of [2,w-3]){
+        await viewport.evaluate((el,left)=>{el.scrollLeft=left;},left);await settle();
+        const view=await viewport.boundingBox(),empty=await lane('a2').boundingBox(),x=view.x+offset;
+        await page.mouse.click(x,empty.y+12);const time=await head();assert.ok(time>=start&&time<=end,'empty click remains in the visible range');assert.equal(await viewport.evaluate(el=>el.scrollLeft),left);
+        await page.locator('.brand').click();await page.keyboard.press('c');const title=await lane('v2').boundingBox();await page.mouse.move(x,title.y+12);const cut=await guideTime();
+        assert.ok(cut>=start&&cut<=end,'razor guide remains visible');assert.equal(await page.locator('.razor-guide.snapped').count(),0);
+        await page.mouse.click(x,title.y+12);assert.ok((await save()).clips.some(c=>Math.abs(c.start-cut)<1e-7));await button(/^元に戻す \(/).click();await page.locator('.brand').click();await page.keyboard.press('v');
+      }
+      checks.push('empty clicks and razor guides ignore targets outside either viewport edge and keep the cut visible');
+    }
     assert.deepEqual(errors,[]);const evidence={passed:true,packaged:!!executablePath,checks,heights,controls};await fs.writeFile(path.join(results,'verification.json'),JSON.stringify(evidence,null,2));console.log(JSON.stringify(evidence));
   } catch(error) {console.error(await page.evaluate(()=>({focus:document.hasFocus(),tool:document.querySelector('.timeline-scroll').className,gesture:document.documentElement.dataset.timelineGesture,guide:document.querySelector('.razor-guide')?.outerHTML})));await page.screenshot({path:path.join(results,'failure.png')}).catch(()=>{});throw error;}
   finally {await app.close();await fs.rm(profile,{recursive:true,force:true});}
