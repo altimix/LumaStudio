@@ -116,6 +116,10 @@ const root = path.join(__dirname, '..');
       const bounds=await viewport.boundingBox(),rulerBounds=await page.locator('.timeline-ruler').boundingBox();
       await page.mouse.click(bounds.x+viewportWidth-2,rulerBounds.y+8);assert.ok(Math.abs(await head()-boundary)<1e-4,'screen-edge snap keeps the exact fractional cut');
       checks.push('ruler snapping preserves a visible fractional cut beyond the viewport last whole frame');
+      await button(/^マーカーを追加 \(/).click();const marked=await save(),marker=marked.markers.at(-1);assert.equal(marker.time,boundary);
+      await page.locator('.brand').click();await page.keyboard.press('Home');await button('マーカー '+marker.label).click();assert.ok(Math.abs(await head()-boundary)<1e-4,'marker click preserves its exact fractional time');
+      await page.keyboard.press('Home');await page.locator('.timeline-clip[data-clip-id="video"]').focus();await page.keyboard.press('Enter');assert.ok(Math.abs(await head()-boundary)<1e-4,'clip start jump preserves its exact fractional time');
+      checks.push('marker creation and jumps to markers or clip starts preserve fractional cut times');
     }
     {
       const viewport=page.locator('.timeline-scroll'),z=await zoom(),w=await viewport.evaluate(el=>el.clientWidth),left=Math.ceil(z*5),start=left/z,end=(left+w-1)/z;
