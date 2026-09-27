@@ -35,6 +35,14 @@ async function verify() {
     await open(base);await page.locator('.title-drag-target').waitFor();await page.getByRole('combobox',{name:'プレビュー画質',exact:true}).selectOption('1');await page.waitForFunction(()=>!document.querySelector('.preview-font-status'));
     assert.equal(await page.getByRole('button',{name:'中央揃え',exact:true}).getAttribute('aria-pressed'),'true');
     const legacy=await canvas();compareRows(legacy.rows,'center');await page.getByRole('button',{name:'中央揃え',exact:true}).click();assert.equal((await canvas()).png,legacy.png);checks.push('legacy projects retain identical centered pixels');
+    for(const [index,textAlign]of ['start','distributed',null,123].entries()){
+      const invalid=path.join(results,`invalid-alignment-${index}.luma`);
+      await fs.writeFile(invalid,JSON.stringify({...base,name:'読み込んではいけない',clips:[{...clip,textAlign:'center',visualKeyframes:[{time:0,values:{textAlign}}]}]}));
+      await page.locator('input[type="file"][accept=".luma"]').setInputFiles(invalid);
+      await page.getByText('文字揃えは左・中央・右・均等割付から選択してください。',{exact:true}).waitFor();
+      assert.ok(await page.getByRole('button',{name:base.name,exact:true}).isVisible());assert.equal((await canvas()).png,legacy.png);
+    }
+    checks.push('browser file import rejects malformed keyed alignments and preserves the active project');
     const names={left:'左揃え',center:'中央揃え',right:'右揃え',justify:'均等割付'};
     for(const boxed of [false,true]){
       if(boxed)await open({...base,name:'枠内の文字揃え',clips:[{...clip,textBox:{width:420,height:210}}]});
