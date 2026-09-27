@@ -1,3 +1,4 @@
+import { trackAcceptsClip, AUDIO_TRACK_MESSAGE } from './track-compatibility';
 import { numberTracks } from './track-names';
 import { uid } from './model';
 import type { Clip, Project } from './types';
@@ -16,12 +17,13 @@ export function separateOverlappingClips(project: Project, ids: string[], newId 
     const source = tracks.find(t => t.id === trackId);
     if (!source || source.locked) throw Error('配置先トラックのロックを解除してください。');
     const stationary = project.clips.filter(c => c.trackId === trackId && !selected.has(c.id));
-    const emptyReusable = tracks.filter(t => reusable.has(t.id) && !t.locked && !project.clips.some(c => c.trackId === t.id));
+    const emptyReusable = tracks.filter(t => reusable.has(t.id) && !t.locked && group.every(c => trackAcceptsClip(t,c.kind)) && !project.clips.some(c => c.trackId === t.id));
     const partitions = extraTrackPartitions(group, stationary, 24 - tracks.length + emptyReusable.length);
     for (const partition of partitions) {
-      let track = tracks.find(t => reusable.has(t.id) && !t.locked && !project.clips.some(c => c.trackId === t.id));
+      let track = tracks.find(t => reusable.has(t.id) && !t.locked && group.every(c => trackAcceptsClip(t,c.kind)) && !project.clips.some(c => c.trackId === t.id));
       if (track) reusable.delete(track.id);
       else {
+        if(partition.some(c=>!trackAcceptsClip(source,c.kind)))throw Error(AUDIO_TRACK_MESSAGE);
         if (tracks.length >= 24) throw Error('重ならないように配置するには新しいトラックが必要です。トラックは最大24本のため、不要なトラックを削除するか空き区間へ配置してください。');
         track = { ...source, id: newId(), name: '', autoName: true };
         // Video overlays appear above their original lane. Keep audio next to its source too.

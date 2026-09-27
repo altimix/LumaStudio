@@ -23,17 +23,43 @@ it('migrates the recognizable legacy default layout, preserving custom project n
   expect(next.tracks.map(t=>t.id)).toEqual(p.tracks.map(t=>t.id));expect(p.tracks[0].name).toBe('テロップ・オーバーレイ');
   p.tracks[0].name='利用者のタイトル';expect(numberTracks(p)).toBe(p);
 });
-it.each(['video','image','audio'] as const)('places and edits %s on either track group, with locked destinations protected',kind=>{
-  for(const targetKind of ['video','audio']){
-    const p=emptyProject(),asset={...source,kind,hasAudio:kind==='audio'},s=useEditor.getState();p.assets=[asset];s.load(p);
-    const target=p.tracks.find(t=>t.kind===targetKind)!;s.addAsset(asset.id,0,target.id);
-    let next=useEditor.getState().project;expect(next.clips).toHaveLength(1);expect(next.clips[0]).toMatchObject({kind,trackId:target.id});
-    const other=p.tracks.find(t=>t.kind!==targetKind)!;s.updateTrack(other.id,{locked:true});const locked=useEditor.getState().project;
-    s.updateClip(next.clips[0].id,{trackId:other.id});expect(useEditor.getState().project).toBe(locked);
-    s.updateTrack(other.id,{locked:false});s.updateClip(next.clips[0].id,{trackId:other.id});next=useEditor.getState().project;
-    expect(next.clips[0].trackId).toBe(other.id);s.select([next.clips[0].id]);s.copy();s.seek(3);s.paste();expect(useEditor.getState().project.clips).toHaveLength(2);
-    s.undo();expect(useEditor.getState().project).toBe(next);
-  }
+it.each(['video','image','audio'] as const)('restricts new %s placements on Audio and protects locked destinations',kind=>{
+  const p=emptyProject(),asset={...source,kind,hasAudio:kind==='audio'},s=useEditor.getState();p.assets=[asset];s.load(p);
+  const video=p.tracks[0],audio=p.tracks[2];s.addAsset(asset.id,0,audio.id);
+  if(kind!=='audio'){expect(useEditor.getState().project).toBe(p);expect(useEditor.getState().history).toHaveLength(0);}
+  else {expect(useEditor.getState().project.clips[0]).toMatchObject({kind,trackId:audio.id});s.undo();}
+  s.addAsset(asset.id,0,video.id);const clip=useEditor.getState().project.clips[0];
+  s.updateTrack(audio.id,{locked:true});const locked=useEditor.getState().project;
+  s.updateClip(clip.id,{trackId:audio.id});expect(useEditor.getState().project).toBe(locked);
+  s.updateTrack(audio.id,{locked:false});const before=useEditor.getState().project;
+  s.updateClip(clip.id,{trackId:audio.id});
+  if(kind!=='audio')expect(useEditor.getState().project).toBe(before);
+  else expect(useEditor.getState().project.clips[0].trackId).toBe(audio.id);
+});
+it('preserves legacy Audio visuals through load, split, trim, save and undo, while blocking new copies',()=>{
+  const p=emptyProject(),s=useEditor.getState();p.assets=[source];p.clips=[makeClip(p.tracks[2].id,0,source)];s.load(p);
+  const id=p.clips[0].id;s.select([id]);s.duplicate();expect(useEditor.getState().project).toBe(p);
+  s.copy();s.seek(3);s.paste();expect(useEditor.getState().project).toBe(p);
+  s.split(1,[id]);expect(useEditor.getState().project.clips).toHaveLength(2);
+  s.undo();expect(useEditor.getState().project).toBe(p);s.redo();
+  const split=useEditor.getState().project;s.updateClip(id,{duration:.5});
+  const saved=JSON.parse(JSON.stringify(useEditor.getState().project));s.load(saved);
+  expect(useEditor.getState().project.clips).toEqual(saved.clips);
+  expect(split.clips.every(c=>c.trackId===p.tracks[2].id)).toBe(true);
+  s.updateClip(id,{trackId:p.tracks[0].id});s.select([id]);s.duplicate();
+  expect(useEditor.getState().project.clips.filter(c=>c.kind==='video'&&c.trackId===p.tracks[0].id)).toHaveLength(2);
+});
+it('never falls back to Audio for video, title or drawing when Video is unavailable',()=>{
+  const p=emptyProject(),s=useEditor.getState();p.assets=[source];p.tracks=p.tracks.filter(t=>t.kind==='audio');s.load(p);
+  s.addAsset(source.id);s.addTitle();s.addDrawing({graphic:{shape:'rectangle',width:10,height:10,lineWidth:1,fill:false,fillColor:'#000000'},x:0,y:0,rotation:0,color:'#ffffff',duration:1});
+  expect(useEditor.getState().project).toBe(p);expect(useEditor.getState().history).toHaveLength(0);
+});
+it('keeps detached video audio eligible for Audio with link synchronization',()=>{
+  const p=emptyProject(),s=useEditor.getState();p.assets=[{...source,hasAudio:true}];s.load(p);s.addAsset(source.id,0,p.tracks[0].id);
+  const placed=useEditor.getState().project,video=placed.clips.find(c=>c.kind==='video')!,audio=placed.clips.find(c=>c.kind==='audio')!;
+  expect(placed.tracks.find(t=>t.id===audio.trackId)?.kind).toBe('audio');expect(video.linkId).toBe(audio.linkId);
+  s.updateClip(audio.id,{trackId:p.tracks[3].id});s.split(1,[video.id]);
+  expect(useEditor.getState().project.clips).toHaveLength(4);
 });
 it('keeps upper-row audio audible and makes mute/solo independent of row group',()=>{
   const p=emptyProject(),asset={...source,kind:'audio' as const,hasAudio:true};p.assets=[asset];p.clips=[makeClip(p.tracks[0].id,0,asset)];

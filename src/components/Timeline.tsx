@@ -1,3 +1,7 @@
+import { trackAcceptsClip, AUDIO_TRACK_MESSAGE, MIN_TRACK_HEIGHT } from '../track-compatibility';
+import { timelinePointerTime } from '../timeline-pointer';
+import { useRazorGuide } from '../use-razor-guide';
+import '../timeline-guides.css';
 import TrackNameInput from './TrackNameInput';
 import { separateOverlappingClips } from '../track-placement';
 import TrackDeleteButton from './TrackDeleteButton';
@@ -43,10 +47,11 @@ function ClipItem({ clip, asset, track, selected, related, zoom, waveformLeft, w
 }
 const MemoClip = memo(ClipItem);
 export default function Timeline({ onImport }: { onImport?: () => void }) {
-  const [rowHeight,setRowHeight]=useState(80);
+  const [rowHeight,setRowHeight]=useState(MIN_TRACK_HEIGHT);
   const p = useEditor(s => s.project); const selected = useEditor(s => s.selected); const playhead = useEditor(s => s.playhead); const zoom = useEditor(s => s.zoom);
   const snapping = useEditor(s => s.snapping); const tool = useEditor(s => s.tool); const canUndo = useEditor(s => s.history.length > 0); const canRedo = useEditor(s => s.future.length > 0);
   const scroller = useRef<HTMLDivElement>(null); const labels = useRef<HTMLDivElement>(null); const trackMenu = useEditor(s => s.trackMenuOpen); const setTrackMenu = (trackMenuOpen: boolean) => useEditor.setState({ trackMenuOpen }); const [dropTrack, setDropTrack] = useState<string | null>(null); const [snapLine, setSnapLine] = useState<number | null>(null);
+  const razorGuide = useRazorGuide(scroller);
   const [clipMenu,setClipMenu]=useState<ClipMenuAnchor|null>(null);
   const [gapMenu,setGapMenu]=useState<GapMenuAnchor|null>(null);
   const menuOpen=useEditor(s=>s.clipMenuOpen);
@@ -73,7 +78,7 @@ export default function Timeline({ onImport }: { onImport?: () => void }) {
   const lastTick = Math.min(Math.floor(length / tickStep), Math.ceil((rulerViewport.left + rulerViewport.width) / zoom / tickStep) + 1);
   const { followPlayhead, setFollowPlayhead, revealPlayhead, scrub, onViewportScroll } = usePlayheadViewport(scroller);
   const { selectionBox, startSelection } = useTimelineSelection(scroller);
-  const localTime = useCallback((clientX: number) => { const rect = scroller.current!.getBoundingClientRect(); return Math.max(0, (clientX - rect.left + scroller.current!.scrollLeft) / useEditor.getState().zoom); }, []);
+  const localTime = useCallback((clientX: number) => { const rect = scroller.current!.getBoundingClientRect(); return Math.max(0, (clientX - rect.left - scroller.current!.clientLeft + scroller.current!.scrollLeft) / useEditor.getState().zoom); }, []);
   const openGapMenu=useCallback((trackId:string,time:number,element:HTMLElement,x:number,y:number)=>{
     const state=useEditor.getState();if(state.gestureActive)return;
     state.stop();element.focus({preventScroll:true});setClipMenu(null);
@@ -83,7 +88,7 @@ export default function Timeline({ onImport }: { onImport?: () => void }) {
   const cancelDrag=useRef<(()=>void)|null>(null);useLayoutEffect(()=>()=>cancelDrag.current?.(),[]);
   const startDrag = useCallback((e: React.PointerEvent, clip: Clip, mode: 'move' | 'left' | 'right') => {
     e.stopPropagation(); if (e.button !== 0) return; e.preventDefault();(e.currentTarget.closest('.timeline-clip') as HTMLElement)?.focus({preventScroll:true});cancelDrag.current?.(); const s = useEditor.getState();if(s.gestureActive)return;
-    if (s.tool === 'razor') { s.split(localTime(e.clientX), [clip.id]); return; }
+    if (s.tool === 'razor') { s.stop(); s.split(timelinePointerTime(s.project,localTime(e.clientX),s.zoom,s.snapping,clip).time, [clip.id]); return; }
     if (s.tool === 'rate') { if (!['video', 'audio'].includes(clip.kind)) { s.notify('レート調整には動画または音声クリップを選択してください。'); return; } if (mode === 'move') mode = 'right'; }
     let ids = s.selected.includes(clip.id) ? s.selected : [clip.id];
     if (e.shiftKey) { ids = s.selected.includes(clip.id) ? s.selected.filter(id => id !== clip.id) : [...s.selected, clip.id]; s.select(ids); return; }
@@ -98,10 +103,18 @@ export default function Timeline({ onImport }: { onImport?: () => void }) {
     const owner={};if(!s.beginGesture(owner,()=>cancel()))return;
     const before: Project = s.project; const originX = e.clientX, originY=e.clientY; const scrollStart = scroller.current!.scrollLeft;
     document.documentElement.dataset.timelineGesture=s.tool === 'rate' ? 'rate' : mode === 'move' ? (copying ? 'copy' : 'move') : 'trim';
-    let started = false, ended=false;const capture=scroller.current!,pointerId=e.pointerId;capture.setPointerCapture(pointerId);
+    let started = false, ended=false, rejectedTarget=false;const capture=scroller.current!,pointerId=e.pointerId;capture.setPointerCapture(pointerId);
     const move = (event: PointerEvent) => {
+      if(event.pointerId!==pointerId)return;
       if(useEditor.getState().gestureOwner!==owner){end();return;}
       if (!started && Math.hypot(event.clientX-originX,mode==='move'?event.clientY-originY:0) < 3) return;
+      if(mode==='move'&&explicitCount===1){
+        const lane=document.elementsFromPoint(event.clientX,event.clientY).find(el=>el.hasAttribute('data-track-id'));
+        const target=before.tracks.find(t=>t.id===lane?.getAttribute('data-track-id'));
+        rejectedTarget=!!target&&(target.locked||(!(target.id===clip.trackId&&!copying)&&!trackAcceptsClip(target,clip.kind)));
+        document.documentElement.dataset.timelineGesture=rejectedTarget?'blocked':copying?'copy':'move';
+        if(rejectedTarget){setSnapLine(null);return;}
+      }
       if (!started) { s.checkpoint(s.tool === 'rate' ? 'レートを調整' : mode === 'move' ? (copying?'クリップを複製して移動':'クリップを移動') : 'クリップをトリム'); started = true; }
       const horizontalPixels = event.clientX - originX + scroller.current!.scrollLeft - scrollStart;
       let delta = horizontalPixels / s.zoom;
@@ -110,7 +123,7 @@ export default function Timeline({ onImport }: { onImport?: () => void }) {
       if (mode === 'move') {
         const hits = document.elementsFromPoint(event.clientX, event.clientY); const lane = hits.find(el => el.hasAttribute('data-track-id'));
         const target = before.tracks.find(t => t.id === lane?.getAttribute('data-track-id'));
-        if (explicitCount === 1 && target && !target.locked) newTrack = target.id;
+        if (explicitCount === 1 && target && !target.locked && (target.id === clip.trackId && !copying || trackAcceptsClip(target,clip.kind))) newTrack = target.id;
         const minStart = Math.min(...before.clips.filter(c => ids.includes(c.id)).map(c => c.start)); delta = Math.max(-minStart, delta);
       }
       // Across tracks, small horizontal hand movement should not change timing.
@@ -133,7 +146,7 @@ export default function Timeline({ onImport }: { onImport?: () => void }) {
         if (!copying && mode === 'move' && ids.includes(c.id) && !before.tracks.find(t => t.id === c.trackId)?.locked) return { ...c, start: preserveStart?c.start:Math.max(0, roundFrame(c.start + delta, before.fps)), trackId: c.id === clip.id ? newTrack : c.trackId };
         return c.id === clip.id && mode !== 'move' ? (s.tool === 'rate' ? rateStretchClip(c, mode, delta, before) : trimClip(c, mode, delta, before)) : c;
       });
-      if(copying){clips.push(...copies.map(c=>({...c,start:preserveStart?c.start:Math.max(0,roundFrame(c.start+delta,before.fps)),trackId:c.id===copyIds.get(clip.id)?newTrack:c.trackId})));useEditor.getState().select(copies.map(c=>c.id));}
+      if(copying){const placedCopies=copies.map(c=>({...c,start:preserveStart?c.start:Math.max(0,roundFrame(c.start+delta,before.fps)),trackId:c.id===copyIds.get(clip.id)?newTrack:c.trackId}));if(placedCopies.some(c=>before.tracks.some(t=>t.id===c.trackId&&!trackAcceptsClip(t,c.kind)))){rejectedTarget=true;document.documentElement.dataset.timelineGesture='blocked';return;}clips.push(...placedCopies);useEditor.getState().select(copies.map(c=>c.id));}
       s.transient({ ...before, clips },before);
       const rect = scroller.current!.getBoundingClientRect(); if (event.clientX > rect.right - 35) scroller.current!.scrollLeft += 10; if (event.clientX < rect.left + 25) scroller.current!.scrollLeft -= 10;
     };
@@ -141,6 +154,7 @@ export default function Timeline({ onImport }: { onImport?: () => void }) {
     const cancel = () => { if(ended)return;if (started&&useEditor.getState().gestureOwner===owner) { useEditor.setState({ project: before, selected:s.selected, activeVolumePoint:s.activeVolumePoint, zoom: s.zoom, history: s.history, future: s.future, historyPlayheads:s.historyPlayheads, futurePlayheads:s.futurePlayheads, historyLabels: s.historyLabels, futureLabels: s.futureLabels, currentAction: s.currentAction, dirty: s.dirty }); } end(); };
     const finish = () => {
       if(ended)return;
+      if(rejectedTarget){cancel();s.notify('このトラックには移動できません。種類とロックを確認してください。');return;}
       const current=useEditor.getState();
       if(started&&mode==='move'&&current.gestureOwner===owner){
         const originalById=new Map(before.clips.map(c=>[c.id,c]));
@@ -165,9 +179,27 @@ export default function Timeline({ onImport }: { onImport?: () => void }) {
     {clipMenu && menuOpen ? <ClipContextMenu anchor={clipMenu} onClose={closeClipMenu}/> : null}
     {gapMenu && menuOpen ? <GapContextMenu anchor={gapMenu} onClose={closeGapMenu}/> : null}
     <div className="timeline-body">{!p.clips.length ? <div className="timeline-empty-guide"><strong>ここに素材を並べて、動画を作りましょう</strong><p>{p.assets.length ? '左の素材を選んで「タイムラインに追加」を押すか、この場所へドラッグします。' : '動画・写真・音声を読み込むと、編集を始められます。'}</p>{!p.assets.length && onImport ? <button className="secondary-button" onClick={onImport}><Plus size={14}/>素材を読み込んで始める</button> : null}<small>左から右へ再生されます · 元の素材はそのまま残ります</small></div> : null}<div className="timeline-tracks" style={{'--track-height':`${rowHeight}px`} as React.CSSProperties} onWheel={e => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); useEditor.getState().setZoom(zoom * (e.deltaY < 0 ? 1.1 : 0.9)); } }}>
-      <div className="track-labels" ref={labels}><div className="ruler-label"><span className="timecode">{timecode(playhead, p.fps)}</span></div>{p.tracks.map((track, i) => <div className={`track-label ${track.kind} ${track.kind === 'audio' && i === p.tracks.findIndex(t => t.kind === 'audio') ? 'track-boundary' : ''} ${track.locked ? 'locked' : ''}`} key={track.id}><div className="track-label-top"><span className={`track-badge ${track.kind}`}>{track.kind === 'video' ? 'V' : 'A'}{track.kind === 'video' ? p.tracks.filter(t => t.kind === 'video').length - p.tracks.slice(0,i).filter(t => t.kind === 'video').length : p.tracks.slice(0,i + 1).filter(t => t.kind === 'audio').length}</span><TrackNameInput track={track}/><TrackDeleteButton track={track} project={p}/></div><div className="track-actions"><IconButton label={`${track.name} ${track.locked ? 'ロック解除' : 'ロック'}`} active={track.locked} onClick={() => useEditor.getState().updateTrack(track.id, { locked: !track.locked })}>{track.locked ? <Lock size={12}/> : <Unlock size={12}/>}</IconButton>{<IconButton label={`${track.name} ${track.hidden ? '表示' : '非表示'}`} active={track.hidden} onClick={() => useEditor.getState().updateTrack(track.id, { hidden: !track.hidden })}>{track.hidden ? <EyeOff size={13}/> : <Eye size={13}/>}</IconButton>}<IconButton label={`${track.name} ミュート`} active={track.muted} onClick={() => useEditor.getState().updateTrack(track.id, { muted: !track.muted })}>{track.muted ? <VolumeX size={12}/> : <Volume2 size={12}/>}</IconButton><IconButton label={`${track.name} ソロ`} active={track.solo} onClick={() => useEditor.getState().updateTrack(track.id, { solo: !track.solo })}><span className="solo-label">S</span></IconButton></div></div>)}</div>
+      <div className="track-labels" ref={labels}>
+        <div className="ruler-label"><span className="timecode">{timecode(playhead, p.fps)}</span></div>
+        {p.tracks.map((track, i) => {
+          const hasVisual = track.kind === 'video' || clipsByTrack.get(track.id)?.some(clip => clip.kind !== 'audio');
+          return <div className={`track-label ${track.kind} ${track.kind === 'audio' && i === p.tracks.findIndex(t => t.kind === 'audio') ? 'track-boundary' : ''} ${track.locked ? 'locked' : ''}`} key={track.id}>
+            <div className="track-label-top">
+              <span className={`track-badge ${track.kind}`} title={track.kind === 'video' ? 'Videoトラック' : 'Audioトラック（音声専用）'}>{track.kind === 'video' ? <Film size={14}/> : <Music2 size={14}/>}</span>
+              <TrackNameInput track={track}/>
+              <div className="track-actions">
+                <IconButton label={`${track.name} ${track.locked ? 'ロック解除' : 'ロック'}`} active={track.locked} onClick={() => useEditor.getState().updateTrack(track.id, { locked: !track.locked })}>{track.locked ? <Lock size={14}/> : <Unlock size={14}/>}</IconButton>
+                {hasVisual ? <IconButton label={`${track.name} ${track.hidden ? '表示' : '非表示'}`} active={track.hidden} onClick={() => useEditor.getState().updateTrack(track.id, { hidden: !track.hidden })}>{track.hidden ? <EyeOff size={14}/> : <Eye size={14}/>}</IconButton> : null}
+                <IconButton label={`${track.name} ミュート`} active={track.muted} onClick={() => useEditor.getState().updateTrack(track.id, { muted: !track.muted })}>{track.muted ? <VolumeX size={14}/> : <Volume2 size={14}/>}</IconButton>
+                <IconButton label={`${track.name} ソロ`} active={track.solo} onClick={() => useEditor.getState().updateTrack(track.id, { solo: !track.solo })}><span className="solo-label">S</span></IconButton>
+                <TrackDeleteButton track={track} project={p}/>
+              </div>
+            </div>
+          </div>;
+        })}
+      </div>
       <div id="timeline-scroll" className={`timeline-scroll ${tool}`} ref={scroller} onScroll={e => { if (labels.current) labels.current.scrollTop = e.currentTarget.scrollTop; onViewportScroll(); updateRuler(); }}><div className="timeline-content" tabIndex={-1} style={{ width }} onPointerDown={e => { if (e.target === e.currentTarget) startSelection(e); }}><div className="timeline-ruler" onPointerDown={scrub}>{Array.from({ length: Math.max(0, lastTick - firstTick + 1) }, (_, index) => { const i = firstTick + index; return <div className="ruler-tick" key={i} style={{ left: i * tickStep * zoom }}><span>{timecode(i * tickStep, p.fps).split(':').slice(extent >= 3600 ? 0 : 1).join(':')}</span></div>; })}{p.markers.map(m => <button className="timeline-marker" key={m.id} style={{ left: m.time * zoom }} aria-label={`マーカー ${m.label}`} title={`${m.label} · 右クリックで削除`} onPointerDown={e => e.stopPropagation()} onClick={() => useEditor.getState().seek(m.time)} onContextMenu={e => { e.preventDefault(); useEditor.getState().removeMarker(m.id); }}><span/>{m.label}</button>)}</div>
-        {p.tracks.map((track, i) => <div key={track.id} data-track-id={track.id} className={`track-lane ${track.kind} ${track.kind === 'audio' && i === p.tracks.findIndex(t => t.kind === 'audio') ? 'track-boundary' : ''} ${track.locked ? 'locked' : ''} ${dropTrack === track.id ? 'drop-target' : ''}`} tabIndex={0} role="group" aria-label={`${track.name}のタイムライン`} onContextMenu={e=>{if((e.target as HTMLElement).closest('.timeline-clip,.timeline-transition'))return;e.preventDefault();e.stopPropagation();openGapMenu(track.id,localTime(e.clientX),e.currentTarget,e.clientX,e.clientY);}} onKeyDown={e=>{if(e.target!==e.currentTarget)return;if(e.key==='ContextMenu'||(e.shiftKey&&e.key==='F10')){e.preventDefault();e.stopPropagation();const view=scroller.current!.getBoundingClientRect(),lane=e.currentTarget.getBoundingClientRect();openGapMenu(track.id,useEditor.getState().playhead,e.currentTarget,Math.max(view.left+8,Math.min(view.right-8,lane.left+useEditor.getState().playhead*zoom)),lane.top+20);}}} onPointerDown={e => { if (e.button === 0 && e.target === e.currentTarget) { if (useEditor.getState().tool === 'select') startSelection(e); else { e.currentTarget.focus({preventScroll:true}); useEditor.getState().select([]); scrub(e); } } }} onDragOver={e => { if ((e.dataTransfer.types.includes('application/x-luma-asset') || e.dataTransfer.types.includes('application/x-luma-transition')) && !track.locked) { e.preventDefault(); setDropTrack(track.id); } }} onDragLeave={() => setDropTrack(null)} onDrop={e => { e.preventDefault(); setDropTrack(null); const effect=e.dataTransfer.getData('application/x-luma-transition');if(effect){try{const options=JSON.parse(effect) as TransitionOptions,time=localTime(e.clientX),lane=p.clips.filter(c=>c.trackId===track.id).sort((a,b)=>a.start-b.start);const joins=lane.slice(1).map((to,i)=>({from:lane[i],to,distance:Math.abs(time-to.start)*zoom})).sort((a,b)=>a.distance-b.distance);if(!joins[0]||joins[0].distance>60)throw Error('隣り合うクリップのつなぎ目へドロップしてください。');useEditor.getState().addTransition(options,joins[0].from.id,joins[0].to.id);}catch(error){useEditor.getState().notify((error as Error).message);}return;} const id = e.dataTransfer.getData('application/x-luma-asset'); if (id) { const time = localTime(e.clientX); useEditor.getState().addAsset(id, snapping ? snapTime(time, p, [], 10 / zoom, playhead) : time, track.id); } }}>
+        {p.tracks.map((track, i) => <div key={track.id} data-track-id={track.id} className={`track-lane ${track.kind} ${track.kind === 'audio' && i === p.tracks.findIndex(t => t.kind === 'audio') ? 'track-boundary' : ''} ${track.locked ? 'locked' : ''} ${dropTrack === track.id ? 'drop-target' : ''}`} tabIndex={0} role="group" aria-label={`${track.name}のタイムライン`} onContextMenu={e=>{if((e.target as HTMLElement).closest('.timeline-clip,.timeline-transition'))return;e.preventDefault();e.stopPropagation();openGapMenu(track.id,localTime(e.clientX),e.currentTarget,e.clientX,e.clientY);}} onKeyDown={e=>{if(e.target!==e.currentTarget)return;if(e.key==='ContextMenu'||(e.shiftKey&&e.key==='F10')){e.preventDefault();e.stopPropagation();const view=scroller.current!.getBoundingClientRect(),lane=e.currentTarget.getBoundingClientRect();openGapMenu(track.id,useEditor.getState().playhead,e.currentTarget,Math.max(view.left+8,Math.min(view.right-8,lane.left+useEditor.getState().playhead*zoom)),lane.top+20);}}} onPointerDown={e => { if (e.button === 0 && e.target === e.currentTarget) { if (useEditor.getState().tool === 'select') startSelection(e); else { e.currentTarget.focus({preventScroll:true}); useEditor.getState().select([]); scrub(e); } } }} onDragOver={e => { const types=e.dataTransfer.types; const acceptsAsset=types.includes('application/x-luma-asset')&&(track.kind==='video'||types.includes('application/x-luma-kind-audio')); if ((acceptsAsset || types.includes('application/x-luma-transition')) && !track.locked) { e.preventDefault(); e.dataTransfer.dropEffect='copy'; setDropTrack(track.id); } else { e.dataTransfer.dropEffect='none'; setDropTrack(null); } }} onDragLeave={() => setDropTrack(null)} onDrop={e => { e.preventDefault(); setDropTrack(null); const effect=e.dataTransfer.getData('application/x-luma-transition');if(effect){try{const options=JSON.parse(effect) as TransitionOptions,time=localTime(e.clientX),lane=p.clips.filter(c=>c.trackId===track.id).sort((a,b)=>a.start-b.start);const joins=lane.slice(1).map((to,i)=>({from:lane[i],to,distance:Math.abs(time-to.start)*zoom})).sort((a,b)=>a.distance-b.distance);if(!joins[0]||joins[0].distance>60)throw Error('隣り合うクリップのつなぎ目へドロップしてください。');useEditor.getState().addTransition(options,joins[0].from.id,joins[0].to.id);}catch(error){useEditor.getState().notify((error as Error).message);}return;} const id = e.dataTransfer.getData('application/x-luma-asset'); if (id) { const asset=useEditor.getState().project.assets.find(a=>a.id===id); if(!asset||!trackAcceptsClip(track,asset.kind)){useEditor.getState().notify(AUDIO_TRACK_MESSAGE);return;} const time = localTime(e.clientX); useEditor.getState().addAsset(id, snapping ? snapTime(time, p, [], 10 / zoom, playhead) : time, track.id); } }}>
           {transitions.filter(t=>t.from.trackId===track.id).map(t=><TimelineTransition key={t.id} transition={t} plans={transitions} zoom={zoom}/>)}
           {highlightedGap?<div className="timeline-gap-highlight" aria-hidden="true" style={{left:highlightedGap.from*zoom,width:(highlightedGap.to-highlightedGap.from)*zoom}}/>:null}
           <div className="playhead-scrub-hit" style={{ left: playhead * zoom }} title="再生ヘッドを移動" onPointerDown={scrub}/>
@@ -179,6 +211,7 @@ export default function Timeline({ onImport }: { onImport?: () => void }) {
         </div>)}
         {selectionBox ? <div className="timeline-selection-rect" role="img" aria-label="素材の選択範囲" style={selectionBox}/> : null}
         <div className="playhead" style={{ left: playhead * zoom }}><div className="playhead-handle" title="再生ヘッドを移動" onPointerDown={scrub}/><div className="playhead-line"/></div>{snapLine !== null ? <div className="snap-line" style={{ left: snapLine * zoom }}/> : null}
+        {razorGuide ? <div className={`razor-guide ${razorGuide.snapped ? 'snapped' : ''} ${razorGuide.cuttable ? '' : 'at-edge'}`} style={{left:razorGuide.time*zoom}} role="img" aria-label={`切断位置 ${timecode(razorGuide.time,p.fps)}${razorGuide.snapped ? ' 吸着中' : ''}${razorGuide.cuttable ? '' : ' 素材の端'}`} data-time={razorGuide.time} data-clip-id={razorGuide.clipId}><span><Scissors size={12}/>{timecode(razorGuide.time,p.fps)}</span></div> : null}
       </div></div>
       <TimelineScrollbars view={scroller} rowHeight={rowHeight} setRowHeight={setRowHeight}/>
     </div><AudioMeter/></div>

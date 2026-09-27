@@ -120,3 +120,16 @@ it('matches exhaustive minimum-lane solutions across 300 deterministic interval 
     for(const c of next.clips.filter(c=>c.id.startsWith('new')))for(const other of next.clips)if(c.id!==other.id&&c.trackId===other.trackId)expect(hit(c,other),`trial ${trial} collision`).toBe(false);
   }
 });
+
+it('does not reuse an empty Audio lane for visual overlap partitions',()=>{
+  const p=emptyProject(),v=p.tracks[0].id,a=p.tracks[2].id;
+  p.clips=[{...makeClip(v,0),id:'fixed'},{...makeClip(v,0),id:'new'}];
+  const next=separateOverlappingClips(p,['new'],undefined,[a]);
+  const clip=next.clips.find(c=>c.id==='new')!;
+  expect(next.tracks.find(t=>t.id===clip.trackId)?.kind).toBe('video');expect(clip.trackId).not.toBe(a);
+});
+it('preserves legacy visual edits on Audio but refuses new Audio overlap lanes',()=>{
+  const p=emptyProject(),a=p.tracks[2].id;p.clips=[{...makeClip(a,0),id:'old'},{...makeClip(a,10),id:'moved'}];
+  expect(separateOverlappingClips(p,['moved'])).toBe(p);
+  p.clips[1].start=0;expect(()=>separateOverlappingClips(p,['moved'])).toThrow(/Audio/);
+});

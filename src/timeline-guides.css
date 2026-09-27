@@ -1,0 +1,18 @@
+/* Keep names and all controls on one row even at the minimum track height. */
+.timeline-tracks .track-labels{width:244px}
+.timeline-tracks .track-label{padding:0 8px;display:flex;align-items:center}
+.timeline-tracks .track-label-top{width:100%;gap:5px;min-width:0}
+.timeline-tracks .track-badge{display:flex;align-items:center;justify-content:center;min-width:22px;height:24px;padding:0;flex-shrink:0}
+.timeline-tracks .track-label-top input{width:0;min-width:40px;flex:1;font-size:11px;height:28px}
+.timeline-tracks .track-actions{gap:2px;padding:0;flex-shrink:0;align-items:center}
+.timeline-tracks .track-actions .icon-button{width:24px;height:28px;flex-shrink:0;color:#a5b3c4}
+.timeline-tracks .track-actions .icon-button.active{color:#daf2b5;background:#3a482e}
+.timeline-tracks .track-label.audio .track-actions .icon-button.active{color:#b4f4e0;background:#285146}
+.timeline-tracks .timeline-navigation.horizontal{left:247px}
+.razor-guide{position:absolute;top:38px;bottom:0;z-index:9;border-left:1px solid #ffce80;pointer-events:none}
+.razor-guide.snapped{border-left:2px solid #ffce80;box-shadow:0 0 4px #ffce8080}
+.razor-guide.at-edge{border-left-style:dashed}
+.razor-guide>span{position:absolute;top:0;left:4px;display:flex;align-items:center;gap:3px;padding:2px 4px;border-radius:3px;background:#30291f;color:#ffdfaa;white-space:nowrap;font:10px Consolas,monospace}
+.timeline-scroll.razor .clip-add-visual-key,.timeline-scroll.razor .clip-visual-keys *{pointer-events:none!important}
+html[data-timeline-gesture=blocked] *{cursor:not-allowed!important}
+.timeline-tracks .clip-volume-line{min-height:20px}

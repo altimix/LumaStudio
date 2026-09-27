@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useEditor } from '../store';
 import { endTime } from '../model';
+import { MIN_TRACK_HEIGHT, MAX_TRACK_HEIGHT } from '../track-compatibility';
 import type { RefObject } from 'react';
 
 export default function TimelineScrollbars({view, rowHeight, setRowHeight}: {view:RefObject<HTMLDivElement|null>;rowHeight:number;setRowHeight:(height:number)=>void}) {
@@ -37,8 +38,8 @@ export default function TimelineScrollbars({view, rowHeight, setRowHeight}: {vie
       const from=g.offset/scale,to=(g.offset+g.size)/scale;
       const change=delta*g.total/g.length/scale;
       const span=Math.max(.001,to-from+(edge==='end'?change:-change));
-      flushSync(()=>{if(axis)setRowHeight(Math.max(64,Math.min(180,g.size/span)));else state.setZoom(g.size/span);});
-      const actualScale=axis?Math.max(64,Math.min(180,g.size/span)):useEditor.getState().zoom;
+      flushSync(()=>{if(axis)setRowHeight(Math.max(MIN_TRACK_HEIGHT,Math.min(MAX_TRACK_HEIGHT,g.size/span)));else state.setZoom(g.size/span);});
+      const actualScale=axis?Math.max(MIN_TRACK_HEIGHT,Math.min(MAX_TRACK_HEIGHT,g.size/span)):useEditor.getState().zoom;
       const offset=edge==='end'?from*actualScale:to*actualScale-g.size;
       if(axis)node.scrollTop=Math.max(0,offset);else node.scrollLeft=Math.max(0,offset);
       refresh(n=>n+1);
@@ -51,8 +52,8 @@ export default function TimelineScrollbars({view, rowHeight, setRowHeight}: {vie
   return <>{[false,true].map(axis=>{
     const g=geometry(axis),label=axis?'トラックの高さ':'タイムラインの拡大・縮小';
     return <div key={String(axis)} ref={axis?vertical:horizontal} className={`timeline-navigation ${axis?'vertical':'horizontal'}`} onPointerDown={event=>{if(event.target!==event.currentTarget)return;const node=view.current;if(!node)return;const rect=event.currentTarget.getBoundingClientRect(),position=axis?event.clientY-rect.top:event.clientX-rect.left;const change=position<g.start?-g.size:g.size;if(axis)node.scrollTop+=change;else node.scrollLeft+=change;}}>
-      <div className="timeline-navigation-thumb" style={axis?{top:g.start,height:g.thumb}:{left:g.start,width:g.thumb}} onDoubleClick={e=>{e.preventDefault();e.stopPropagation();const node=view.current,state=useEditor.getState();if(!node||state.gestureActive)return;if(axis){setRowHeight(80);node.scrollTop=0;}else{state.setZoom((node.clientWidth-60)/Math.max(10,endTime(state.project)));node.scrollLeft=0;}}} title={axis?'ダブルクリックで標準の高さに戻す':'ダブルクリックでタイムライン全体を表示'} onPointerDown={e=>start(e,axis,null)} role="scrollbar" tabIndex={0} aria-label={axis?'タイムラインを上下に移動':'タイムラインを左右に移動'} aria-orientation={axis?'vertical':'horizontal'} aria-controls="timeline-scroll" aria-valuemin={0} aria-valuemax={Math.round(g.max)} aria-valuenow={Math.round(g.offset)} onKeyDown={e=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(e.key))return;e.preventDefault();e.stopPropagation();const node=view.current;if(!node)return;const next=e.key==='Home'?0:e.key==='End'?g.max:g.offset+(['ArrowLeft','ArrowUp'].includes(e.key)?-1:1)*(e.shiftKey?g.size:40);if(axis)node.scrollTop=next;else node.scrollLeft=next;}}>
-        {(['start','end'] as const).map(edge=><button key={edge} className={`timeline-navigation-handle ${edge}`} aria-label={`${label}（${edge==='start'?'先頭':'末尾'}の丸）`} title={`${label}：丸をドラッグ`} onPointerDown={e=>start(e,axis,edge)} onKeyDown={e=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();e.stopPropagation();const factor=['ArrowUp','ArrowRight'].includes(e.key)?1.1:1/1.1;if(axis)setRowHeight(Math.max(64,Math.min(180,rowHeight*factor)));else useEditor.getState().setZoom(useEditor.getState().zoom*factor);}}/>)}
+      <div className="timeline-navigation-thumb" style={axis?{top:g.start,height:g.thumb}:{left:g.start,width:g.thumb}} onDoubleClick={e=>{e.preventDefault();e.stopPropagation();const node=view.current,state=useEditor.getState();if(!node||state.gestureActive)return;if(axis){setRowHeight(MIN_TRACK_HEIGHT);node.scrollTop=0;}else{state.setZoom((node.clientWidth-60)/Math.max(10,endTime(state.project)));node.scrollLeft=0;}}} title={axis?'ダブルクリックで最小の高さに戻す':'ダブルクリックでタイムライン全体を表示'} onPointerDown={e=>start(e,axis,null)} role="scrollbar" tabIndex={0} aria-label={axis?'タイムラインを上下に移動':'タイムラインを左右に移動'} aria-orientation={axis?'vertical':'horizontal'} aria-controls="timeline-scroll" aria-valuemin={0} aria-valuemax={Math.round(g.max)} aria-valuenow={Math.round(g.offset)} onKeyDown={e=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(e.key))return;e.preventDefault();e.stopPropagation();const node=view.current;if(!node)return;const next=e.key==='Home'?0:e.key==='End'?g.max:g.offset+(['ArrowLeft','ArrowUp'].includes(e.key)?-1:1)*(e.shiftKey?g.size:40);if(axis)node.scrollTop=next;else node.scrollLeft=next;}}>
+        {(['start','end'] as const).map(edge=><button key={edge} className={`timeline-navigation-handle ${edge}`} aria-label={`${label}（${edge==='start'?'先頭':'末尾'}の丸）`} title={`${label}：丸をドラッグ`} onPointerDown={e=>start(e,axis,edge)} onKeyDown={e=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();e.stopPropagation();const factor=['ArrowUp','ArrowRight'].includes(e.key)?1.1:1/1.1;if(axis)setRowHeight(Math.max(MIN_TRACK_HEIGHT,Math.min(MAX_TRACK_HEIGHT,rowHeight*factor)));else useEditor.getState().setZoom(useEditor.getState().zoom*factor);}}/>)}
       </div>
     </div>;
   })}</>;

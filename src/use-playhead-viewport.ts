@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react';
-import { clamp, roundFrame } from './model';
+import { clamp } from './model';
 import { useEditor } from './store';
+import { timelinePointerTime } from './timeline-pointer';
 
 /** One viewport policy for transport, explicit seeks, navigation and pointer scrubbing. */
 export function usePlayheadViewport(scroller: RefObject<HTMLDivElement | null>) {
@@ -77,7 +78,7 @@ export function usePlayheadViewport(scroller: RefObject<HTMLDivElement | null>) 
       // Rounding near an edge must not put the line a few pixels outside the viewport.
       const firstFrame = Math.ceil(viewport.scrollLeft / s.zoom * s.project.fps) / s.project.fps;
       const lastFrame = Math.floor((viewport.scrollLeft + viewport.clientWidth - 1) / s.zoom * s.project.fps) / s.project.fps;
-      const time = clamp(roundFrame((viewport.scrollLeft + x) / s.zoom, s.project.fps), firstFrame, Math.max(firstFrame, lastFrame));
+      const time = clamp(timelinePointerTime(s.project, (viewport.scrollLeft + x) / s.zoom, s.zoom, s.snapping).time, firstFrame, Math.max(firstFrame, lastFrame));
       if (force || Math.abs(time - s.playhead) > 1e-7) s.seek(time);
     };
     const tick = (now: number) => {
