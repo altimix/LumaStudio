@@ -63,7 +63,7 @@ function RegionNumber({clip,effect,field,property,label,value,min,max}:{clip:Cli
     }
   };
   const display=Number((value*100).toFixed(2));
-  return <label className="mosaic-number" onFocusCapture={()=>useEditor.getState().stop()}>{label}<span><ScrubbableNumberInput id={`region-${clipId}-${field}-${property}`} aria-label={`${effect}の${label}`} value={display} min={Number(min.toFixed(2))} max={Number(max.toFixed(2))} step={.1} onCommit={apply} onScrubStart={begin} onScrubChange={apply} onScrubEnd={()=>{finish();const current=useEditor.getState().project.clips.find(item=>item.id===clipId),accepted=current&&regionValue(current,field,property);return accepted===undefined?display:Number((accepted*100).toFixed(2));}} onScrubCancel={()=>finish(true)}/>%</span></label>;
+  return <label className="mosaic-number" onFocusCapture={()=>useEditor.getState().stop()}>{label}<span><ScrubbableNumberInput projectHistory id={`region-${clipId}-${field}-${property}`} aria-label={`${effect}の${label}`} value={display} min={Number(min.toFixed(2))} max={Number(max.toFixed(2))} step={.1} onCommit={apply} onScrubStart={begin} onScrubChange={apply} onScrubEnd={()=>{finish();const current=useEditor.getState().project.clips.find(item=>item.id===clipId),accepted=current&&regionValue(current,field,property);return accepted===undefined?display:Number((accepted*100).toFixed(2));}} onScrubCancel={()=>finish(true)}/>%</span></label>;
 }
 function MosaicEffects({clip}:{clip:Clip}){
   const mosaic=clip.mosaic,mode=useEditor(s=>s.mediaEditMode);

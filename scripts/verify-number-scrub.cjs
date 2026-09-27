@@ -36,7 +36,7 @@ const root = path.join(__dirname, '..');
   try{
     await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},file);await page.keyboard.press('Control+o');await page.getByRole('button',{name:fixture.name,exact:true}).waitFor({timeout:60000});
     let project=JSON.parse(await fs.readFile(file,'utf8')),clip=project.clips.find(item=>item.kind==='video');assert.ok(clip,'video clip');
-    await page.locator(`.media-drag-target[data-media-clip-id="${clip.id}"]`).click();const rotation=page.locator('#prop-rotation');await rotation.waitFor();
+    await page.locator(`.media-drag-target[data-media-clip-id="${clip.id}"]`).click();const rotation=page.locator('#prop-rotation');await rotation.waitFor();assert.equal(await page.locator(`[data-track-label="${clip.trackId}"]`).getAttribute('data-active-track'),'true');assert.equal(await page.locator(`[data-track-id="${clip.trackId}"]`).getAttribute('data-active-track'),'true');
     const initial=value(project,clip.id,'rotation');assert.equal(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),true);
     assert.equal(await page.locator('.inspector-content').getByRole('slider').count(),0,'property sliders start collapsed');
     const rotationToggle=page.getByRole('button',{name:'回転のスライダー',exact:true}),rotationSlider=page.getByRole('slider',{name:'回転スライダー',exact:true});
@@ -53,8 +53,21 @@ const root = path.join(__dirname, '..');
     await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),initial);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),7);
     checks.push('a click remains a normal number edit and sub-threshold movement creates no history');
 
-    await rotation.click();await scrub(rotation,20);project=await save();assert.equal(value(project,clip.id,'rotation'),7);assert.equal(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),false);
-    checks.push('dragging an already focused input remains native text selection instead of scrubbing');
+    await rotation.click();await scrub(rotation,20);assert.equal(Number(await rotation.inputValue()),17);
+    assert.ok(await rotation.evaluate(e=>e===document.activeElement));
+    await rotation.press(process.platform==='darwin'?'Meta+z':'Control+z');assert.equal(Number(await rotation.inputValue()),7);
+    await rotation.press(process.platform==='darwin'?'Meta+Shift+z':'Control+Shift+z');assert.equal(Number(await rotation.inputValue()),17);
+    await rotation.press('Control+z');project=await save();assert.equal(value(project,clip.id,'rotation'),7);
+    checks.push('already focused inputs scrub and undo/redo without losing focus');
+
+    await rotation.focus();await rotation.fill('21');await rotation.press('Control+z');assert.equal(Number(await rotation.inputValue()),7);
+    await rotation.press('Control+y');assert.equal(Number(await rotation.inputValue()),21);
+    await rotation.fill('');await rotation.press('Control+z');assert.equal(Number(await rotation.inputValue()),21);
+    await rotation.press('Control+z');assert.equal(Number(await rotation.inputValue()),7);
+    await rotation.fill('21');await scrub(rotation,10);assert.equal(Number(await rotation.inputValue()),26);
+    await rotation.press('Control+z');assert.equal(Number(await rotation.inputValue()),21);
+    await rotation.press('Control+z');assert.equal(Number(await rotation.inputValue()),7);await save();
+    checks.push('pending typed edits undo and redo while focused; focused scrub starts at the accepted typed value; invalid drafts leave earlier history untouched');
 
     await scrub(rotation,20);project=await save();assert.equal(value(project,clip.id,'rotation'),17);await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),7);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),17);
     await scrub(rotation,-10);project=await save();assert.equal(value(project,clip.id,'rotation'),12);await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),17);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),12);
@@ -67,7 +80,7 @@ const root = path.join(__dirname, '..');
     await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),17);await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),12);
     checks.push('Escape, focus loss and pointer cancellation restore both value and history');
 
-    await rotationToggle.click();await rotationSlider.focus();await rotationSlider.press('ArrowRight');project=await save();assert.equal(value(project,clip.id,'rotation'),13);
+    await rotationToggle.click();await rotationSlider.focus();await rotationSlider.press('ArrowRight');await rotationSlider.press('Control+z');assert.equal(Number(await rotationSlider.inputValue()),12);await rotationSlider.press('Control+y');assert.equal(Number(await rotationSlider.inputValue()),13);project=await save();assert.equal(value(project,clip.id,'rotation'),13);
     await page.keyboard.press('Control+z');assert.equal(value(await save(),clip.id,'rotation'),12);
     await page.keyboard.press('Control+Shift+z');assert.equal(value(await save(),clip.id,'rotation'),13);
     await page.keyboard.press('Control+z');await save();await rotationToggle.click();

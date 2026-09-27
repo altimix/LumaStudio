@@ -31,7 +31,7 @@ export default function TitleDragLayer({ fontVersion }: { fontVersion: number })
   const edit=(clip:Clip)=>{
     if(clip.graphic||editRef.current||useEditor.getState().gestureActive)return;
     const state=useEditor.getState();if(state.project.tracks.find(t=>t.id===clip.trackId)?.locked)return;
-    state.stop();state.select([clip.id]);const owner={};
+    state.stop();state.selectFromMonitor(clip.id);const owner={};
     if(!state.beginGesture(owner,()=>finishInline(false)))return;
     const session={clip,project:state.project,owner,time:state.playhead};editRef.current=session;setEditing(session);
   };
@@ -50,7 +50,7 @@ export default function TitleDragLayer({ fontVersion }: { fontVersion: number })
     const raw = p.clips.find(item => item.id === renderedClip.id),at=raw?localVisualTime(raw,initial.playhead,p.fps):0,clip=raw&&visualClipAt(raw,at);
     if (!clip || initial.playing || initial.gestureActive) return;
     if (initial.project.tracks.find(t => t.id === clip.trackId)?.locked) return;
-    const owner={};if(!initial.beginGesture(owner,()=>cancel()))return;initial.stop(); initial.select([clip.id]);
+    const owner={};if(!initial.beginGesture(owner,()=>cancel()))return;initial.stop(); initial.selectFromMonitor(clip.id);
     const target = event.currentTarget, viewport = target.closest('.title-drag-layer')!, rect = viewport.getBoundingClientRect(), pointer = event.pointerId, x = event.clientX, y = event.clientY;
     const box=initialTextBox(clip,p.width,p.height);
     const bounds = clip.graphic ? titleBounds(clip,p.width,p.height) : box;
@@ -125,7 +125,7 @@ export default function TitleDragLayer({ fontVersion }: { fontVersion: number })
   return <div className="title-drag-layer" data-font-version={fontVersion}>{!playing && active.map(({clip,locked})=>{
     const isSelected=selected.includes(clip.id),bounds=isSelected&&!clip.graphic?initialTextBox(clip,p.width,p.height):titleBounds(clip,p.width,p.height),angle=clip.rotation*Math.PI/180;
     const corner=clip.graphic?{x:(clip.graphic.width*Math.cos(angle)-clip.graphic.height*Math.sin(angle))*clip.scale/2,y:(clip.graphic.width*Math.sin(angle)+clip.graphic.height*Math.cos(angle))*clip.scale/2}:null;
-    return <Fragment key={clip.id}><button className={'title-drag-target '+(isSelected?'selected':'')} disabled={locked} aria-label={clip.graphic?'図形「'+clip.name+'」を移動':'テキスト「'+clip.text.slice(0,40)+'」を移動'} title={locked?'トラックがロックされています':clip.graphic?shortcutLabel('ドラッグで移動 · 端・中央線に触れると吸着 · Altで吸着解除 · Escで取り消し'):undefined} style={{zIndex:order.get(clip.id),left:(50+clip.x)+'%',top:(50+clip.y)+'%',width:bounds.width/p.width*100+'%',height:bounds.height/p.height*100+'%',transform:'translate(-50%, -50%) rotate('+clip.rotation+'deg) scale('+clip.scale+')'}} onPointerDown={e=>drag(e,clip)} onClick={()=>useEditor.getState().select([clip.id])} onDoubleClick={e=>{e.preventDefault();e.stopPropagation();edit(clip);}} onKeyDown={e=>{if(e.key==='F2'){e.preventDefault();e.stopPropagation();edit(clip);}}}/>{corner&&isSelected&&!locked?<button className="graphic-resize-handle" aria-label="図形のサイズを変更" title="ドラッグしてサイズを変更" style={{zIndex:900000+(order.get(clip.id)||0),left:(50+clip.x+corner.x/p.width*100)+'%',top:(50+clip.y+corner.y/p.height*100)+'%'}} onPointerDown={e=>drag(e,clip,'resize')}/>:null}
+    return <Fragment key={clip.id}><button data-title-clip-id={clip.id} className={'title-drag-target '+(isSelected?'selected':'')} disabled={locked} aria-label={clip.graphic?'図形「'+clip.name+'」を移動':'テキスト「'+clip.text.slice(0,40)+'」を移動'} title={locked?'トラックがロックされています':clip.graphic?shortcutLabel('ドラッグで移動 · 端・中央線に触れると吸着 · Altで吸着解除 · Escで取り消し'):undefined} style={{zIndex:order.get(clip.id),left:(50+clip.x)+'%',top:(50+clip.y)+'%',width:bounds.width/p.width*100+'%',height:bounds.height/p.height*100+'%',transform:'translate(-50%, -50%) rotate('+clip.rotation+'deg) scale('+clip.scale+')'}} onPointerDown={e=>drag(e,clip)} onClick={()=>useEditor.getState().selectFromMonitor(clip.id)} onDoubleClick={e=>{e.preventDefault();e.stopPropagation();edit(clip);}} onKeyDown={e=>{if(e.key==='F2'){e.preventDefault();e.stopPropagation();edit(clip);}}}/>{corner&&isSelected&&!locked?<button className="graphic-resize-handle" aria-label="図形のサイズを変更" title="ドラッグしてサイズを変更" style={{zIndex:900000+(order.get(clip.id)||0),left:(50+clip.x+corner.x/p.width*100)+'%',top:(50+clip.y+corner.y/p.height*100)+'%'}} onPointerDown={e=>drag(e,clip,'resize')}/>:null}
       {!clip.graphic&&isSelected&&!locked&&!editing?<div className="text-box-handles" style={{zIndex:900000+(order.get(clip.id)||0),left:(50+clip.x)+'%',top:(50+clip.y)+'%',width:bounds.width*clip.scale/p.width*100+'%',height:bounds.height*clip.scale/p.height*100+'%',transform:`translate(-50%, -50%) rotate(${clip.rotation}deg)`}}>{handles.map(handle=>
         <button key={handle.name} className="text-box-handle" aria-label={'テキスト枠の'+handle.name+'を変更'} style={{left:(handle.x+1)*50+'%',top:(handle.y+1)*50+'%',cursor:handle.cursor}} onPointerDown={e=>drag(e,clip,'text-resize',handle)}/>
       )}</div>:null}</Fragment>;
