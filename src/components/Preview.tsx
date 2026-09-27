@@ -216,7 +216,7 @@ export default function Preview({ readOnly = false }: { readOnly?: boolean }) {
         const fade = fadeAt(clip, t); let source: CanvasImageSource | null = null; let sourceKey:string|undefined;let sourceReady=true,sourceUsable=true; let sw = p.width; let sh = p.height;
         if (clip.kind === 'title') {
           activeTitles.add(clip.id); if (isFontReady(clip)) {
-          const key = JSON.stringify([clip.text, clip.fontSize, clip.color, clip.textStyle, clip.fontFamily, clip.fontWeight, clip.textShadow, clip.shadowColor, clip.shadowBlur, clip.shadowDistance, clip.textStroke, clip.strokeColor, clip.strokeWidth, clip.captionBackgroundOpacity, clip.textBox, clip.graphic, clip.graphic?[clip.x,clip.y,clip.scale,clip.rotation]:null, fontRevision(), p.width, w, h]);
+          const key = JSON.stringify([clip.text, clip.fontSize, clip.color, clip.textAlign, clip.textStyle, clip.fontFamily, clip.fontWeight, clip.textShadow, clip.shadowColor, clip.shadowBlur, clip.shadowDistance, clip.textStroke, clip.strokeColor, clip.strokeWidth, clip.captionBackgroundOpacity, clip.textBox, clip.graphic, clip.graphic?[clip.x,clip.y,clip.scale,clip.rotation]:null, fontRevision(), p.width, w, h]);
           if (titles.get(clip.id)?.key !== key) { const old = titles.get(clip.id)?.canvas; if (old) old.width = old.height = 0; titles.set(clip.id, { key, canvas: titleCanvas(clip, w, h, p.width) }); }
           source = titles.get(clip.id)!.canvas; sw = w; sh = h;
           }

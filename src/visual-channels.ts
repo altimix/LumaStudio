@@ -29,7 +29,7 @@ export function channelText(clip: Clip, channel: VisualChannel) {
   if (value == null && channel.min !== undefined) return '未設定';
   if (typeof value === 'number') return `${Number((value * (channel.factor ?? 1) + (channel.offset ?? 0)).toFixed(2))}${channel.suffix ?? ''}`;
   if (typeof value === 'boolean') return value ? 'オン' : 'オフ';
-  if (typeof value === 'string') return ({hero:'シネマタイトル',minimal:'ミニマル',subtitle:'字幕'} as Record<string,string>)[value]??value;
+  if (typeof value === 'string') return ({hero:'シネマタイトル',minimal:'ミニマル',subtitle:'字幕',left:'左揃え',center:'中央揃え',right:'右揃え',justify:'均等割付'} as Record<string,string>)[value]??value;
   if(channel.path==='videoMask'&&clip.videoMask)return {rectangle:'長方形',ellipse:'楕円',bezier:'ベジェペン'}[clip.videoMask.type];
   return value ? '有効' : '無効';
 }
@@ -43,7 +43,7 @@ export function visualChannels(clip: Clip, project: Pick<Project, 'width' | 'hei
   ];
   if (clip.kind === 'title' && !clip.graphic) channels.push(
     { path: 'fontSize', label: '文字サイズ', min: 16, max: 240, step: 1, suffix: ' px' },
-    ...[['color', '文字色'], ['fontFamily', 'フォント'], ['fontWeight', '文字の太さ'], ['textStyle', 'スタイル'], ['textShadow', '影'], ['shadowColor', '影の色'], ['textStroke', '縁取り'], ['strokeColor', '縁取りの色']].map(([path, label]) => ({ path, label })),
+    ...[['color', '文字色'], ['fontFamily', 'フォント'], ['fontWeight', '文字の太さ'], ['textStyle', 'スタイル'], ['textAlign', '文字揃え'], ['textShadow', '影'], ['shadowColor', '影の色'], ['textStroke', '縁取り'], ['strokeColor', '縁取りの色']].map(([path, label]) => ({ path, label })),
     { path: 'shadowBlur', label: '影のぼかし', min: 0, max: 100, step: 1, suffix: ' px' },
     { path: 'shadowDistance', label: '影の距離', min: 0, max: 100, step: 1, suffix: ' px' },
     { path: 'strokeWidth', label: '縁取りの幅', min: 0, max: 20, step: 1, suffix: ' px' },

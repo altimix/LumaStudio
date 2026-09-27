@@ -116,9 +116,9 @@ async function verify(){
     await channelSelect.selectOption('color');assert.deepEqual(await highlighted(),[]);assert.match(await page.locator('.visual-channel-help').innerText(),/一定の高さ/);
     await channelSelect.selectOption('fontSize');await page.locator('.property-field.line-active').scrollIntoViewIfNeeded();await page.locator('.inspector-panel').screenshot({path:path.join(results,'keyframe-active-property.png')});
     checks.push('表示項目・数値欄のフォーカス・ラインの名前と単位が連動し、非数値の高さと時間配置の除外を説明');
-    const colorBox=await page.locator('#text-color').boundingBox(),styleBox=await page.locator('#text-style').boundingBox();assert.ok(colorBox.y<styleBox.y);
-    await page.getByText('影・縁取りを調整',{exact:true}).click();await page.getByLabel('文字に縁取りを付ける',{exact:true}).check();
-    const dimensions=await page.locator('#text-color,#strokeColor').evaluateAll(elements=>elements.map(element=>({w:element.getBoundingClientRect().width,h:element.getBoundingClientRect().height})));assert.deepEqual(dimensions[0],dimensions[1]);await undo();checks.push('文字色はスタイルの上・縁取りと同じパレット');
+    const colorBox=await page.locator('#text-color').boundingBox(),styleBox=await page.locator('#text-style').boundingBox();assert.ok(colorBox.x<styleBox.x);
+    await page.getByLabel('文字に縁取りを付ける',{exact:true}).check();
+    const dimensions=await page.locator('#text-color,#strokeColor').evaluateAll(elements=>elements.map(element=>({w:element.getBoundingClientRect().width,h:element.getBoundingClientRect().height})));assert.deepEqual(dimensions[0],dimensions[1]);await undo();checks.push('文字色はスタイルの隣・縁取りと同じパレット');
     await seek(10);await input('不透明度',80);let saved=await save();assert.equal(saved.clips[0].opacityKeyframes,undefined);assert.equal(saved.clips[0].visualKeyframes[1].values.opacity,.8);
     await undo();assert.equal(await page.getByRole('spinbutton',{name:'不透明度',exact:true}).inputValue(),'100');
     await page.getByRole('button',{name:'現在のキーフレームを削除',exact:true}).click();assert.equal(await page.locator('.clip-visual-key').count(),1);await undo();assert.equal(await page.locator('.clip-visual-key').count(),2);checks.push('旧不透明度キーの読込・移行・削除・Undo');

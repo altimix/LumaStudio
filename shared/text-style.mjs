@@ -1,4 +1,5 @@
 import fonts from './japanese-fonts.json' with { type: 'json' };
+import { TEXT_ALIGNMENTS } from './text-alignment.mjs';
 import { validateTextBox } from './text-box.mjs';
 export { fonts };
 export const DEFAULT_FONT = 'Noto Sans JP';
@@ -8,6 +9,7 @@ export function fontStyle(c) {
 export function fontEntry(family) { return fonts.find(font => font.family === family); }
 export function validateTextStyle(c) {
   validateTextBox(c);
+  if (c.textAlign !== undefined && !TEXT_ALIGNMENTS.includes(c.textAlign)) throw new Error('文字揃えは左・中央・右・均等割付から選択してください。');
   const { family, weight } = fontStyle(c), entry = fontEntry(family);
   if (!entry || !Number.isInteger(weight) || (entry.variable ? weight < entry.weights[0] || weight > entry.weights.at(-1) : !entry.weights.includes(weight))) throw new Error('日本語フォントまたは太さが不正です。');
   for (const key of ['textShadow', 'textStroke']) if (c[key] !== undefined && typeof c[key] !== 'boolean') throw new Error('テキスト効果の設定が不正です。');

@@ -1,0 +1,31 @@
+.text-properties .inspector-section>summary{height:30px}
+.text-properties .section-properties{padding:0 0 10px}
+.text-properties .field-help{display:none}
+.text-properties textarea[aria-label="テロップのテキスト"]{min-height:48px;margin:0 0 6px;padding:6px 8px;line-height:1.5}
+.text-properties .text-effects{display:grid;gap:6px}
+.text-font-row{display:flex;gap:4px;min-width:0}
+.text-font-row select{width:100%;min-width:0;flex:1}
+.text-font-row .icon-button{flex:0 0 28px;height:28px}
+.text-properties .text-effects .font-picker-search{margin:0;width:100%}
+.text-format-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0}
+.text-properties .text-effects .property-label,.text-properties .text-effects .property-field{margin:0}
+.text-format-row>.property-label,.text-format-row .property-label{display:flex;flex-direction:column;align-items:stretch;gap:4px;min-width:0}
+.text-format-row select{max-width:none;width:100%;min-width:0}
+.text-format-row .number-field-controls{width:100%;min-width:0}
+.text-format-row .number-wrap{flex:1;min-width:0;width:auto}
+.text-format-row .number-wrap input{width:100%;min-width:0}
+.text-format-row .property-color-field{flex-direction:row;align-items:center}
+.text-alignment{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;padding:3px;border:1px solid #38423d;border-radius:5px;background:#191f21}
+.text-alignment button{display:flex;align-items:center;justify-content:center;gap:4px;min-height:30px;padding:3px 2px;border-radius:3px;font-size:10px;color:#aebbb3}
+.text-alignment button[aria-pressed="true"]{background:#3b4d31;color:#e0edcf;box-shadow:inset 0 0 0 1px #789663}
+.text-alignment button:hover:not(:disabled){background:#354335}
+.text-alignment button:focus-visible,.text-font-row button:focus-visible{outline:2px solid #c0dda0;outline-offset:1px}
+.text-decoration{border:1px solid #38423d;border-radius:5px;padding:7px 8px;display:grid;gap:6px;background:#202725}
+.text-decoration-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.text-properties .text-decoration .text-effect-toggle{display:flex;align-items:center;gap:6px;margin:0;font-size:11px;color:#d7e1d9}
+.text-decoration-heading .property-color-field{gap:0}
+.text-decoration-heading .property-color-field label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.text-properties .text-box-controls{margin:0;padding-top:6px}
+.text-properties .text-box-controls summary{font-size:11px;color:#bfc9c1;cursor:pointer;padding:3px 0}
+.text-properties .text-box-controls .property-field{margin-top:6px}
+.text-properties .text-center-position{width:100%;margin:0;min-height:27px;font-size:10px}

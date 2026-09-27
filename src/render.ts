@@ -1,6 +1,7 @@
 import type { Clip, Project } from './types';
 import { fontStyle } from '../shared/text-style.mjs';
 import { paintGraphic, graphicBounds } from '../shared/graphics.mjs';
+import { textLineLayout } from '../shared/text-alignment.mjs';
 import { textBoxLayout } from '../shared/text-box.mjs';
 import { visualClipAt } from '../shared/visual-keyframes.mjs';
 function textFont(c: Clip, size: number) { const f = fontStyle(c); return `${f.weight} ${size}px "${f.family}", sans-serif`; }
@@ -43,14 +44,18 @@ export function titleCanvas(c: Clip, width: number, height: number, projectWidth
     if(c.textBox)ctx.fillRect((width-c.textBox.width*factor)/2,(height-c.textBox.height*factor)/2,c.textBox.width*factor,c.textBox.height*factor);
     else ctx.fillRect(Math.max(width * 0.04, (width - maxWidth) / 2 - size * 0.5), height / 2 - lines.length * lh / 2 - size * 0.13, Math.min(width * 0.92, maxWidth + size), lines.length * lh + size * 0.26); ctx.restore();
   }
+  const lineWidth = layout ? layout.innerWidth * factor : Math.min(width * .9, Math.max(...lines.map(line => ctx.measureText(line).width)));
   lines.forEach((line, i) => {
     const y = height / 2 + (i - (lines.length - 1) / 2) * lh;
     ctx.save();
-    const maxWidth=layout?undefined:width*.9;
-    if (c.textShadow !== false) ctx.fillText(line, width / 2, y, maxWidth);
+    const placement = textLineLayout(line, lineWidth, c.textAlign, text => ctx.measureText(text).width, !layout);
+    ctx.textAlign = placement.align;
+    const origin = (width - lineWidth) / 2;
+    if (c.textShadow !== false) for (const run of placement.runs) ctx.fillText(run.text, origin + run.x, y, run.maxWidth);
     ctx.shadowColor = 'transparent';
-    if (c.textStroke && (c.strokeWidth ?? 3) > 0) ctx.strokeText(line, width / 2, y, maxWidth);
-    ctx.fillText(line, width / 2, y, maxWidth); ctx.restore();
+    if (c.textStroke && (c.strokeWidth ?? 3) > 0) for (const run of placement.runs) ctx.strokeText(run.text, origin + run.x, y, run.maxWidth);
+    for (const run of placement.runs) ctx.fillText(run.text, origin + run.x, y, run.maxWidth);
+    ctx.restore();
   });
   ctx.restore();
   return canvas;
