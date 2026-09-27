@@ -40,6 +40,14 @@ describe('text alignment', () => {
     }
     for(const textAlign of TEXT_ALIGNMENTS)expect(()=>validateTextStyle({...title(),textAlign})).not.toThrow();
   });
+  it('rejects corrupt keys before replacing the loaded project or its history',()=>{
+    const p=emptyProject(),c={...title(),trackId:p.tracks[0].id};p.clips=[c];const s=useEditor.getState();s.load(p);s.updateClip(c.id,{textAlign:'left'});
+    const before=useEditor.getState();
+    for(const textAlign of ['start',null,123]){
+      const invalid={...p,clips:[{...c,visualKeyframes:[{time:0,values:{...visualSnapshot(c),textAlign} as never}]}]};
+      expect(()=>s.load(invalid)).toThrow(/文字揃え/);expect(useEditor.getState()).toBe(before);
+    }
+  });
   it('steps alignment at keyframes and preserves it through splits and trims',()=>{
     const c=setVisualKey(setVisualKey(title(),0),2,{textAlign:'right'});
     expect(visualClipAt(c,1.99).textAlign).toBe('center');expect(visualClipAt(c,2).textAlign).toBe('right');expect(needsTitleFrames(c)).toBe(true);
