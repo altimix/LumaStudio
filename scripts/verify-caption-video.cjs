@@ -43,6 +43,28 @@ const root=path.resolve(__dirname,'..');
    await page.screenshot({path:path.join(root,'test-results',`caption-expanded-${size[0]}.png`)});
    await page.getByRole('button',{name:'字幕一覧を表示',exact:true}).click();
    assert.equal(await page.locator('.yt-cue-list').isVisible(),true);
+   if(size[0]===1280){
+    await page.getByRole('button',{name:'字幕1の映像を確認',exact:true}).click();
+    const draft=page.getByRole('textbox',{name:'字幕1の本文',exact:true}),start=page.getByRole('spinbutton',{name:'字幕1の開始秒',exact:true});
+    const time=()=>page.locator('.caption-monitor canvas').getAttribute('data-preview-time').then(Number);
+    const settle=()=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+    await settle();const stopped=await time();
+    await draft.fill('赤い映像（編集済み）');
+    const scroll=await page.locator('.yt-scroll').evaluate(el=>{el.scrollTop=120;return el.scrollTop;});assert.ok(scroll>50,'fixture has a nonzero list scroll position');
+    await page.getByRole('button',{name:'モニターを拡大',exact:true}).click();await settle();assert.equal(await time(),stopped);
+    assert.equal(await page.locator('.caption-draft-preview p').textContent(),'赤い映像（編集済み）','blur commits a valid draft before hiding its input');
+    await page.getByRole('button',{name:'字幕一覧を表示',exact:true}).click();await settle();assert.equal(await time(),stopped);
+    assert.equal(await draft.inputValue(),'赤い映像（編集済み）');assert.equal(await page.locator('.yt-scroll').evaluate(el=>el.scrollTop),scroll,'restore preserves list scroll');
+    await start.fill('-1');assert.equal(await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).isDisabled(),true);
+    const invalidScroll=await page.locator('.yt-scroll').evaluate(el=>{el.scrollTop=100;return el.scrollTop;});
+    await page.getByRole('button',{name:'モニターを拡大',exact:true}).click();await settle();assert.equal(await time(),stopped);
+    await page.getByRole('button',{name:'字幕一覧を表示',exact:true}).click();await settle();assert.equal(await time(),stopped);
+    assert.equal(await start.inputValue(),'0.3','invalid blur restores the committed time');assert.equal(await draft.inputValue(),'赤い映像（編集済み）');
+    assert.equal(await page.locator('.yt-scroll').evaluate(el=>el.scrollTop),invalidScroll);
+    // Clear the intentional invalid-blur guard through a valid blur before normal cue navigation.
+    await start.fill('0.3');await page.getByRole('button',{name:'モニターを拡大',exact:true}).click();await page.getByRole('button',{name:'字幕一覧を表示',exact:true}).click();
+    checks.push({preservedDraft:true,preservedScroll:scroll,invalidScroll,stoppedTime:stopped});
+   }
    checks.push({size,normal,expanded});
   }
 
@@ -63,6 +85,7 @@ const root=path.resolve(__dirname,'..');
   }
   await page.screenshot({path:path.join(root,'test-results','caption-real-video.png')});
   await page.getByRole('button',{name:'編集に戻る',exact:true}).click();
+  await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));await page.getByRole('dialog',{name:'プロジェクトを保存しています',exact:true}).waitFor({state:'hidden'});
   const missing={...asset,id:'missing-video',path:path.join(profile,'見つからない.mp4'),offline:true};
   const offline={...project,id:'caption-offline',name:'オフライン素材を含む字幕確認',assets:[asset,missing],tracks:[{id:'missing',name:'Missing',kind:'video'},...project.tracks],clips:[...project.clips,{...project.clips[0],id:'offline-clip',assetId:missing.id,trackId:'missing'}]};
   offline.youtube={...project.youtube,sourceKey:timelineKey(offline)};
