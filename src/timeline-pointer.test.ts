@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { emptyProject, makeClip, splitClip } from './model';
 import { useEditor } from './store';
-import { canSplitAt, timelinePointerTime } from './timeline-pointer';
+import { canSplitAt, timelinePointerTime, timelineScrubTime } from './timeline-pointer';
 
 function fixture() {
   const p = emptyProject();
@@ -52,4 +52,13 @@ it('preserves fractional boundary targets for the playhead and linked razor spli
   expect(useEditor.getState().project.clips.filter(c => c.start === target.time)).toHaveLength(3);
   s.undo(); expect(useEditor.getState().project).toBe(p); s.redo();
   expect(useEditor.getState().project.clips.filter(c => c.start === target.time)).toHaveLength(3);
+});
+
+it('preserves visible fractional targets at either viewport edge and ignores targets outside it',()=>{
+  const p=fixture();p.clips=[];p.markers=[{id:'left',label:'左端',time:1.02},{id:'right',label:'右端',time:9.98},{id:'outside',label:'範囲外',time:9.995}];
+  expect(timelineScrubTime(p,9.99,100,true,1.015,9.99)).toEqual({time:9.98,snapped:true});
+  expect(timelineScrubTime(p,1.016,100,true,1.015,9.99)).toEqual({time:1.02,snapped:true});
+  expect(timelineScrubTime(p,9.99,100,false,1.015,9.99)).toEqual({time:299/30,snapped:false});
+  expect(timelineScrubTime(p,1.016,100,false,1.015,9.99)).toEqual({time:31/30,snapped:false});
+  p.markers=p.markers.slice(2);expect(timelineScrubTime(p,9.99,100,true,1.015,9.99)).toEqual({time:299/30,snapped:false});
 });

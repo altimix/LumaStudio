@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react';
 import { clamp } from './model';
 import { useEditor } from './store';
-import { timelinePointerTime } from './timeline-pointer';
+import { timelineScrubTime } from './timeline-pointer';
 
 /** One viewport policy for transport, explicit seeks, navigation and pointer scrubbing. */
 export function usePlayheadViewport(scroller: RefObject<HTMLDivElement | null>) {
@@ -75,11 +75,9 @@ export function usePlayheadViewport(scroller: RefObject<HTMLDivElement | null>) 
     const moveHead = (force = false) => {
       const s = useEditor.getState();if(s.gestureOwner!==owner)return;const rect = viewport.getBoundingClientRect();
       const x = clamp(clientX - rect.left - viewport.clientLeft, 0, viewport.clientWidth - 1);
-      // Rounding near an edge must not put the line a few pixels outside the viewport.
-      const firstFrame = Math.ceil(viewport.scrollLeft / s.zoom * s.project.fps) / s.project.fps;
-      const lastFrame = Math.floor((viewport.scrollLeft + viewport.clientWidth - 1) / s.zoom * s.project.fps) / s.project.fps;
-      const target = timelinePointerTime(s.project, (viewport.scrollLeft + x) / s.zoom, s.zoom, s.snapping);
-      const time = clamp(target.time, firstFrame, Math.max(firstFrame, lastFrame));
+      const target = timelineScrubTime(s.project, (viewport.scrollLeft + x) / s.zoom, s.zoom, s.snapping,
+        viewport.scrollLeft / s.zoom, (viewport.scrollLeft + viewport.clientWidth - 1) / s.zoom);
+      const time = target.time;
       if (force || Math.abs(time - s.playhead) > 1e-7) s.seek(time, target.snapped);
     };
     const tick = (now: number) => {

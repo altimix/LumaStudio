@@ -104,6 +104,19 @@ const root = path.join(__dirname, '..');
     await page.locator('.timeline-clip[data-clip-id="legacy-video"]').click({position:{x:25,y:10}});await page.keyboard.down('Shift');await page.locator('.timeline-clip[data-clip-id="legacy-title"]').click({position:{x:25,y:10}});await page.keyboard.up('Shift');
     await copyDrag();copied=await save();assert.equal(copied.clips.length,4);assert.ok(copied.clips.slice(2).every(c=>copied.tracks.find(t=>t.id===c.trackId).kind==='video'));assert.deepEqual(copied.clips.slice(0,2),legacy.clips);
     checks.push('horizontal Alt-drag copies single and multi-selected legacy Audio visuals onto Video, preserving originals and Undo/Redo');
+    {
+      const viewport=page.locator('.timeline-scroll'),z=await zoom(),viewportWidth=await viewport.evaluate(el=>el.clientWidth);
+      // Pick a visible fractional cut beyond the last whole frame in the viewport.
+      let scroll=0,right=(viewportWidth-1)/z;
+      while(right-Math.floor(right*30)/30<.01){scroll++;right=(scroll+viewportWidth-1)/z;}
+      const boundary=(right+Math.floor(right*30)/30)/2;
+      const edgeProject={...project,id:'edge-snap',name:'画面端の端数カット',clips:[project.clips[0],{...project.clips[1],start:boundary}]};
+      await fs.writeFile(file,JSON.stringify(edgeProject));await page.locator('.brand').click();await page.keyboard.press('Control+o');await button(edgeProject.name).waitFor();
+      await viewport.evaluate((el,left)=>{el.scrollLeft=left;},scroll);await settle();
+      const bounds=await viewport.boundingBox(),rulerBounds=await page.locator('.timeline-ruler').boundingBox();
+      await page.mouse.click(bounds.x+viewportWidth-2,rulerBounds.y+8);assert.ok(Math.abs(await head()-boundary)<1e-4,'screen-edge snap keeps the exact fractional cut');
+      checks.push('ruler snapping preserves a visible fractional cut beyond the viewport last whole frame');
+    }
     assert.deepEqual(errors,[]);const evidence={passed:true,packaged:!!executablePath,checks,heights,controls};await fs.writeFile(path.join(results,'verification.json'),JSON.stringify(evidence,null,2));console.log(JSON.stringify(evidence));
   } catch(error) {console.error(await page.evaluate(()=>({focus:document.hasFocus(),tool:document.querySelector('.timeline-scroll').className,gesture:document.documentElement.dataset.timelineGesture,guide:document.querySelector('.razor-guide')?.outerHTML})));await page.screenshot({path:path.join(results,'failure.png')}).catch(()=>{});throw error;}
   finally {await app.close();await fs.rm(profile,{recursive:true,force:true});}
