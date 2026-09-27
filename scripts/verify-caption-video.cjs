@@ -10,6 +10,7 @@ const root=path.resolve(__dirname,'..');
  const asset=await inspectMedia(source,path.join(profile,'cache'));
  const project={version:1,id:'caption-video',name:'字幕と映像の確認',width:640,height:360,fps:30,assets:[asset],tracks:[{id:'v',name:'Video1',kind:'video'}],markers:[],clips:[{id:'c',assetId:asset.id,trackId:'v',kind:'video',name:'赤緑青',start:0,in:0,duration:6,speed:1,scale:1,x:0,y:0,rotation:0,opacity:1,volume:0,exposure:0,contrast:1,saturation:1,fadeIn:0,fadeOut:0}]};
  project.youtube={sourceKey:timelineKey(project),cues:[{start:.3,end:1.8,text:'赤い映像'},{start:2.3,end:3.8,text:'緑の映像'},{start:4.3,end:6,text:'青い映像'}],titles:[],description:'',thumbnailPrompt:'',keywords:[],hashtags:[],chapters:[]};
+ await fs.mkdir(path.join(root,'test-results'),{recursive:true});
  const file=path.join(profile,'video.luma');await fs.writeFile(file,JSON.stringify(project));
  const env={...process.env,LUMA_TEST_DATA:profile,LUMA_DEMO_FIXTURE:'0'};delete env.ELECTRON_RUN_AS_NODE;
  const executablePath=process.env.LUMA_VERIFY_EXE;
@@ -20,12 +21,38 @@ const root=path.resolve(__dirname,'..');
   await page.keyboard.press('Control+o');await page.getByRole('button',{name:project.name,exact:true}).waitFor();
   await page.getByRole('button',{name:'YouTube',exact:true}).click();
   const checks=[];
+  const geometry=()=>page.evaluate(()=>{
+   const rect=selector=>{const r=document.querySelector(selector).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom};};
+   return {modal:rect('.modal'),canvas:rect('.caption-monitor canvas'),footer:rect('.yt-footer'),viewport:innerHeight};
+  });
+  for(const size of [[1280,720],[1920,1080]]){
+   await app.evaluate(({BrowserWindow},size)=>BrowserWindow.getAllWindows()[0].setSize(...size),size);
+   await page.waitForFunction(()=>getComputedStyle(document.querySelector('.modal')).transform==='none');
+   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+   const normal=await geometry();
+   await page.screenshot({path:path.join(root,'test-results',`caption-normal-${size[0]}.png`)});
+   assert.ok(normal.modal.y>=10&&normal.modal.bottom<=normal.viewport-10,JSON.stringify(normal));
+   assert.ok(normal.footer.bottom<=normal.modal.bottom,'return control stays inside modal');
+   assert.ok(normal.canvas.height>=200,'normal preview remains usable');
+   await page.getByRole('button',{name:'モニターを拡大',exact:true}).click();
+   await page.waitForTimeout(150);
+   const expanded=await geometry();
+   assert.ok(expanded.canvas.width*expanded.canvas.height>normal.canvas.width*normal.canvas.height*1.1,JSON.stringify({normal,expanded}));
+   assert.equal(await page.locator('.canvas-wrap canvas').count(),1);
+   assert.equal(await page.locator('.yt-cue-list').isVisible(),false);
+   await page.screenshot({path:path.join(root,'test-results',`caption-expanded-${size[0]}.png`)});
+   await page.getByRole('button',{name:'字幕一覧を表示',exact:true}).click();
+   assert.equal(await page.locator('.yt-cue-list').isVisible(),true);
+   checks.push({size,normal,expanded});
+  }
+
   for(let i=0;i<3;i++){
    await page.getByRole('button',{name:`字幕${i+1}の映像を確認`,exact:true}).click();
    await page.waitForFunction(index=>{const c=document.querySelector('.caption-monitor canvas');if(!c)return false;const p=c.getContext('2d').getImageData(c.width/2,c.height/2,1,1).data;return p[index]>200&&p[(index+1)%3]<30&&p[(index+2)%3]<30;},i);
    assert.equal(await page.locator('.canvas-wrap canvas').count(),1);
    await page.evaluate(()=>{window.videoFrames=[];const c=document.querySelector('.caption-monitor canvas');window.videoObserver=new MutationObserver(()=>{if(document.querySelector('.caption-monitor-controls button[aria-pressed="true"]'))window.videoFrames.push({time:Number(c.dataset.previewTime),pixel:[...c.getContext('2d').getImageData(c.width/2,c.height/2,1,1).data]});});window.videoObserver.observe(c,{attributes:true,attributeFilter:['data-preview-time']});});
    await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).click();
+   if(i===1){await page.getByRole('button',{name:'モニターを拡大',exact:true}).click();await page.getByRole('button',{name:'字幕一覧を表示',exact:true}).click();assert.equal(await page.getByRole('button',{name:'字幕2の映像を確認',exact:true}).getAttribute('aria-pressed'),'true');}
    await page.waitForFunction(()=>window.videoFrames.filter((v,j)=>j>0&&v.time<window.videoFrames[j-1].time-.1).length>=2,undefined,{timeout:15000});
    await page.getByRole('button',{name:'反復再生を停止',exact:true}).click();
    const frames=await page.evaluate(()=>{window.videoObserver.disconnect();return window.videoFrames;});
