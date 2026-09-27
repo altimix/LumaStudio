@@ -16,3 +16,5 @@
 .timeline-scroll.razor .clip-add-visual-key,.timeline-scroll.razor .clip-visual-keys *{pointer-events:none!important}
 html[data-timeline-gesture=blocked] *{cursor:not-allowed!important}
 .timeline-tracks .clip-volume-line{min-height:20px}
+/* Leave the name band free for moving short, selected clips in compact rows. */
+.timeline-tracks .clip-add-visual-key{bottom:2px;height:18px;padding:0 4px;font-size:11px}
