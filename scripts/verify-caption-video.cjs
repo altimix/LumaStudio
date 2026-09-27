@@ -48,7 +48,8 @@ const root=path.resolve(__dirname,'..');
     const draft=page.getByRole('textbox',{name:'字幕1の本文',exact:true}),start=page.getByRole('spinbutton',{name:'字幕1の開始秒',exact:true});
     const time=()=>page.locator('.caption-monitor canvas').getAttribute('data-preview-time').then(Number);
     const settle=()=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
-    await settle();const stopped=await time();
+    for(let step=0;step<15;step++)await page.getByRole('button',{name:'1フレーム進む (→)',exact:true}).click();
+    await settle();const stopped=await time();assert.ok(stopped>.7&&stopped<1,'paused checkpoint is inside the cue, away from either boundary');
     await draft.fill('赤い映像（編集済み）');
     const scroll=await page.locator('.yt-scroll').evaluate(el=>{el.scrollTop=120;return el.scrollTop;});assert.ok(scroll>50,'fixture has a nonzero list scroll position');
     await page.getByRole('button',{name:'モニターを拡大',exact:true}).click();await settle();assert.equal(await time(),stopped);
@@ -72,9 +73,21 @@ const root=path.resolve(__dirname,'..');
    await page.getByRole('button',{name:`字幕${i+1}の映像を確認`,exact:true}).click();
    await page.waitForFunction(index=>{const c=document.querySelector('.caption-monitor canvas');if(!c)return false;const p=c.getContext('2d').getImageData(c.width/2,c.height/2,1,1).data;return p[index]>200&&p[(index+1)%3]<30&&p[(index+2)%3]<30;},i);
    assert.equal(await page.locator('.canvas-wrap canvas').count(),1);
-   await page.evaluate(()=>{window.videoFrames=[];const c=document.querySelector('.caption-monitor canvas');window.videoObserver=new MutationObserver(()=>{if(document.querySelector('.caption-monitor-controls button[aria-pressed="true"]'))window.videoFrames.push({time:Number(c.dataset.previewTime),pixel:[...c.getContext('2d').getImageData(c.width/2,c.height/2,1,1).data]});});window.videoObserver.observe(c,{attributes:true,attributeFilter:['data-preview-time']});});
+   await page.evaluate(()=>{window.videoFrames=[];const c=document.querySelector('.caption-monitor canvas');window.videoObserver=new MutationObserver(()=>{if(document.querySelector('.caption-monitor-controls button[aria-pressed="true"]:not(.caption-monitor-expand)'))window.videoFrames.push({time:Number(c.dataset.previewTime),pixel:[...c.getContext('2d').getImageData(c.width/2,c.height/2,1,1).data]});});window.videoObserver.observe(c,{attributes:true,attributeFilter:['data-preview-time']});});
    await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).click();
-   if(i===1){await page.getByRole('button',{name:'モニターを拡大',exact:true}).click();await page.getByRole('button',{name:'字幕一覧を表示',exact:true}).click();assert.equal(await page.getByRole('button',{name:'字幕2の映像を確認',exact:true}).getAttribute('aria-pressed'),'true');}
+   if(i===1){
+    for(const name of ['モニターを拡大','字幕一覧を表示']){
+     await page.waitForFunction(()=>{const t=Number(document.querySelector('.caption-monitor canvas').dataset.previewTime);return t>=2.65&&t<2.8;});
+     const sample=await page.getByRole('button',{name,exact:true}).evaluate(button=>{
+      const canvas=document.querySelector('.caption-monitor canvas'),before=Number(canvas.dataset.previewTime);
+      button.click();return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve({before,after:Number(canvas.dataset.previewTime),playing:!!document.querySelector('.caption-monitor .play-button[aria-label^="一時停止"]')}))));
+     });
+     assert.ok(sample.before>2.55&&sample.before<3.1,JSON.stringify(sample));
+     assert.ok(sample.after>=sample.before-1/30&&sample.after<sample.before+.5,JSON.stringify(sample));
+     assert.equal(sample.playing,true,'both toggle directions preserve active playback');checks.push({toggle:name,...sample});
+    }
+    assert.equal(await page.getByRole('button',{name:'字幕2の映像を確認',exact:true}).getAttribute('aria-pressed'),'true');
+   }
    await page.waitForFunction(()=>window.videoFrames.filter((v,j)=>j>0&&v.time<window.videoFrames[j-1].time-.1).length>=2,undefined,{timeout:15000});
    await page.getByRole('button',{name:'反復再生を停止',exact:true}).click();
    const frames=await page.evaluate(()=>{window.videoObserver.disconnect();return window.videoFrames;});
