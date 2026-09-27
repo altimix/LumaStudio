@@ -22,6 +22,7 @@ export function applySubtitles(p: Project): Project {
     || p.tracks.find(t => priorTracks.has(t.id) && !t.locked)
     || p.tracks.find(t => t.kind === 'video' && t.name === '日本語字幕' && !t.locked)
     || (p.tracks.length >= 24 ? p.tracks.find(t => t.kind === 'video' && !t.locked && !t.hidden && !remaining.some(c => c.trackId === t.id)) : undefined);
+  const reusableTracks = [...priorTracks, ...p.tracks.filter(t => t.kind === 'video' && !t.locked && !t.hidden && !remaining.some(c => c.trackId === t.id)).map(t => t.id)];
   const added = !track;
   if (!track) { if (p.tracks.length >= 24) throw new Error('字幕用のトラックを追加するには、不要なトラックを減らしてください。'); track = makeTrack('video'); }
   const limit = endTime(p);
@@ -34,5 +35,5 @@ export function applySubtitles(p: Project): Project {
   if (prior.length === clips.length && clips.every((c,i) => c.start === prior[i].start && c.duration === prior[i].duration)) {
     clips = clips.map((c,i) => ({ ...c, trackId: priorTracks.has(prior[i].trackId) ? prior[i].trackId : track.id }));
   }
-  return separateOverlappingClips({ ...p, tracks: added ? [track, ...p.tracks] : p.tracks, clips: [...remaining, ...clips] }, clips.map(c => c.id), undefined, [...priorTracks]);
+  return separateOverlappingClips({ ...p, tracks: added ? [track, ...p.tracks] : p.tracks, clips: [...remaining, ...clips] }, clips.map(c => c.id), undefined, reusableTracks);
 }

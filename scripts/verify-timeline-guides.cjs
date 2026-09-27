@@ -95,6 +95,15 @@ const root = path.join(__dirname, '..');
     await page.locator('.brand').click();await page.keyboard.press('Control+o');await button(project.name).waitFor();assert.deepEqual((await save()).clips,saved.clips);
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setContentSize(1280,720));await page.waitForFunction(()=>innerWidth===1280&&innerHeight===720);await settle();
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:path.join(results,'compact-1280.png')});
+    const legacy={...project,id:'legacy-copy',name:'旧Audio映像の複製',clips:[{...project.clips[1],id:'legacy-video',trackId:'a1',start:0},{...project.clips[0],id:'legacy-title',trackId:'a2',duration:2,start:0}]};
+    await fs.writeFile(file,JSON.stringify(legacy));await page.locator('.brand').click();await page.keyboard.press('Control+o');await button(legacy.name).waitFor();
+    await page.keyboard.press('Home');
+    const copyDrag=async()=>{const b=await page.locator('.timeline-clip[data-clip-id="legacy-video"]').boundingBox();await page.keyboard.down('Alt');await page.mouse.move(b.x+25,b.y+10);await page.mouse.down();await page.mouse.move(b.x+70,b.y+10,{steps:8});await page.mouse.up();await page.keyboard.up('Alt');};
+    await copyDrag();let copied=await save();assert.equal(copied.clips.length,3);assert.equal(copied.tracks.find(t=>t.id===copied.clips[2].trackId).kind,'video');assert.deepEqual(copied.clips.slice(0,2),legacy.clips);
+    await button(/^元に戻す \(/).click();assert.deepEqual((await save()).clips,legacy.clips);await button(/^やり直す \(/).click();assert.deepEqual((await save()).clips,copied.clips);await button(/^元に戻す \(/).click();
+    await page.locator('.timeline-clip[data-clip-id="legacy-video"]').click({position:{x:25,y:10}});await page.keyboard.down('Shift');await page.locator('.timeline-clip[data-clip-id="legacy-title"]').click({position:{x:25,y:10}});await page.keyboard.up('Shift');
+    await copyDrag();copied=await save();assert.equal(copied.clips.length,4);assert.ok(copied.clips.slice(2).every(c=>copied.tracks.find(t=>t.id===c.trackId).kind==='video'));assert.deepEqual(copied.clips.slice(0,2),legacy.clips);
+    checks.push('horizontal Alt-drag copies single and multi-selected legacy Audio visuals onto Video, preserving originals and Undo/Redo');
     assert.deepEqual(errors,[]);const evidence={passed:true,packaged:!!executablePath,checks,heights,controls};await fs.writeFile(path.join(results,'verification.json'),JSON.stringify(evidence,null,2));console.log(JSON.stringify(evidence));
   } catch(error) {console.error(await page.evaluate(()=>({focus:document.hasFocus(),tool:document.querySelector('.timeline-scroll').className,gesture:document.documentElement.dataset.timelineGesture,guide:document.querySelector('.razor-guide')?.outerHTML})));await page.screenshot({path:path.join(results,'failure.png')}).catch(()=>{});throw error;}
   finally {await app.close();await fs.rm(profile,{recursive:true,force:true});}

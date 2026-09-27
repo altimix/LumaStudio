@@ -3,7 +3,7 @@ import { timelinePointerTime } from '../timeline-pointer';
 import { useRazorGuide } from '../use-razor-guide';
 import '../timeline-guides.css';
 import TrackNameInput from './TrackNameInput';
-import { separateOverlappingClips } from '../track-placement';
+import { routeLegacyCopies, separateOverlappingClips } from '../track-placement';
 import TrackDeleteButton from './TrackDeleteButton';
 import TimelineScrollbars from './TimelineScrollbars';
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -99,7 +99,7 @@ export default function Timeline({ onImport }: { onImport?: () => void }) {
     if(copying&&s.project.clips.length+ids.length>2000){s.notify('クリップは最大2000個です。');return;}
     const originals=s.project.clips.filter(c=>ids.includes(c.id));
     const copies=copying?cloneLinkedClips(originals,uid,0):[];
-    const copyIds=new Map(originals.map((c,i)=>[c.id,copies[i]?.id]));
+    const copyIds=new Map(originals.map((c,i)=>[c.id,copies[i]?.id])), copyTrackIds:string[]=[];
     const owner={};if(!s.beginGesture(owner,()=>cancel()))return;
     const before: Project = s.project; const originX = e.clientX, originY=e.clientY; const scrollStart = scroller.current!.scrollLeft;
     document.documentElement.dataset.timelineGesture=s.tool === 'rate' ? 'rate' : mode === 'move' ? (copying ? 'copy' : 'move') : 'trim';
@@ -108,10 +108,11 @@ export default function Timeline({ onImport }: { onImport?: () => void }) {
       if(event.pointerId!==pointerId)return;
       if(useEditor.getState().gestureOwner!==owner){end();return;}
       if (!started && Math.hypot(event.clientX-originX,mode==='move'?event.clientY-originY:0) < 3) return;
+      rejectedTarget=false;
       if(mode==='move'&&explicitCount===1){
         const lane=document.elementsFromPoint(event.clientX,event.clientY).find(el=>el.hasAttribute('data-track-id'));
         const target=before.tracks.find(t=>t.id===lane?.getAttribute('data-track-id'));
-        rejectedTarget=!!target&&(target.locked||(!(target.id===clip.trackId&&!copying)&&!trackAcceptsClip(target,clip.kind)));
+        rejectedTarget=!!target&&(target.locked||(!(target.id===clip.trackId)&&!trackAcceptsClip(target,clip.kind)));
         document.documentElement.dataset.timelineGesture=rejectedTarget?'blocked':copying?'copy':'move';
         if(rejectedTarget){setSnapLine(null);return;}
       }
@@ -123,7 +124,7 @@ export default function Timeline({ onImport }: { onImport?: () => void }) {
       if (mode === 'move') {
         const hits = document.elementsFromPoint(event.clientX, event.clientY); const lane = hits.find(el => el.hasAttribute('data-track-id'));
         const target = before.tracks.find(t => t.id === lane?.getAttribute('data-track-id'));
-        if (explicitCount === 1 && target && !target.locked && (target.id === clip.trackId && !copying || trackAcceptsClip(target,clip.kind))) newTrack = target.id;
+        if (explicitCount === 1 && target && !target.locked && (target.id === clip.trackId || trackAcceptsClip(target,clip.kind))) newTrack = target.id;
         const minStart = Math.min(...before.clips.filter(c => ids.includes(c.id)).map(c => c.start)); delta = Math.max(-minStart, delta);
       }
       // Across tracks, small horizontal hand movement should not change timing.
@@ -146,8 +147,16 @@ export default function Timeline({ onImport }: { onImport?: () => void }) {
         if (!copying && mode === 'move' && ids.includes(c.id) && !before.tracks.find(t => t.id === c.trackId)?.locked) return { ...c, start: preserveStart?c.start:Math.max(0, roundFrame(c.start + delta, before.fps)), trackId: c.id === clip.id ? newTrack : c.trackId };
         return c.id === clip.id && mode !== 'move' ? (s.tool === 'rate' ? rateStretchClip(c, mode, delta, before) : trimClip(c, mode, delta, before)) : c;
       });
-      if(copying){const placedCopies=copies.map(c=>({...c,start:preserveStart?c.start:Math.max(0,roundFrame(c.start+delta,before.fps)),trackId:c.id===copyIds.get(clip.id)?newTrack:c.trackId}));if(placedCopies.some(c=>before.tracks.some(t=>t.id===c.trackId&&!trackAcceptsClip(t,c.kind)))){rejectedTarget=true;document.documentElement.dataset.timelineGesture='blocked';return;}clips.push(...placedCopies);useEditor.getState().select(copies.map(c=>c.id));}
-      s.transient({ ...before, clips },before);
+      let next={ ...before, clips };
+      if(copying){
+        const placedCopies=copies.map(c=>({...c,start:preserveStart?c.start:Math.max(0,roundFrame(c.start+delta,before.fps)),trackId:c.id===copyIds.get(clip.id)?newTrack:c.trackId}));
+        clips.push(...placedCopies);
+        let trackIndex=0;
+        try { next=routeLegacyCopies(next,copies.map(c=>c.id),()=>{const index=trackIndex++;return copyTrackIds[index]??(copyTrackIds[index]=uid());}); }
+        catch { rejectedTarget=true;document.documentElement.dataset.timelineGesture='blocked';setSnapLine(null);return; }
+        useEditor.getState().select(copies.map(c=>c.id));
+      }
+      s.transient(next,before);
       const rect = scroller.current!.getBoundingClientRect(); if (event.clientX > rect.right - 35) scroller.current!.scrollLeft += 10; if (event.clientX < rect.left + 25) scroller.current!.scrollLeft -= 10;
     };
     const end = () => { if(ended)return;ended=true;delete document.documentElement.dataset.timelineGesture;cancelDrag.current=null;capture.removeEventListener('lostpointercapture',cancel);document.removeEventListener('visibilitychange',visibility);if(capture.hasPointerCapture(pointerId))capture.releasePointerCapture(pointerId);useEditor.getState().endGesture(owner); setSnapLine(null); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', finish); window.removeEventListener('pointercancel', cancel); window.removeEventListener('keydown', key); window.removeEventListener('blur', cancel); };

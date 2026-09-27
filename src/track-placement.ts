@@ -6,7 +6,7 @@ import type { Clip, Project } from './types';
 import { extraTrackPartitions, overlaps, TRACK_SPACE_MESSAGE } from './track-layout';
 
 /** Copies of legacy Audio visuals get compatible lanes without moving their originals. */
-export function routeLegacyCopies(project: Project, ids: string[]): Project {
+export function routeLegacyCopies(project: Project, ids: string[], newId: () => string = uid): Project {
   const selected = new Set(ids), tracks = [...project.tracks], clips = [...project.clips];
   for (let i = 0; i < clips.length; i++) {
     const clip = clips[i], source = tracks.find(t => t.id === clip.trackId);
@@ -16,7 +16,7 @@ export function routeLegacyCopies(project: Project, ids: string[]): Project {
     let track = compatible.find(t => !clips.some(c => c.trackId === t.id && overlaps(c, clip)));
     if (!track) {
       if (tracks.length >= 24) throw Error(TRACK_SPACE_MESSAGE);
-      track = { ...makeTrack('video'), hidden: source.hidden, muted: source.muted, solo: source.solo };
+      track = { ...makeTrack('video'), id: newId(), hidden: source.hidden, muted: source.muted, solo: source.solo };
       tracks.unshift(track);
     }
     clips[i] = { ...clip, trackId: track.id };
