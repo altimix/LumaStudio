@@ -1,9 +1,10 @@
 import type { SoundId } from '../shared/sounds.mjs';
 export type MediaKind = 'video' | 'audio' | 'image';
+export type TextAlignment = 'left' | 'center' | 'right' | 'justify';
 export interface TextBox { width: number; height: number }
 export interface OpacityKeyframe { time: number; value: number }
 export interface VolumeKeyframe { time: number; value: number }
-export type VisualValues = Pick<Clip, 'x' | 'y' | 'scale' | 'rotation' | 'opacity'> & Partial<Pick<Clip, 'fontSize' | 'color' | 'fontFamily' | 'fontWeight' | 'textStyle' | 'textShadow' | 'shadowColor' | 'shadowBlur' | 'shadowDistance' | 'textStroke' | 'strokeColor' | 'strokeWidth' | 'captionBackgroundOpacity' | 'exposure' | 'contrast' | 'saturation' | 'graphic'>> & { crop?: Crop | null; videoMask?: VideoMask | null; chromaKey?: ChromaKey | null; textBox?: TextBox | null };
+export type VisualValues = Pick<Clip, 'x' | 'y' | 'scale' | 'rotation' | 'opacity'> & Partial<Pick<Clip, 'fontSize' | 'color' | 'textAlign' | 'fontFamily' | 'fontWeight' | 'textStyle' | 'textShadow' | 'shadowColor' | 'shadowBlur' | 'shadowDistance' | 'textStroke' | 'strokeColor' | 'strokeWidth' | 'captionBackgroundOpacity' | 'exposure' | 'contrast' | 'saturation' | 'graphic'>> & { crop?: Crop | null; videoMask?: VideoMask | null; chromaKey?: ChromaKey | null; textBox?: TextBox | null };
 export interface VisualKeyframe { time: number; values: VisualValues }
 export interface Crop { top: number; right: number; bottom: number; left: number }
 export interface BasicVideoMask { type: 'rectangle' | 'ellipse'; x: number; y: number; width: number; height: number; feather: number; inverted: boolean }
@@ -26,6 +27,7 @@ export interface Clip {
   x: number; y: number; scale: number; rotation: number; opacity: number;
   exposure: number; contrast: number; saturation: number; volume: number; fadeIn: number; fadeOut: number;
   text: string; fontSize: number; color: string; textStyle: 'hero' | 'subtitle' | 'minimal';
+  textAlign?: TextAlignment;
   fontFamily?: string; fontWeight?: number; textShadow?: boolean; shadowColor?: string; shadowBlur?: number; shadowDistance?: number; textStroke?: boolean; strokeColor?: string; strokeWidth?: number;
   captionBackgroundOpacity?: number;
   captionAutoPosition?: boolean;

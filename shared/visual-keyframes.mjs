@@ -7,7 +7,7 @@ import { validateTextBox } from './text-box.mjs';
 
 export const MAX_VISUAL_KEYFRAMES = 64;
 export const TRANSFORM_FIELDS = ['x', 'y', 'scale', 'rotation', 'opacity'];
-export const TEXT_FIELDS = ['fontSize', 'color', 'fontFamily', 'fontWeight', 'textStyle', 'textShadow', 'shadowColor', 'shadowBlur', 'shadowDistance', 'textStroke', 'strokeColor', 'strokeWidth', 'captionBackgroundOpacity', 'textBox'];
+export const TEXT_FIELDS = ['fontSize', 'color', 'textAlign', 'fontFamily', 'fontWeight', 'textStyle', 'textShadow', 'shadowColor', 'shadowBlur', 'shadowDistance', 'textStroke', 'strokeColor', 'strokeWidth', 'captionBackgroundOpacity', 'textBox'];
 export const VIDEO_FIELDS = ['exposure', 'contrast', 'saturation', 'crop', 'videoMask', 'chromaKey'];
 export const VISUAL_RANGES = { x: [-200, 200], y: [-200, 200], scale: [.1, 3], rotation: [-180, 180], opacity: [0, 1], fontSize: [16, 240], shadowBlur: [0, 100], shadowDistance: [0, 100], strokeWidth: [0, 20], captionBackgroundOpacity: [0, 1], exposure: [-2, 2], contrast: [0, 2], saturation: [0, 2] };
 const colors = ['color', 'shadowColor', 'strokeColor'];
@@ -19,7 +19,7 @@ export const hasVisualKeys = clip => !!(clip.visualKeyframes?.length || clip.opa
 export function visualSnapshot(clip) {
   const values = Object.fromEntries(TRANSFORM_FIELDS.map(field => [field, clip[field]]));
   if (clip.kind === 'title' && !clip.graphic) Object.assign(values, {
-    fontSize: clip.fontSize, color: clip.color, textStyle: clip.textStyle,
+    fontSize: clip.fontSize, color: clip.color, textStyle: clip.textStyle, textAlign: clip.textAlign ?? 'center',
     fontFamily: fontStyle(clip).family, fontWeight: fontStyle(clip).weight,
     textShadow: clip.textShadow !== false, shadowColor: clip.shadowColor ?? '#000000',
     shadowBlur: clip.shadowBlur ?? clip.fontSize * .22, shadowDistance: clip.shadowDistance ?? clip.fontSize * .035,

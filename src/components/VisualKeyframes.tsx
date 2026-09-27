@@ -18,8 +18,8 @@ export default function VisualKeyframes({ clip }: { clip: Clip }) {
   const tabLabel = channelTab === 'color' ? 'カラー' : clip.graphic ? '図形' : clip.kind === 'title' ? 'テキスト' : 'ビデオ';
   const otherTab = tab !== channelTab;
   const controlHelp = channel.path.startsWith('videoMask.points.') ? 'この座標はモニターの点・ハンドルで調整します。'
-    : ['shadowBlur', 'shadowDistance'].includes(channel.path) && evaluated.textShadow === false ? '影はオフです。「影・縁取りを調整」で影を有効にすると、数値欄を表示できます。'
-    : channel.path === 'strokeWidth' && !evaluated.textStroke ? '縁取りはオフです。「影・縁取りを調整」で縁取りを有効にすると、数値欄を表示できます。'
+    : ['shadowBlur', 'shadowDistance'].includes(channel.path) && evaluated.textShadow === false ? '影はオフです。「影」を有効にすると、数値欄を表示できます。'
+    : channel.path === 'strokeWidth' && !evaluated.textStroke ? '縁取りはオフです。「縁取り」を有効にすると、数値欄を表示できます。'
     : channel.path === 'captionBackgroundOpacity' && evaluated.textStyle !== 'subtitle' ? 'スタイルを「字幕」にすると、背景の濃さの数値欄を表示できます。'
     : '数値欄がある項目は、対応する欄を黄緑の枠で表示します。';
   const current = keys.find(key => Math.abs(key.time - at) < 1e-7), previous = keys.filter(key => key.time < at - 1e-7).at(-1), next = keys.find(key => key.time > at + 1e-7);
