@@ -78,8 +78,9 @@ export function usePlayheadViewport(scroller: RefObject<HTMLDivElement | null>) 
       // Rounding near an edge must not put the line a few pixels outside the viewport.
       const firstFrame = Math.ceil(viewport.scrollLeft / s.zoom * s.project.fps) / s.project.fps;
       const lastFrame = Math.floor((viewport.scrollLeft + viewport.clientWidth - 1) / s.zoom * s.project.fps) / s.project.fps;
-      const time = clamp(timelinePointerTime(s.project, (viewport.scrollLeft + x) / s.zoom, s.zoom, s.snapping).time, firstFrame, Math.max(firstFrame, lastFrame));
-      if (force || Math.abs(time - s.playhead) > 1e-7) s.seek(time);
+      const target = timelinePointerTime(s.project, (viewport.scrollLeft + x) / s.zoom, s.zoom, s.snapping);
+      const time = clamp(target.time, firstFrame, Math.max(firstFrame, lastFrame));
+      if (force || Math.abs(time - s.playhead) > 1e-7) s.seek(time, target.snapped);
     };
     const tick = (now: number) => {
       if(useEditor.getState().gestureOwner!==owner){finish();return;}

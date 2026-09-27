@@ -1,9 +1,29 @@
 import { trackAcceptsClip, AUDIO_TRACK_MESSAGE } from './track-compatibility';
 import { numberTracks } from './track-names';
-import { uid } from './model';
+import { uid, makeTrack } from './model';
 import type { Clip, Project } from './types';
 
-import { extraTrackPartitions } from './track-layout';
+import { extraTrackPartitions, overlaps, TRACK_SPACE_MESSAGE } from './track-layout';
+
+/** Copies of legacy Audio visuals get compatible lanes without moving their originals. */
+export function routeLegacyCopies(project: Project, ids: string[]): Project {
+  const selected = new Set(ids), tracks = [...project.tracks], clips = [...project.clips];
+  for (let i = 0; i < clips.length; i++) {
+    const clip = clips[i], source = tracks.find(t => t.id === clip.trackId);
+    if (!selected.has(clip.id) || !source || trackAcceptsClip(source, clip.kind)) continue;
+    if (source.locked) throw Error('配置先トラックのロックを解除してください。');
+    const compatible = tracks.filter(t => t.kind === 'video' && !t.locked && !!t.hidden === !!source.hidden && !!t.muted === !!source.muted && !!t.solo === !!source.solo);
+    let track = compatible.find(t => !clips.some(c => c.trackId === t.id && overlaps(c, clip)));
+    if (!track) {
+      if (tracks.length >= 24) throw Error(TRACK_SPACE_MESSAGE);
+      track = { ...makeTrack('video'), hidden: source.hidden, muted: source.muted, solo: source.solo };
+      tracks.unshift(track);
+    }
+    clips[i] = { ...clip, trackId: track.id };
+  }
+  return { ...project, tracks, clips };
+}
+
 
 /** Move only the supplied placements to new lanes; existing edits stay untouched. */
 export function separateOverlappingClips(project: Project, ids: string[], newId = uid, reusableTrackIds: readonly string[] = []): Project {

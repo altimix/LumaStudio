@@ -88,7 +88,7 @@ export default function Timeline({ onImport }: { onImport?: () => void }) {
   const cancelDrag=useRef<(()=>void)|null>(null);useLayoutEffect(()=>()=>cancelDrag.current?.(),[]);
   const startDrag = useCallback((e: React.PointerEvent, clip: Clip, mode: 'move' | 'left' | 'right') => {
     e.stopPropagation(); if (e.button !== 0) return; e.preventDefault();(e.currentTarget.closest('.timeline-clip') as HTMLElement)?.focus({preventScroll:true});cancelDrag.current?.(); const s = useEditor.getState();if(s.gestureActive)return;
-    if (s.tool === 'razor') { s.stop(); s.split(timelinePointerTime(s.project,localTime(e.clientX),s.zoom,s.snapping,clip).time, [clip.id]); return; }
+    if (s.tool === 'razor') { const target = timelinePointerTime(s.project,localTime(e.clientX),s.zoom,s.snapping,clip); s.stop(); s.split(target.time, [clip.id], target.snapped); return; }
     if (s.tool === 'rate') { if (!['video', 'audio'].includes(clip.kind)) { s.notify('レート調整には動画または音声クリップを選択してください。'); return; } if (mode === 'move') mode = 'right'; }
     let ids = s.selected.includes(clip.id) ? s.selected : [clip.id];
     if (e.shiftKey) { ids = s.selected.includes(clip.id) ? s.selected.filter(id => id !== clip.id) : [...s.selected, clip.id]; s.select(ids); return; }

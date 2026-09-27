@@ -14,12 +14,13 @@ export function timelinePointerTime(project: Project, rawTime: number, zoom: num
       if (delta <= distance) { time = target; distance = delta; snapped = true; }
     }
   }
-  // splitClip rounds relative to the clip's start, including legacy fractional starts.
-  time = clip ? clip.start + roundFrame(time - clip.start, project.fps) : roundFrame(time, project.fps);
+  // Keep boundary targets exact, including imported fractional starts. Unsnapped cuts
+  // retain the established clip-relative frame grid.
+  if (!snapped) time = clip ? clip.start + roundFrame(time - clip.start, project.fps) : roundFrame(time, project.fps);
   return { time: Math.max(0, time), snapped };
 }
 
 export function canSplitAt(clip: Clip, time: number, fps: number) {
-  const left = roundFrame(time - clip.start, fps), minimum = 1 / fps - 1e-6;
+  const left = time - clip.start, minimum = 1 / fps - 1e-6;
   return left >= minimum && clip.duration - left >= minimum;
 }

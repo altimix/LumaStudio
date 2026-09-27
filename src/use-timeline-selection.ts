@@ -53,7 +53,7 @@ export function useTimelineSelection(scroller: RefObject<HTMLDivElement | null>)
       current.endGesture(owner); setBox(null);
       if (!owns || current.project !== state.project) return;
       if (cancelled) state.select(previous);
-      else if (!moved && !additive) { state.select([]); state.seek(timelinePointerTime(state.project, origin.x / state.zoom, state.zoom, current.snapping).time); }
+      else if (!moved && !additive) { state.select([]); const target = timelinePointerTime(state.project, origin.x / state.zoom, state.zoom, current.snapping); state.seek(target.time, target.snapped); }
     };
     const cancel = () => finish(true);
     const cancelPointer = (event: PointerEvent) => { if (event.pointerId === pointerId) cancel(); };

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { emptyProject, makeClip } from './model';
+import { emptyProject, makeClip, makeTrack } from './model';
 import { numberTracks } from './track-names';
 import { useEditor } from './store';
 import { audioSlices } from './audio-plan';
@@ -36,10 +36,10 @@ it.each(['video','image','audio'] as const)('restricts new %s placements on Audi
   if(kind!=='audio')expect(useEditor.getState().project).toBe(before);
   else expect(useEditor.getState().project.clips[0].trackId).toBe(audio.id);
 });
-it('preserves legacy Audio visuals through load, split, trim, save and undo, while blocking new copies',()=>{
+it('preserves legacy Audio visuals through load, split, trim, save and undo, while routing new copies to Video',()=>{
   const p=emptyProject(),s=useEditor.getState();p.assets=[source];p.clips=[makeClip(p.tracks[2].id,0,source)];s.load(p);
-  const id=p.clips[0].id;s.select([id]);s.duplicate();expect(useEditor.getState().project).toBe(p);
-  s.copy();s.seek(3);s.paste();expect(useEditor.getState().project).toBe(p);
+  const id=p.clips[0].id;s.select([id]);s.duplicate();const duplicated=useEditor.getState().project;expect(duplicated.clips[0]).toEqual(p.clips[0]);expect(duplicated.tracks.find(t=>t.id===duplicated.clips[1].trackId)?.kind).toBe('video');s.undo();expect(useEditor.getState().project).toBe(p);
+  s.select([id]);s.copy();s.seek(3);s.paste();expect(useEditor.getState().project.clips[1].start).toBe(3);expect(useEditor.getState().project.clips[1].trackId).not.toBe(p.tracks[2].id);s.undo();expect(useEditor.getState().project).toBe(p);
   s.split(1,[id]);expect(useEditor.getState().project.clips).toHaveLength(2);
   s.undo();expect(useEditor.getState().project).toBe(p);s.redo();
   const split=useEditor.getState().project;s.updateClip(id,{duration:.5});
@@ -66,4 +66,18 @@ it('keeps upper-row audio audible and makes mute/solo independent of row group',
   expect(audioSlices(p,0,1,1).length).toBeGreaterThan(0);
   p.tracks[0].muted=true;expect(audioSlices(p,0,1,1)).toHaveLength(0);p.tracks[0].muted=false;
   p.tracks[3].solo=true;expect(audioSlices(p,0,1,1)).toHaveLength(0);p.tracks[0].solo=true;expect(audioSlices(p,0,1,1).length).toBeGreaterThan(0);
+});
+
+it('routes linked legacy copies without changing sources and rejects capacity atomically',()=>{
+  const p=emptyProject(),s=useEditor.getState();p.assets=[{...source,hasAudio:true}];
+  const video={...makeClip(p.tracks[2].id,0,p.assets[0]),audioDetached:true,linkId:'old-pair'};
+  p.clips=[video,{...video,id:'audio',kind:'audio',trackId:p.tracks[3].id,audioDetached:undefined}];
+  p.tracks[0].locked=true;s.load(p);s.select([video.id]);s.duplicate();
+  const copies=useEditor.getState().project.clips.slice(2);expect(copies[0].trackId).toBe(p.tracks[1].id);
+  expect(copies[1].trackId).toBe(p.tracks[3].id);expect(copies[0].linkId).toBe(copies[1].linkId);expect(copies[0].linkId).not.toBe(video.linkId);
+  expect(useEditor.getState().project.clips.slice(0,2)).toEqual(p.clips);
+  s.undo();s.redo();expect(useEditor.getState().project.clips.slice(2)).toEqual(copies);
+  s.undo();p.tracks[1].locked=true;while(p.tracks.length<24)p.tracks.push({...makeTrack('video'),locked:true});
+  s.load(p);s.select([video.id]);const before=useEditor.getState();s.duplicate();
+  expect(useEditor.getState().project).toBe(before.project);expect(useEditor.getState().history).toEqual(before.history);expect(useEditor.getState().selected).toEqual(before.selected);
 });

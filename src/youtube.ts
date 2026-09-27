@@ -20,7 +20,8 @@ export function applySubtitles(p: Project): Project {
   const priorTracks = new Set(prior.filter(c => p.tracks.some(t => t.id === c.trackId && t.kind === 'video')).map(c => c.trackId));
   let track = p.tracks.find(t => t.id === prior[0]?.trackId && t.kind === 'video' && !t.locked)
     || p.tracks.find(t => priorTracks.has(t.id) && !t.locked)
-    || p.tracks.find(t => t.kind === 'video' && t.name === '日本語字幕' && !t.locked);
+    || p.tracks.find(t => t.kind === 'video' && t.name === '日本語字幕' && !t.locked)
+    || (p.tracks.length >= 24 ? p.tracks.find(t => t.kind === 'video' && !t.locked && !t.hidden && !remaining.some(c => c.trackId === t.id)) : undefined);
   const added = !track;
   if (!track) { if (p.tracks.length >= 24) throw new Error('字幕用のトラックを追加するには、不要なトラックを減らしてください。'); track = makeTrack('video'); }
   const limit = endTime(p);

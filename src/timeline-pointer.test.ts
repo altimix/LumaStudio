@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { emptyProject, makeClip, splitClip } from './model';
+import { useEditor } from './store';
 import { canSplitAt, timelinePointerTime } from './timeline-pointer';
 
 function fixture() {
@@ -26,13 +27,29 @@ it('uses the actual split rounding for fractional legacy starts and rejects empt
   const p = fixture(), clip = { ...p.clips[0], start: .015 };
   p.clips[0] = clip;
   const guide = timelinePointerTime(p, 2.05, 100, true, clip);
-  const pair = splitClip(clip, guide.time, p.fps)!;
+  expect(guide).toEqual({time: 2, snapped: true});
+  const pair = splitClip(clip, guide.time, p.fps, guide.snapped)!;
   expect(pair[1].start).toBe(guide.time);
   expect(canSplitAt(clip, guide.time, p.fps)).toBe(true);
   for (const raw of [clip.start + .01, clip.start + clip.duration - .01]) {
     const edge = timelinePointerTime(p, raw, 100, true, clip);
     expect(edge.snapped).toBe(true);
     expect(canSplitAt(clip, edge.time, p.fps)).toBe(false);
-    expect(splitClip(clip, edge.time, p.fps)).toBeNull();
+    expect(splitClip(clip, edge.time, p.fps, edge.snapped)).toBeNull();
   }
+});
+
+it('preserves fractional boundary targets for the playhead and linked razor splits', () => {
+  const p = fixture();
+  const asset = {id:'source',kind:'video' as const,name:'source',path:'source.mp4',url:'',thumbnail:'',duration:10,width:320,height:180,fps:30,hasAudio:true,waveform:[],codec:'h264',size:1};
+  p.assets=[asset];
+  const clip = {...makeClip(p.tracks[0].id,.015,asset),duration:6,audioDetached:true,linkId:'pair'};
+  p.clips = [clip, {...clip, id: 'linked', trackId: p.tracks[2].id, kind: 'audio',audioDetached:undefined}, {...p.clips[1], start: 2.017}];
+  const target = timelinePointerTime(p, 2.04, 100, true, clip), s = useEditor.getState();
+  expect(target).toEqual({time: 2.017, snapped: true});
+  s.load(p); s.seek(target.time, target.snapped); expect(useEditor.getState().playhead).toBe(target.time);
+  s.split(target.time, [clip.id], target.snapped);
+  expect(useEditor.getState().project.clips.filter(c => c.start === target.time)).toHaveLength(3);
+  s.undo(); expect(useEditor.getState().project).toBe(p); s.redo();
+  expect(useEditor.getState().project.clips.filter(c => c.start === target.time)).toHaveLength(3);
 });
