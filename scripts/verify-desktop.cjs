@@ -45,9 +45,14 @@ async function verify() {
     await page.mouse.move(box.x+70,box.y+18);await page.mouse.down();await page.mouse.move(box.x+118,box.y+18,{steps:8});await page.mouse.up();
     await page.waitForFunction(()=>document.querySelector('.timeline-clip.video').getAttribute('aria-label').includes('開始 1.00 秒'));
     await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).click();
-    box=await firstVideo.boundingBox();
     const trim=await firstVideo.locator('.trim-handle.right').boundingBox();
-    await page.mouse.move(trim.x+trim.width/2,trim.y+trim.height/2);await page.mouse.down();await page.mouse.move(trim.x+trim.width/2-48,trim.y+trim.height/2,{steps:8});await page.mouse.up();
+    // Compact rows put the endpoint gain target over the edge's middle. Use
+    // the title band, where trimming remains available at every track height.
+    const trimPoint={x:trim.x+trim.width/2,y:trim.y+3};
+    assert.equal(await page.evaluate(({x,y})=>document.elementFromPoint(x,y)?.classList.contains('trim-handle'),trimPoint),true,'the native pointer must hit the trim handle, not the gain point');
+    await page.mouse.move(trimPoint.x,trimPoint.y);await page.mouse.down();
+    await page.waitForFunction(()=>document.documentElement.dataset.timelineGesture==='trim');
+    await page.mouse.move(trimPoint.x-48,trimPoint.y,{steps:8});await page.mouse.up();
     await page.waitForFunction(()=>document.querySelector('.timeline-clip.video').getAttribute('aria-label').includes('長さ 7.00 秒'));
     await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).click();
     // An empty selection must not turn the keyboard shortcut into a split-all operation.
