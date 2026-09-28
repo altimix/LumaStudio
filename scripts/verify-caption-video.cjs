@@ -74,6 +74,11 @@ const root=path.resolve(__dirname,'..');
    await page.waitForFunction(index=>{const c=document.querySelector('.caption-monitor canvas');if(!c)return false;const p=c.getContext('2d').getImageData(c.width/2,c.height/2,1,1).data;return p[index]>200&&p[(index+1)%3]<30&&p[(index+2)%3]<30;},i);
    assert.equal(await page.locator('.canvas-wrap canvas').count(),1);
    await page.evaluate(()=>{window.videoFrames=[];const c=document.querySelector('.caption-monitor canvas');window.videoObserver=new MutationObserver(()=>{if(document.querySelector('.caption-monitor-controls button[aria-pressed="true"]:not(.caption-monitor-expand)'))window.videoFrames.push({time:Number(c.dataset.previewTime),pixel:[...c.getContext('2d').getImageData(c.width/2,c.height/2,1,1).data]});});window.videoObserver.observe(c,{attributes:true,attributeFilter:['data-preview-time']});});
+   if(i===1)await page.evaluate(()=>{
+    // Reproduce a busy renderer after the React click handler starts transport.
+    // The first draw then needs the decoded cue frame while video catches up.
+    window.addEventListener('click',()=>{const until=performance.now()+100;while(performance.now()<until){}},{once:true});
+   });
    await page.getByRole('button',{name:'この字幕を反復再生',exact:true}).click();
    if(i===1){
     for(const name of ['モニターを拡大','字幕一覧を表示']){

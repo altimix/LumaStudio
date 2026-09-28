@@ -2,7 +2,7 @@ import { shortcutLabel } from '../shortcut-label';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Captions, Copy, Download, ImagePlus, KeyRound, LoaderCircle, Sparkles, Youtube } from 'lucide-react';
 import { useEditor } from '../store';
-import { endTime } from '../model';
+import { endTime, roundFrame } from '../model';
 import { applySubtitles, emptyYoutube } from '../youtube';
 import { chapterTime, descriptionWithChapters, parseHashtags, timelineKey, validateYoutube, validateYoutubeProject, validChapters, youtubeText } from '../../shared/youtube.mjs';
 import type { AIProgress, AIStatus, Project, SubtitleCue, YoutubeData } from '../types';
@@ -118,7 +118,10 @@ export default function YouTubeStudio({ onClose }: { onClose: () => void }) {
     if (invalidDraft.current) return false;
     const current = useEditor.getState(), cues = current.project.youtube?.cues || [], cue = cues[index];
     if (!cue) return false;
-    setActiveCue(index); current.stop(); current.seek(cue.start);
+    setActiveCue(index); current.stop();
+    // Re-selecting the displayed start frame must not invalidate its decoded
+    // image just before playback. Slow renderers need it until video catches up.
+    if (current.playhead !== roundFrame(cue.start, current.project.fps)) current.seek(cue.start);
     const matched = cues.map((cue, index) => ({ cue, index })).filter(({ cue }) => !search || cue.text.includes(search));
     const position = matched.findIndex(item => item.index === index);
     if (position >= 0) setPage(Math.floor(position / 40)); else { setSearch(''); setPage(Math.floor(index / 40)); }
