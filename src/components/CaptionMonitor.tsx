@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import Preview from './Preview';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import { endTime } from '../model';
 import { captionPlaybackRange } from '../youtube';
 import { useEditor } from '../store';
 import type { SubtitleCue } from '../types';
 
-export default function CaptionMonitor({ cues, index, disabled, onSelect }: { cues: SubtitleCue[]; index: number; disabled: boolean; onSelect: (index: number) => boolean }) {
+export default function CaptionMonitor({ cues, index, disabled, onSelect, expanded, onToggleExpanded }: { expanded: boolean; onToggleExpanded(): void; cues: SubtitleCue[]; index: number; disabled: boolean; onSelect: (index: number) => boolean }) {
   const [loop, setLoop] = useState(false);
   const cue = cues[index];
   const duration = useEditor(state => endTime(state.project));
@@ -40,6 +41,7 @@ export default function CaptionMonitor({ cues, index, disabled, onSelect }: { cu
       <button disabled={disabled || index <= 0} onClick={() => { setLoop(false); onSelect(index - 1); }}>前の字幕</button>
       <button disabled={disabled || !playable} aria-pressed={loop} onClick={() => { if (loop) { setLoop(false); useEditor.getState().stop(); } else playCue(); }}>{loop ? '反復再生を停止' : 'この字幕を反復再生'}</button>
       <button disabled={disabled || index >= cues.length - 1} onClick={() => { setLoop(false); onSelect(index + 1); }}>次の字幕</button>
+      <button className="caption-monitor-expand" aria-pressed={expanded} onClick={onToggleExpanded}>{expanded ? <Minimize2 size={14}/> : <Maximize2 size={14}/>} {expanded ? '字幕一覧を表示' : 'モニターを拡大'}</button>
     </div>
     {cue && !playable ? <p className="yt-notice">この字幕には再生できる長さの区間がありません。時刻を確認してください。</p> : null}
     <div className="caption-draft-preview"><strong>字幕原稿 {cue ? `${index + 1} / ${cues.length}` : ''}</strong><p>{cue?.text || '字幕を選ぶと、この位置の映像を確認できます。'}</p><small>映像への反映は「字幕をタイムラインに適用」で確定します。</small></div>

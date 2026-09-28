@@ -18,3 +18,33 @@
 .yt-reference-preview span{font-size:11px;overflow-wrap:anywhere;min-width:0}
 .yt-thumbnail-reference .yt-actions{margin:0;flex-wrap:wrap}
 .yt-thumbnail-reference .yt-hint{margin:0}
+
+/* Give the studio the available window height; scroll only its individual panes. */
+.modal-backdrop:has(.youtube-studio){padding:12px 16px}
+.modal.wide:has(.youtube-studio){height:calc(100dvh - 24px);max-height:calc(100dvh - 24px);display:flex;flex-direction:column;overflow:hidden}
+.modal:has(.youtube-studio)>.modal-heading{flex-shrink:0;padding:10px 18px}
+.modal.wide .youtube-studio{flex:1;min-height:0;height:auto;max-height:none}
+.youtube-studio .yt-intro{padding:8px 16px}
+.youtube-studio .yt-tabs{padding:3px 12px}
+.youtube-studio .yt-tabs button{padding:8px 12px}
+.youtube-studio .yt-footer,.youtube-studio .yt-progress{padding:8px 12px}
+.yt-workspace.monitor-expanded>.yt-scroll{display:none}
+.caption-monitor-expand{display:flex;align-items:center;gap:4px;margin-left:auto}
+.caption-draft-preview{flex-shrink:0}
+.caption-draft-preview p{max-height:65px;overflow:auto}
+
+.youtube-studio .yt-logo{width:30px;height:30px;border-radius:7px}
+.youtube-studio .yt-logo svg{width:20px;height:20px}
+.youtube-studio .yt-intro strong{font-size:14px}
+.youtube-studio .yt-intro p{margin-top:2px;font-size:10px}
+.caption-monitor .preview-bottom{padding:5px 10px}
+.caption-monitor .transport{margin-top:3px;height:28px}
+.caption-monitor-controls{flex-shrink:0}
+.caption-draft-preview{padding:7px 10px}
+.caption-draft-preview p{margin:3px 0;max-height:44px;line-height:1.5}
+.caption-draft-preview small{display:none}
+.youtube-studio:has(.monitor-expanded) .yt-intro{display:none}
+.youtube-studio:has(.with-preview) .yt-intro{padding:4px 16px;gap:10px}
+.youtube-studio:has(.with-preview) .yt-logo{width:22px;height:22px}
+.youtube-studio:has(.with-preview) .yt-intro strong{font-size:12px}
+.youtube-studio:has(.with-preview) .yt-intro p{display:none}
