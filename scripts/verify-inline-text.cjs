@@ -7,7 +7,7 @@ async function verify(){
   const profile=await fs.mkdtemp(path.join(root,'.local','inline-profile-')),env={...process.env,LUMA_TEST_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;
   const executablePath=process.env.LUMA_VERIFY_EXE,app=await electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000});
   const page=await app.firstWindow(),errors=[],checks=[],file=path.join(results,'直接編集.luma');page.on('pageerror',e=>errors.push(e.message));
-  const save=async()=>{await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));return JSON.parse(await fs.readFile(file,'utf8'));};
+  const save=()=>require('./verify-save-project.cjs')(page,file);
   const open=async p=>{await fs.writeFile(file,JSON.stringify(p));await page.keyboard.press('Control+o');await page.getByRole('button',{name:p.name,exact:true}).waitFor();await page.keyboard.press('Home');};
   const number=async(label,value)=>{const field=page.getByRole('spinbutton',{name:label,exact:true});await field.fill(String(value));await field.press('Enter');};
   const input=page.getByRole('textbox',{name:'プレビューでテキストを編集',exact:true});
@@ -18,6 +18,32 @@ async function verify(){
     await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},file);
     const blank={version:1,id:'inline',name:'文字を直接編集',width:1280,height:720,fps:30,assets:[],markers:[],tracks:[{id:'titles',name:'文字用',kind:'video',muted:false,hidden:false,locked:false,solo:false}],clips:[]};
     await open(blank);await page.getByRole('tab',{name:'テキスト',exact:true}).click();await page.getByRole('button',{name:/ミニマル/}).click();await number('長さ',2);const original=await save();
+    for(const kind of ['video','audio'])for(const prefix of [1,2]){
+      const tracks=[...Array.from({length:prefix},(_,i)=>({id:`empty-${i}`,name:`空のVideo${i+1}`,kind:'video'})),{...original.tracks[0],kind}];
+      await open({...original,name:`選択色 ${kind} ${prefix}`,tracks});
+      await page.locator('[data-track-id="empty-0"]').click({position:{x:5,y:15}});
+      assert.equal(await page.locator('.track-lane[data-active-track=true]').count(),0);
+      await page.locator('.title-drag-target').click();
+      const colors=await page.evaluate(()=>({
+        lane:getComputedStyle(document.querySelector('[data-track-id="titles"]')).backgroundColor,
+        label:getComputedStyle(document.querySelector('[data-track-label="titles"]')).backgroundColor,
+      }));
+      assert.deepEqual(colors,{lane:'rgb(41, 50, 36)',label:'rgb(48, 59, 42)'},`${kind} selection visibly overrides ${prefix===1?'even':'odd'} row colors`);
+    }
+    checks.push('monitor selection visibly highlights odd/even Video and legacy Audio lanes and labels');
+    const manyTracks={...original,name:'画面外の文字トラック',tracks:[...Array.from({length:16},(_,i)=>({id:`empty-${i}`,name:`空のVideo${i+1}`,kind:'video'})),...original.tracks]};
+    await open(manyTracks);await page.locator('.title-drag-target').click();
+    assert.equal(await input.count(),0,'single click only selects');
+    assert.equal(await page.locator('.timeline-clip.selected').getAttribute('data-clip-id'),original.clips[0].id);
+    assert.equal(await page.locator('[data-track-label="titles"]').getAttribute('data-active-track'),'true');
+    const visible=await page.locator('[data-track-id="titles"]').evaluate(row=>{const a=row.getBoundingClientRect(),view=document.querySelector('.timeline-scroll'),b=view.getBoundingClientRect();return a.top>=b.top&&a.bottom<=b.top+view.clientHeight+1;});
+    assert.ok(visible,'monitor selection reveals an offscreen track');
+    assert.ok(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled(),'selection adds no history');
+    const size=page.locator('#prop-fontSize'),fontBefore=Number(await size.inputValue());
+    await size.fill(String(fontBefore+12));await size.press('Control+z');assert.equal(Number(await size.inputValue()),fontBefore);
+    await size.press('Control+Shift+z');assert.equal(Number(await size.inputValue()),fontBefore+12);assert.ok(await size.evaluate(e=>e===document.activeElement));
+    await size.press('Control+z');await size.press('Tab');
+    checks.push('single monitor click selects and reveals its track without history; focused font size input supports Undo/Redo');
     await begin();assert.ok(await input.evaluate(e=>document.activeElement===e));assert.equal(await page.locator('.inline-text-toolbar').count(),0);assert.equal(await page.locator('.title-drag-target').getAttribute('title'),null);await input.fill('日本語の直接編集\n文字を自由に配置');await page.screenshot({path:path.join(results,'inline-text-editor.png')});await input.press('Control+Enter');await input.waitFor({state:'hidden'});
     let saved=await save();assert.equal(saved.clips[0].text,'日本語の直接編集\n文字を自由に配置');assert.equal(saved.clips[0].fontSize,original.clips[0].fontSize);
     await page.keyboard.press('Control+z');assert.equal((await save()).clips[0].text,original.clips[0].text);await page.keyboard.press('Control+Shift+z');assert.equal((await save()).clips[0].text,saved.clips[0].text);checks.push('double-click edits Japanese and newlines with one Undo/Redo transaction');
@@ -25,12 +51,28 @@ async function verify(){
     await page.locator('.title-drag-target').focus();await page.keyboard.press('F2');await input.waitFor();await input.dispatchEvent('compositionstart');await input.press('Escape');assert.ok(await input.isVisible());await input.dispatchEvent('compositionend');await input.press('Control+Enter');checks.push('F2 is accessible and Japanese IME Escape does not discard text during composition');
     await begin();await input.fill('外側クリックで確定');await page.locator('.panel-heading').first().click();await input.waitFor({state:'hidden'});assert.equal((await save()).clips[0].text,'外側クリックで確定');await page.keyboard.press('Control+z');assert.equal((await save()).clips[0].text,saved.clips[0].text);checks.push('unobstructed focused input commits on outside click and supports Undo');
     const beforeBox=await save(),wrap=await page.locator('.canvas-wrap').boundingBox();
+    // Disk replacement precedes asynchronous recovery cleanup. Delay that
+    // cleanup so the next Undo/save cannot accidentally race the previous save.
+    await app.evaluate(({ipcMain})=>{
+      const original=ipcMain._invokeHandlers.get('clear-recovery');globalThis.__inlineSaveCleanup=0;
+      globalThis.__restoreInlineSaveCleanup=()=>{ipcMain.removeHandler('clear-recovery');ipcMain.handle('clear-recovery',original);};
+      ipcMain.removeHandler('clear-recovery');ipcMain.handle('clear-recovery',async(...args)=>{
+        await new Promise(resolve=>setTimeout(resolve,750));const result=await original(...args);globalThis.__inlineSaveCleanup++;return result;
+      });
+    });
     await drag('テキスト枠の右を変更',-wrap.width*.15,0);saved=await save();assert.ok(saved.clips[0].textBox);assert.equal(saved.clips[0].fontSize,beforeBox.clips[0].fontSize);assert.ok(saved.clips[0].x<beforeBox.clips[0].x);
     await page.keyboard.press('Control+z');assert.equal((await save()).clips[0].textBox,undefined);await page.keyboard.press('Control+Shift+z');assert.deepEqual((await save()).clips[0].textBox,saved.clips[0].textBox);checks.push('resizing keeps font size, moves the dragged edge and is one Undo/Redo');
+    assert.equal(await app.evaluate(()=>globalThis.__inlineSaveCleanup),3,'resize, Undo and Redo each finish recovery cleanup before reading saved data');await app.evaluate(()=>globalThis.__restoreInlineSaveCleanup());
     const beforeCancel=await save();await drag('テキスト枠の下を変更',0,35,true);assert.deepEqual((await save()).clips,beforeCancel.clips);checks.push('Escape during resizing restores dimensions and position');
     await number('テキスト枠の幅',700);await number('テキスト枠の高さ',40);await page.locator('.text-box-controls .text-box-overflow').waitFor();await page.getByRole('button',{name:'枠の高さを文字に合わせる',exact:true}).click();await page.locator('.text-box-controls .text-box-overflow').waitFor({state:'hidden'});saved=await save();assert.equal(saved.clips[0].textBox.width,700);assert.ok(saved.clips[0].textBox.height>40);checks.push('numeric frame width reflows text and fit-height resolves overflow without shrinking the font');
     await open({...saved,name:'直接編集の再読込'});await page.locator('.timeline-clip.title').click();assert.equal(await page.getByRole('spinbutton',{name:'テキスト枠の幅',exact:true}).inputValue(),'700');
-    await page.getByRole('button',{name:'文字用 ロック',exact:true}).click();assert.equal(await page.locator('.text-box-handle').count(),0);assert.ok(await page.locator('.title-drag-target').isDisabled());await page.getByRole('button',{name:'文字用 ロック解除',exact:true}).click();checks.push('saved frame reloads and locked tracks block direct editing and resize handles');
+    await page.getByRole('button',{name:'文字用 ロック',exact:true}).click();assert.equal(await page.locator('.text-box-handle').count(),0);assert.equal(await page.locator('.title-drag-target').isDisabled(),false);
+    const lockedProject=await save();await page.locator('.track-lane[data-track-id="empty-15"]').click({position:{x:10,y:12}});
+    assert.equal(await page.locator('.timeline-clip.selected').count(),0);await page.locator('.title-drag-target').click();
+    assert.equal(await page.locator('.timeline-clip.selected').count(),1);assert.equal(await page.locator('[data-track-label="titles"]').getAttribute('data-active-track'),'true');
+    await page.locator('.title-drag-target').dblclick();assert.equal(await input.count(),0);
+    const lockedBox=await page.locator('.title-drag-target').boundingBox();await page.mouse.move(lockedBox.x+lockedBox.width/2,lockedBox.y+lockedBox.height/2);await page.mouse.down();await page.mouse.move(lockedBox.x+lockedBox.width/2+25,lockedBox.y+lockedBox.height/2+20,{steps:4});await page.mouse.up();
+    assert.deepEqual((await save()).clips,lockedProject.clips);await page.getByRole('button',{name:'文字用 ロック解除',exact:true}).click();checks.push('saved frame reloads; locked titles remain selectable but block text edits, dragging and resize handles');
     await begin();await input.fill('前のプロジェクトの入力');const replacement={...saved,id:'replacement',name:'入力中のプロジェクト切替'};const importFile=path.join(results,'直接編集の切替.luma');await fs.writeFile(importFile,JSON.stringify(replacement));await page.locator('input[type="file"][accept=".luma"]').setInputFiles(importFile);await page.getByRole('button',{name:replacement.name,exact:true}).waitFor();await input.waitFor({state:'hidden'});assert.equal((await save()).clips[0].text,saved.clips[0].text);checks.push('project replacement cancels stale inline drafts');
     const invalidFile=path.join(results,'不正テキスト枠.luma');await fs.writeFile(invalidFile,JSON.stringify({...replacement,name:'不正',clips:replacement.clips.map(c=>({...c,textBox:{width:0,height:100}}))}));await page.locator('input[type="file"][accept=".luma"]').setInputFiles(invalidFile);await page.getByText('テキスト枠の幅と高さは32〜16000pxで指定してください。',{exact:true}).waitFor();await page.getByRole('button',{name:replacement.name,exact:true}).waitFor();checks.push('invalid saved dimensions are rejected without replacing the current project');
     for(const kind of ['video','audio','image']){

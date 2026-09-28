@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { useEditor } from '../store';
+import { propertyHistoryCommand } from '../property-history';
 import { formatNumberInput, isHorizontalNumberScrub, scrubNumberValue } from '../number-scrub';
 import './number-scrub.css';
 
@@ -9,6 +12,7 @@ type Props = {
   max: number;
   step: number;
   disabled?: boolean;
+  projectHistory?: boolean;
   className?: string;
   title?: string;
   'aria-label'?: string;
@@ -24,16 +28,17 @@ const displayNumberInput = (value: number) => formatNumberInput(value, 2);
 export default function ScrubbableNumberInput(props: Props) {
   const { value, min, max, step, disabled = false } = props;
   const [draft, setDraft] = useState(displayNumberInput(value));
-  const focused = useRef(false), edited = useRef(false), cancelActive = useRef<(() => void) | null>(null), suppressClick = useRef(false);
+  const edited = useRef(false), cancelActive = useRef<(() => void) | null>(null), suppressClick = useRef(false);
   const callbacks = useRef(props); callbacks.current = props;
 
-  useEffect(() => { if (!focused.current && !cancelActive.current) setDraft(displayNumberInput(value)); }, [value]);
+  useEffect(() => { if (!edited.current && !cancelActive.current) setDraft(displayNumberInput(value)); }, [value]);
   useEffect(() => () => cancelActive.current?.(), []);
 
   const pointerDown = (event: React.PointerEvent<HTMLInputElement>) => {
     const input = event.currentTarget;
-    if (event.button !== 0 || disabled || cancelActive.current || document.activeElement === input) return;
-    const pointerId = event.pointerId, originX = event.clientX, originY = event.clientY, start = value;
+    if (event.button !== 0 || disabled || cancelActive.current) return;
+    const pointerId = event.pointerId, originX = event.clientX, originY = event.clientY;
+    let start = value;
     let started = false, closed = false, last = start;
     const detach = () => {
       window.removeEventListener('pointermove', move);
@@ -61,6 +66,12 @@ export default function ScrubbableNumberInput(props: Props) {
       const deltaX = e.clientX - originX, deltaY = e.clientY - originY;
       if (!started) {
         if (!isHorizontalNumberScrub(deltaX, deltaY)) return;
+        // Accept a pending typed value before taking the scrub's own undo snapshot.
+        if (edited.current) {
+          const typed = Number(input.value); edited.current = false;
+          if (input.value !== '' && Number.isFinite(typed)) flushSync(() => callbacks.current.onCommit(typed));
+          start = callbacks.current.value; last = start; setDraft(displayNumberInput(start));
+        }
         if (!callbacks.current.onScrubStart()) { close('abandon'); return; }
         started = true; edited.current = false; input.dataset.numberScrubbing = 'true'; document.documentElement.dataset.numberScrub = input.id || 'active';
         document.getSelection()?.removeAllRanges();
@@ -93,8 +104,22 @@ export default function ScrubbableNumberInput(props: Props) {
   return <input id={props.id} className={`scrubbable-number${props.className ? ` ${props.className}` : ''}`} aria-label={props['aria-label']} title={props.title || '左右にドラッグして値を変更'} type="number" min={min} max={max} step={step} disabled={disabled} value={draft}
     onPointerDown={pointerDown}
     onClickCapture={event => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}
-    onFocus={() => { focused.current = true; edited.current = false; }}
+    onFocus={() => { edited.current = false; }}
     onChange={event => { setDraft(event.target.value); edited.current = true; }}
-    onBlur={() => { focused.current = false; if (cancelActive.current) return; const wasEdited = edited.current; edited.current = false; const next = Number(draft); if (wasEdited && draft !== '' && Number.isFinite(next) && next !== value) props.onCommit(next); else setDraft(displayNumberInput(value)); }}
-    onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); else if (event.key === 'Escape' && !cancelActive.current) { edited.current = false; setDraft(displayNumberInput(value)); event.currentTarget.blur(); } }}/>;
+    onBlur={() => { if (cancelActive.current) return; const wasEdited = edited.current; edited.current = false; const next = Number(draft); if (wasEdited && draft !== '' && Number.isFinite(next) && next !== value) props.onCommit(next); else setDraft(displayNumberInput(value)); }}
+    onKeyDown={event => {
+      const command = props.projectHistory && propertyHistoryCommand(event);
+      if (command) {
+        event.preventDefault(); event.stopPropagation();
+        if (event.repeat || useEditor.getState().gestureActive || cancelActive.current) return;
+        const pending = edited.current, before = useEditor.getState().project;
+        edited.current = false;
+        if (pending && draft !== '' && Number.isFinite(Number(draft))) flushSync(() => callbacks.current.onCommit(Number(draft)));
+        // An invalid or unchanged draft is discarded without undoing an unrelated edit.
+        if (!pending || useEditor.getState().project !== before) flushSync(() => useEditor.getState()[command]());
+        setDraft(displayNumberInput(callbacks.current.value));
+        return;
+      }
+      if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+      if (event.key === 'Enter') event.currentTarget.blur(); else if (event.key === 'Escape' && !cancelActive.current) { edited.current = false; setDraft(displayNumberInput(value)); event.currentTarget.blur(); } }}/>;
 }

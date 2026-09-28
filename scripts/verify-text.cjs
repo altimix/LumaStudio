@@ -43,7 +43,17 @@ async function verify() {
     await page.keyboard.press('Control+Shift+z');saved=await save();assert.equal(saved.clips[0].x,moved.clips[0].x);await select();
     const movedRect=await target.boundingBox();await page.mouse.move(movedRect.x+movedRect.width/2,movedRect.y+movedRect.height/2);await page.mouse.down();await page.mouse.move(movedRect.x+20,movedRect.y+10,{steps:5});await page.keyboard.press('Escape');await page.mouse.up();saved=await save();assert.equal(saved.clips[0].x,moved.clips[0].x);assert.equal(saved.clips[0].y,moved.clips[0].y);
     checks.push('native drag updates position, one Undo/Redo restores it, Escape cancels the gesture');
-    await page.getByRole('button',{name:'画面の中央に配置',exact:true}).click();await page.getByRole('button',{name:'テキスト ロック',exact:true}).click();assert.ok(await target.isDisabled());assert.ok(await page.getByLabel('日本語フォント',{exact:true}).isDisabled());await page.getByRole('button',{name:'テキスト ロック解除',exact:true}).click();checks.push('locked track protects dragging and text controls');
+    await page.getByRole('button',{name:'画面の中央に配置',exact:true}).click();await page.getByRole('button',{name:'テキスト ロック',exact:true}).click();
+    const locked=await save();
+    assert.equal(await target.isDisabled(),false,'locked text remains selectable in the monitor');
+    assert.ok(await page.getByLabel('日本語フォント',{exact:true}).isDisabled());
+    assert.equal(await page.locator('.text-box-handle').count(),0);
+    const lockedRect=await target.boundingBox(),point={x:lockedRect.x+lockedRect.width/2,y:lockedRect.y+lockedRect.height/2};
+    await page.mouse.move(point.x,point.y);await page.mouse.down();await page.mouse.move(point.x+40,point.y+30,{steps:5});await page.mouse.up();
+    await target.dblclick();assert.equal(await page.getByRole('textbox',{name:'プレビューでテキストを編集',exact:true}).count(),0);
+    assert.deepEqual((await save()).clips,locked.clips,'locked monitor gestures cannot change text or placement');
+    await page.keyboard.press('Control+z');assert.ok(await page.getByRole('button',{name:'テキスト ロック',exact:true}).isVisible(),'blocked gestures add no history after locking');
+    checks.push('locked text remains selectable while native dragging, resizing, inline edits and font controls are protected without extra history');
     assert.equal(await page.getByLabel('文字に影を付ける',{exact:true}).isChecked(),false);assert.equal(await page.getByLabel('文字に縁取りを付ける',{exact:true}).isChecked(),true);checks.push('new minimal text defaults to an outline without a shadow');await page.getByLabel('文字に影を付ける',{exact:true}).uncheck();const thin=await pixels(await writeCanvas('text-500.png'));await page.getByLabel('文字の太さ',{exact:true}).selectOption('900');
     await page.waitForFunction(()=>document.querySelector('#title-weight').value==='900'&&!document.querySelector('#title-weight').disabled);
     const thick=await pixels(await writeCanvas('text-900.png'));const ink=p=>{let n=0;for(let i=0;i<p.length;i+=3)if(p[i]>150&&p[i+1]>150&&p[i+2]>150)n++;return n;};assert.ok(ink(thick)>ink(thin)*1.15);checks.push('font weight changes the actual rendered Japanese glyphs');

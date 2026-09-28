@@ -8,6 +8,7 @@ import { linkedIds, clipsLocked } from '../../shared/clip-links.mjs';
 import { patchVisualClip, visualClipAt, visualFields, hasVisualKeys } from '../../shared/visual-keyframes.mjs';
 import { localVisualTime } from '../visual-editing';
 import { resolveVisualChannel, visualChannels } from '../visual-channels';
+import { handlePropertyHistory } from '../property-history';
 import ScrubbableNumberInput from './ScrubbableNumberInput';
 import PropertyNumberField from './PropertyNumberField';
 
@@ -65,8 +66,8 @@ export function NumericField({ clip, property, label, min, max, step = 1, factor
     } else s.updateClip(clip.id, patch);
   };
   return <PropertyNumberField inputId={`prop-${property}`} label={label} suffix={suffix} lineActive={lineActive} onFocus={()=>{useEditor.getState().stop();if(visualFields(clip).some(field=>field===property))useEditor.setState({visualChannel:property});}}
-    input={<ScrubbableNumberInput id={`prop-${property}`} value={value} min={min} max={max} step={step} onCommit={apply} onScrubStart={beginDrag} onScrubChange={apply} onScrubEnd={()=>{finishDrag();const current=useEditor.getState().project.clips.find(c=>c.id===clip.id);return current?displayValue(current):value;}} onScrubCancel={()=>finishDrag(true)}/>}
-    slider={slider ? <input className="property-slider" type="range" aria-label={`${label}スライダー`} min={min} max={max} step={step} value={value} style={{ '--fill': `${(value - min) / (max - min) * 100}%` } as React.CSSProperties} onPointerDown={e=>{if(e.button===0)beginDrag();}} onPointerUp={()=>finishDrag()} onPointerCancel={()=>finishDrag(true)} onLostPointerCapture={()=>finishDrag(true)} onChange={e=>apply(Number(e.target.value))}/> : null}/>;
+    input={<ScrubbableNumberInput projectHistory id={`prop-${property}`} value={value} min={min} max={max} step={step} onCommit={apply} onScrubStart={beginDrag} onScrubChange={apply} onScrubEnd={()=>{finishDrag();const current=useEditor.getState().project.clips.find(c=>c.id===clip.id);return current?displayValue(current):value;}} onScrubCancel={()=>finishDrag(true)}/>}
+    slider={slider ? <input className="property-slider" type="range" onKeyDown={handlePropertyHistory} aria-label={`${label}スライダー`} min={min} max={max} step={step} value={value} style={{ '--fill': `${(value - min) / (max - min) * 100}%` } as React.CSSProperties} onPointerDown={e=>{if(e.button===0)beginDrag();}} onPointerUp={()=>finishDrag()} onPointerCancel={()=>finishDrag(true)} onLostPointerCapture={()=>finishDrag(true)} onChange={e=>apply(Number(e.target.value))}/> : null}/>;
 }
 export function EffectField({ clip, label, value, min, max, step = 1, suffix = '', slider=true, channel, patch }: { clip: Clip; label: string; value: number; min: number; max: number; step?: number; suffix?: string; slider?:boolean; channel:string; patch: (clip: Clip, value: number) => Partial<Clip> }) {
   const lineActive = useLineActive(clip, channel);
@@ -93,6 +94,6 @@ export function EffectField({ clip, label, value, min, max, step = 1, suffix = '
     else state.updateClip(current.id,values);
   };
   return <PropertyNumberField inputId={inputId} label={label} suffix={suffix} lineActive={lineActive} onFocus={()=>{useEditor.getState().stop();useEditor.setState({visualChannel:channel});}}
-    input={<ScrubbableNumberInput id={inputId} value={value} min={min} max={max} step={step} onCommit={apply} onScrubStart={begin} onScrubChange={apply} onScrubEnd={()=>{finish();return value;}} onScrubCancel={()=>finish(true)}/>}
-    slider={slider?<input className="property-slider" type="range" aria-label={`${label}スライダー`} min={min} max={max} step={step} value={value} style={{'--fill':`${max>min?(value-min)/(max-min)*100:100}%`} as React.CSSProperties} onPointerDown={e=>{if(e.button===0)begin();}} onPointerUp={()=>finish()} onPointerCancel={()=>finish(true)} onLostPointerCapture={()=>finish(true)} onChange={e=>apply(Number(e.target.value))}/>:null}/>;
+    input={<ScrubbableNumberInput projectHistory id={inputId} value={value} min={min} max={max} step={step} onCommit={apply} onScrubStart={begin} onScrubChange={apply} onScrubEnd={()=>{finish();return value;}} onScrubCancel={()=>finish(true)}/>}
+    slider={slider?<input className="property-slider" type="range" onKeyDown={handlePropertyHistory} aria-label={`${label}スライダー`} min={min} max={max} step={step} value={value} style={{'--fill':`${max>min?(value-min)/(max-min)*100:100}%`} as React.CSSProperties} onPointerDown={e=>{if(e.button===0)begin();}} onPointerUp={()=>finish()} onPointerCancel={()=>finish(true)} onLostPointerCapture={()=>finish(true)} onChange={e=>apply(Number(e.target.value))}/>:null}/>;
 }

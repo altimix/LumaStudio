@@ -55,7 +55,7 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
     const raw = project.clips.find(item => item.id === renderedClip.id),at=raw?localVisualTime(raw,initial.playhead,project.fps):0,clip=raw&&visualClipAt(raw,at);
     const measured = sizes[renderedClip.id];
     if (!clip || !measured || initial.playing || initial.gestureActive) return;
-    initial.select([clip.id]);
+    initial.selectFromMonitor(clip.id);
     if (initial.project.tracks.find(t => t.id === clip.trackId)?.locked) return;
     initial.stop();
     const owner = {}, target = event.currentTarget, pointer = event.pointerId, viewport = root.current!;
@@ -235,7 +235,7 @@ export default function MediaDragLayer({ sizes, actions, onSampleChroma }: { siz
       <button className={'media-drag-target' + (chosen ? ' selected' : '')} data-media-clip-id={clip.id} aria-label={'素材「' + clip.name + '」を移動'} aria-pressed={chosen} aria-disabled={locked} tabIndex={chosen ? 0 : -1}
         title={locked ? 'トラックがロックされています' : shortcutLabel('ドラッグして移動 · 端・中央線に触れると吸着 · Altで吸着解除 · 四隅でサイズ変更')}
         style={{ left: bounds.x / project.width * 100 + '%', top: bounds.y / project.height * 100 + '%', width: bounds.width / project.width * 100 + '%', height: bounds.height / project.height * 100 + '%', transform: `translate(-50%,-50%) rotate(${clip.rotation}deg)`, zIndex: z }}
-        onPointerDown={e => start(e, clip, size)} onClick={() => useEditor.getState().select([clip.id])}/>
+        onPointerDown={e => start(e, clip, size)} onClick={() => useEditor.getState().selectFromMonitor(clip.id)}/>
       {chosen && !locked && corners.map(corner => { const point = mediaCorner(clip, size, project, corner); return <button key={corner.name} className="media-resize-handle" data-media-clip-id={clip.id} data-media-corner={corner.name}
         aria-label={'素材「' + clip.name + '」の' + corner.name + 'でサイズを変更'} title="縦横比を保って拡大縮小"
         style={{ left: `clamp(6px,${point.x / project.width * 100}%,calc(100% - 6px))`, top: `clamp(6px,${point.y / project.height * 100}%,calc(100% - 6px))`, cursor: corner.cursor, zIndex: 900000 + z }} onPointerDown={e => start(e, clip, size, corner)}/>; })}
