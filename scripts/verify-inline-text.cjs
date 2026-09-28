@@ -18,6 +18,19 @@ async function verify(){
     await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},file);
     const blank={version:1,id:'inline',name:'文字を直接編集',width:1280,height:720,fps:30,assets:[],markers:[],tracks:[{id:'titles',name:'文字用',kind:'video',muted:false,hidden:false,locked:false,solo:false}],clips:[]};
     await open(blank);await page.getByRole('tab',{name:'テキスト',exact:true}).click();await page.getByRole('button',{name:/ミニマル/}).click();await number('長さ',2);const original=await save();
+    for(const kind of ['video','audio'])for(const prefix of [1,2]){
+      const tracks=[...Array.from({length:prefix},(_,i)=>({id:`empty-${i}`,name:`空のVideo${i+1}`,kind:'video'})),{...original.tracks[0],kind}];
+      await open({...original,name:`選択色 ${kind} ${prefix}`,tracks});
+      await page.locator('[data-track-id="empty-0"]').click({position:{x:5,y:15}});
+      assert.equal(await page.locator('.track-lane[data-active-track=true]').count(),0);
+      await page.locator('.title-drag-target').click();
+      const colors=await page.evaluate(()=>({
+        lane:getComputedStyle(document.querySelector('[data-track-id="titles"]')).backgroundColor,
+        label:getComputedStyle(document.querySelector('[data-track-label="titles"]')).backgroundColor,
+      }));
+      assert.deepEqual(colors,{lane:'rgb(41, 50, 36)',label:'rgb(48, 59, 42)'},`${kind} selection visibly overrides ${prefix===1?'even':'odd'} row colors`);
+    }
+    checks.push('monitor selection visibly highlights odd/even Video and legacy Audio lanes and labels');
     const manyTracks={...original,name:'画面外の文字トラック',tracks:[...Array.from({length:16},(_,i)=>({id:`empty-${i}`,name:`空のVideo${i+1}`,kind:'video'})),...original.tracks]};
     await open(manyTracks);await page.locator('.title-drag-target').click();
     assert.equal(await input.count(),0,'single click only selects');

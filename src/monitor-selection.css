@@ -1,3 +1,3 @@
-.track-label[data-active-track=true]{background:#303b2a;box-shadow:inset 3px 0 #b9d993}
-.track-lane[data-active-track=true]{background-color:#293224}
+.timeline-container .track-label[data-active-track=true]{background:#303b2a;box-shadow:inset 3px 0 #b9d993}
+.timeline-container .timeline-tracks .track-lane[data-active-track=true]{background-color:#293224}
 .title-drag-target[data-locked=true]{cursor:default}
