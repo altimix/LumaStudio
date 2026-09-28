@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="luma-version" content="1.10.6">
-  <meta name="description" content="Luma Studio 1.10.6 の日本語操作ガイド。文字揃え、影・縁取り、クロップ、マスク、範囲指定モザイク、ガウスぼかし、クロマキー、全35コマンドのショートカット、字幕、BGM、YouTube制作、MP4とMP3の書き出しを説明します。">
-  <title>Luma Studio 1.10.6 — 操作ガイド・全ショートカット一覧</title>
+  <meta name="luma-version" content="1.10.7">
+  <meta name="description" content="Luma Studio 1.10.7 の日本語操作ガイド。カットのガイドとスナップ、音声専用トラック、モニターでの選択と文字編集、数値ドラッグ、文字揃え、全35コマンドのショートカット、字幕、YouTube制作、MP4とMP3の書き出しを説明します。">
+  <title>Luma Studio 1.10.7 — 操作ガイド・全ショートカット一覧</title>
   <style>
     :root{color-scheme:light;--ink:#182b35;--muted:#526570;--paper:#f5f7f5;--line:#d7e1dc;--accent:#235942;--soft:#e8f1e9}
     *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.85 "Yu Gothic UI","Meiryo",sans-serif}
@@ -29,10 +29,10 @@
 <body>
 <a class="skip" href="#main">本文へ移動</a>
 <header id="top"><div class="inner">
-  <div class="brand">LUMA STUDIO <span class="version">v1.10.6 / Windows・Mac</span></div>
+  <div class="brand">LUMA STUDIO <span class="version">v1.10.7 / Windows・Mac</span></div>
   <h1>編集を、迷わず進める。<br>操作ガイドと全ショートカット</h1>
   <p>素材の読み込みから字幕・BGM・YouTube用の投稿素材、MP4の書き出しまで。現在の実装に沿った日本語ガイドです。</p>
-  <p class="small">対応バージョン：1.10.6 · 更新日：2026年9月28日 · このHTMLはオフラインで閲覧できます。</p>
+  <p class="small">対応バージョン：1.10.7 · 更新日：2026年9月28日 · このHTMLはオフラインで閲覧できます。</p>
   <p class="small">Mac開発版ではCtrlをCommand（⌘）、Deleteをdeleteと読み替えてください。Windowsから移した素材は再リンクが必要です。</p>
   <div class="hero-actions"><a href="#commands">全コマンド・キー一覧へ</a><a class="secondary" href="#start">最初の動画を作る</a><button type="button" id="print" data-enhanced hidden>印刷 / PDFに保存</button></div>
 </div></header>
@@ -42,22 +42,17 @@
     <section id="new">
       <h2>最新版の主な機能</h2>
       <div class="cards">
-        <article class="card"><span class="tag">文字揃え</span><h3>左・中央・右・均等割付に揃える</h3><p>4つのボタンで文字揃えを切り替えます。文字枠がある場合は枠の内側、ない場合は最長行の幅が基準です。均等割付は最終行も含みます。</p></article>
-        <article class="card"><span class="tag">影・縁取り</span><h3>よく使う装飾をすぐに調整する</h3><p>影と縁取りのオン／オフ、色を常に表示します。縁取りの幅、影のぼかし・距離も同じ場所で調整できます。</p></article>
-        <article class="card"><span class="tag">コンパクトなプロパティ</span><h3>文章と装飾を先頭にまとめる</h3><p>文章、フォント、文字揃え、装飾を先に表示。説明文を省き、フォント検索と文字枠の設定は必要なときに開けます。</p></article>
-        <article class="card"><span class="tag">MP3書き出し</span><h3>タイムラインの音声だけを保存する</h3><p>動画内の音声、音声トラック、BGMを混ぜてMP3に保存できます。音声だけのプロジェクトにも対応します。</p></article>
-        <article class="card"><span class="tag">モザイク</span><h3>範囲と粒の大きさを指定する</h3><p>動画・画像の一部を、境界のはっきりした四角い粒で隠します。範囲と粗さはモニターや数値で指定できます。</p></article>
-        <article class="card"><span class="tag">ガウスぼかし</span><h3>範囲と強さを指定する</h3><p>動画・画像の選んだ範囲を滑らかにぼかします。モニターで範囲を移動・拡縮し、数値でも調整できます。</p></article>
-        <article class="card"><span class="tag">YouTube投稿文</span><h3>生成モデルを選ぶ</h3><p>投稿文にはGPT-6 AstraかGPT-6 Solを選べます。選択はアプリに保持され、文字起こしや画像生成のモデルは変わりません。</p></article>
-        <article class="card"><span class="tag">クロップ・マスク</span><h3>必要な形に、非破壊で切り抜く</h3><p>動画・画像の上下左右をクロップ。長方形、楕円、ベジェペンのマスクをモニター上で作成し、反転と境界ぼかしも調整できます。</p></article>
-        <article class="card"><span class="tag">クロマキー</span><h3>背景色をスポイトで選ぶ</h3><p>モニターの背景をクリックして採色。色の許容範囲、境界のなめらかさ、緑・青の色かぶり除去を調整できます。</p></article>
+        <article class="card"><span class="tag">カットとスナップ</span><h3>切る場所をガイド線で確認する</h3><p>ハサミの切断位置を縦線で表示します。スナップONなら、ハサミと再生ヘッドが近くの素材の切れ目へ吸着します。</p></article>
+        <article class="card"><span class="tag">コンパクトなトラック</span><h3>操作を1列にまとめる</h3><p>高さの初期値は最小48px。VideoとAudioをアイコンで区別し、新しくAudioへ置ける素材を音声に限定します。既存プロジェクトの配置は保持します。</p></article>
+        <article class="card"><span class="tag">モニターと数値編集</span><h3>画面で選び、その場で調整する</h3><p>クリックで素材とトラックを選択し、文字はダブルクリックで編集できます。数値欄はフォーカスしたまま左右ドラッグやUndo / Redoを使えます。</p></article>
+        <article class="card"><span class="tag">YouTube制作スタジオ</span><h3>映像を大きく確認する</h3><p>ウィンドウの縦幅を広げました。「モニターを拡大」で字幕一覧を隠し、「字幕一覧を表示」で戻せます。再生位置・選択・原稿は保持します。</p></article>
       </div>
-      <p class="small">モザイク、ガウスぼかし、クロップ、マスク、クロマキーは元の素材を変更せず、保存・Undo / Redo・トラックロック・MP4書き出しに対応します。会話音声の自動調整、BGM、音量ポイント、テキストの直接編集も引き続き利用できます。</p>
+      <p class="small">文字揃え、影・縁取り、MP3音声書き出し、範囲指定のモザイクやガウスぼかしも引き続き利用できます。各機能の条件と操作は、このガイドの該当項目を参照してください。</p>
     </section>
     <section id="start">
       <h2>起動と編集の流れ</h2>
       <p>1.0.0以降のWindows・Mac配布版は、素材・クリップ・マーカーが空の新規プロジェクトで起動します。初期設定は1920×1080・30fpsです。BGMライブラリにはbgm001.mp3〜bgm005.mp3の5曲を同梱し、必要な曲を選んで追加できます。「読み込み」から動画・画像・音声を追加してください。旧版の初期素材や外部「初期プロジェクト」は自動配置しません。保存済みプロジェクトは「開く」、自動保存は「復元する」で再開できます。</p>
-      <p>Windowsでは <code>Luma-Studio-1.10.6-Windows.exe</code> を起動します。Macでは配布ZIPを解凍し、<code>Luma Studio.app</code>を「アプリケーション」へ移動して起動します。Macの初回起動で開発元の確認が表示される場合は、別添のMac用手順を参照してください。Node.jsやFFmpegの別途インストールは不要です。MP4出力はCPUに加え、MacのVideoToolbox、WindowsのNVENC・Quick Sync・AMFに対応します。実際に使える方式はGPU・ドライバー・環境により異なります。</p>
+      <p>Windowsでは <code>Luma-Studio-1.10.7-Windows.exe</code> を起動します。Macでは配布ZIPを解凍し、<code>Luma Studio.app</code>を「アプリケーション」へ移動して起動します。Macの初回起動で開発元の確認が表示される場合は、別添のMac用手順を参照してください。Node.jsやFFmpegの別途インストールは不要です。MP4出力はCPUに加え、MacのVideoToolbox、WindowsのNVENC・Quick Sync・AMFに対応します。実際に使える方式はGPU・ドライバー・環境により異なります。</p>
       <ol>
         <li><strong>画面の向きを選ぶ：</strong>「ファイル → 新規プロジェクト」で横動画 <strong>1920×1080</strong> または Shorts <strong>1080×1920</strong> を選びます。初期値は30fps。後から「シーケンス」で変更できます。</li>
         <li><strong>素材を入れる：</strong>「読み込み」または <kbd>Ctrl</kbd> + <kbd>I</kbd>。動画・画像・音声のファイルをウィンドウへドラッグしても読み込めます。</li>
@@ -104,6 +99,7 @@
     </section>
     <section id="monitor">
       <h2>映像・画像をモニターで配置する</h2>
+      <p>停止中のプログラムモニターで映像・画像・文字・図形をクリックすると、対応するクリップとトラックを選択表示します。画面外にあるトラックもタイムラインの表示範囲へ移ります。選択だけでは再生位置や編集履歴は変わりません。ロック中の文字・図形も選択できますが、配置や文字は変更できません。</p>
       <h3>現在のコマを写真として保存する</h3>
       <p>保存したいコマへ移動し、モニター下のカメラボタン「現在のコマを保存」を押します。PNGまたはJPEGを選び、「保存先を選んで保存」でフォルダと名前を指定してください。テロップ・図形を含む編集画面を保存し、選択枠やガイドは含めません。</p>
       <p>「プロジェクトの素材にも追加」は最初からチェック済みです。写真だけ保存したい場合は外してください。追加した写真は素材一覧からタイムラインへ配置できます。写真の保存先と素材の読み込み先は別々に記憶し、次回起動後も前回のフォルダから選べます。</p>
@@ -116,7 +112,7 @@
       <p><kbd>Alt</kbd> を押している間は吸着を解除して微調整できます。一度吸着すると内外8pxまでの手ぶれを保持し、それ以上離すと解除します。細かい余白へ配置する場合はAltを押してください。テキスト・図形にも同じ操作が使えます。リサイズや数値入力には吸着しません。</p>
       <p>位置とスケールは右側のプロパティと連動し、保存・MP4出力にも反映します。<strong>位置X・Yは画面左上を基準にした素材の中心座標（px）</strong>です。1920×1080の画面中央はX=960、Y=540。拡大率は10〜300%。大きく拡大した場合もハンドルをモニター内の端に表示します。回転・不透明度・色調整はプロパティで設定します。</p>
       <p>数値の入力や図形の追加前設定を始めると再生が止まり、その時刻で調整できます。プロパティのタブは左右矢印キー、Home、Endでも切り替えられます。</p>
-      <p>数値欄の下のスライダーは通常折りたたまれています。数値欄横の矢印を押すと個別に開閉できます。折りたたんだままでも、数値の入力と左右ドラッグで調整できます。</p>
+      <p>数値欄の下のスライダーは通常折りたたまれています。数値欄横の矢印を押すと個別に開閉できます。折りたたんだままでも、数値の入力と左右ドラッグで調整できます。数値欄にフォーカスがあってもドラッグでき、1回のドラッグを1回のUndoで戻せます。数値欄・スライダーにフォーカスしたまま <kbd>Ctrl</kbd> + <kbd>Z</kbd> で元に戻し、<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> または <kbd>Ctrl</kbd> + <kbd>Y</kbd> でやり直せます。MacではCommandも使えます。</p>
       <p>画像を動画に重ねるには、画像を上側の映像トラックへ置きます。停止中のメインモニターで直接操作できます。再生中やロック中、非表示・オフラインの素材は直接編集できません。</p>
       <h3>クロップとマスクで切り抜く</h3>
       <p>動画または画像を選び、右の「ビデオ → クロップ」で「モニターでクロップ」を押します。モニターに表示される4辺をドラッグするか、上・右・下・左を数値で指定します。元素材は変更せず、少なくとも1%の表示範囲を残します。</p>
@@ -141,7 +137,7 @@
     <section id="text">
       <h2>テキスト・図形・効果音</h2>
       <h3>文字を直接編集する</h3>
-      <p>左の「テキスト」に並ぶ見本をクリックすると、タイトル、ミニマル、字幕を再生ヘッドの位置へ追加できます。停止中のモニターで文字を<strong>ダブルクリック</strong>、または文字の移動ボタンにフォーカスして <kbd>F2</kbd> を押すと、その場で編集できます。<kbd>Enter</kbd> は改行、<kbd>Ctrl</kbd> + <kbd>Enter</kbd> で確定、<kbd>Esc</kbd> で取り消しです。入力欄に重なる操作ガイドは表示しません。開いた直後から入力でき、入力欄の外をクリックすると確定します。</p>
+      <p>左の「テキスト」に並ぶ見本をクリックすると、タイトル、ミニマル、字幕を再生ヘッドの位置へ追加できます。停止中のモニターでは、文字を1回クリックすると素材とトラックを選択します。文字を<strong>ダブルクリック</strong>、または文字の移動ボタンにフォーカスして <kbd>F2</kbd> を押すと、その場で編集できます。<kbd>Enter</kbd> は改行、<kbd>Ctrl</kbd> + <kbd>Enter</kbd> で確定、<kbd>Esc</kbd> で取り消しです。入力欄に重なる操作ガイドは表示しません。開いた直後から入力でき、入力欄の外をクリックすると確定します。</p>
       <p>文字をドラッグして移動し、選択枠の四隅・辺でテキストボックスの幅・高さを変えられます。<strong>枠の変更は文字サイズの変更とは別</strong>で、幅に合わせて折り返します。文字が隠れるときはプロパティの「枠の高さを文字に合わせる」を使います。</p>
       <p>初期フォントは同梱の<strong>Noto Sans Japanese</strong>。登録済みのGoogle Fonts日本語書体を選択でき、同梱以外は初回に取得して保存します。フォント、太さ、文字サイズ、色、左・中央・右揃え・均等割付を変更できます。影と縁取りはテキスト欄から直接オン／オフ、色、ぼかし・距離・幅を調整できます。</p>
       <div class="note"><strong>新規テキストの共通初期値：</strong>影なし、縁取りあり・<strong>4px</strong>、縁取り色 <strong>R0・G100・B255（#0064FF）</strong>。ミニマルの中心は横型で960・540、縦型で540・960です。既存テキストの設定は維持します。</div>
@@ -200,6 +196,7 @@
     <section id="youtube">
       <h2>自動字幕・YouTubeの投稿素材を作る</h2>
       <p>上部の「YouTube」から制作スタジオを開きます。AI機能の実行にはOpenAI APIキーが必要で、音声や入力内容を外部へ送信し、API利用料が発生します。</p>
+      <p>制作スタジオは画面の高さを広く使います。日本語字幕の「モニターを拡大」を押すと字幕一覧を隠して映像を大きく表示し、「字幕一覧を表示」で元に戻せます。再生位置、字幕の選択、確定済みの原稿、一覧のスクロール位置を保持します。反復再生中も切り替えられます。</p>
       <ol>
         <li><strong>API設定：</strong>キーを入力、または「.envから読み込む」で <code>OPENAI_API_KEY</code> のあるファイルを選びます。Windowsユーザー用に暗号化して保存し、プロジェクトには含めません。</li>
         <li><strong>日本語で文字起こし：</strong>編集済みタイムラインの音声を使います。固有名詞・専門用語をヒントに入力できます。会話が埋もれる場合はBGMをミュートして実行します。</li>
@@ -238,10 +235,10 @@
       <p>進捗表示、中止、保存先を開く操作に対応します。新しい出力が完成するまで既存の出力は置き換えません。元の素材と同じ場所・ファイル名への書き出しはできません。</p>
       <p>キーフレームで動くマスクは、同じ内容を再び書き出すと準備済みのマスクを再利用します。マスクや素材、書き出しサイズ、FPSを変えた場合は作り直します。不要になった準備データは「ヘルプ → 書き出し用マスクキャッシュを削除」から消せます。素材と完成したMP4は削除されません。</p>
     </section>
-    <section id="updates"><h2>ヘルプとアップデート</h2><p>ヘルプメニューから「初めての動画編集」「ショートカットキー一覧」「アップデート」を開けます。ショートカット一覧にはWindows / Macと修飾キーを切り替えられるキーボード図があります。</p><p>起動時にGitHubの最新安定版を確認し、対応する新しい配布版があると「更新あり」を表示します。「アップデート」から再確認とダウンロードページの表示ができます。自動でアプリを置き換える機能ではありません。編集を保存し、書き出しを終えてアプリを終了してから入れ替えてください。1.0.0からの初回更新は公式サイトから1.10.6を取得してください。</p></section><section id="commands">
+    <section id="updates"><h2>ヘルプとアップデート</h2><p>ヘルプメニューから「初めての動画編集」「ショートカットキー一覧」「アップデート」を開けます。ショートカット一覧にはWindows / Macと修飾キーを切り替えられるキーボード図があります。</p><p>起動時にGitHubの最新安定版を確認し、対応する新しい配布版があると「更新あり」を表示します。「アップデート」から再確認とダウンロードページの表示ができます。自動でアプリを置き換える機能ではありません。編集を保存し、書き出しを終えてアプリを終了してから入れ替えてください。1.0.0からの初回更新は公式サイトから1.10.7を取得してください。</p></section><section id="commands">
       <h2>全コマンド・ショートカット一覧</h2>
       <p><strong>通常のキー割り当ては全35コマンド。</strong>別キーも併記しています。続けて、特定の場所で使うキー、マウス操作、キー未割り当てのコマンドと操作場所を掲載しています。</p>
-      <div class="note"><p><strong>キーが効く場所に注意：</strong>入力欄・日本語変換中・ダイアログやメニューの表示中は、通常の編集ショートカットを実行しません。音量ポイントなどにフォーカスがあると、その場所の操作が優先されます。Windows用のCtrl表記です。</p><p>コマ送り・ズームは押し続けて連続操作できます。削除・分割・J/Lの加速は押し直して操作します。<kbd>?</kbd> でアプリ内のショートカット検索を開けます。</p></div>
+      <div class="note"><p><strong>キーが効く場所に注意：</strong>文章の入力欄・日本語変換中・ダイアログやメニューの表示中は、通常の編集ショートカットを実行しません。数値欄・スライダーでは、フォーカス中もUndo / Redoを利用できます。音量ポイントなどにフォーカスがあると、その場所の操作が優先されます。Windows用のCtrl表記です。</p><p>コマ送り・ズームは押し続けて連続操作できます。削除・分割・J/Lの加速は押し直して操作します。<kbd>?</kbd> でアプリ内のショートカット検索を開けます。</p></div>
       <div class="search-panel" data-enhanced hidden>
         <div class="search-fields"><label for="command-search">コマンド・キー・操作場所で検索<input id="command-search" type="search" placeholder="例：Ctrl / 音量 / リップル / F2" autocomplete="off" aria-controls="command-tables"></label><label for="command-type">表示する種類<select id="command-type" aria-controls="command-tables"><option value="all">すべて</option><option value="global">通常のショートカット</option><option value="context">場面別のキー操作</option><option value="mouse">マウス操作</option><option value="menu">キー未割り当て</option></select></label></div>
         <div class="search-status"><span id="command-count" role="status" aria-live="polite"></span><button id="clear-search" type="button">絞り込みを解除</button></div>
@@ -425,7 +422,7 @@
       <h2>対応範囲・開発用の確認</h2>
       <p>Windows用の日本語マルチトラック動画編集アプリです。編集と動画書き出しはローカルで処理し、AI機能の実行時はOpenAI APIへ送信します。追加フォントの初回取得にもインターネットを使います。</p>
       <p>Premiere Proのプロジェクト読込、After Effects連携、外部プラグイン、マルチカム、ベジェ補間のグラフエディター、モーショントラッキング、人物の自動リフレーム、HDRの色管理は未実装です。音量ラインと、位置・回転・不透明度・見た目を変える共通キーフレームは実装済みです。</p>
-      <p>このガイドはv1.10.6の実装を基準としています。長時間4K・大量素材の耐久性能は未確認です。動画素材の長さ制限を外したことは、メモリやディスク使用量が無制限という意味ではありません。</p>
+      <p>このガイドはv1.10.7の実装を基準としています。長時間4K・大量素材の耐久性能は未確認です。動画素材の長さ制限を外したことは、メモリやディスク使用量が無制限という意味ではありません。</p>
       <h3>ソースから起動する</h3>
       <p>Node.js 22.12以上を使い、リポジトリで次を実行します。</p>
       <pre><code>npm ci
@@ -437,7 +434,7 @@ npm start</code></pre>
       <p>開発用は <code>npm run dev</code>。ブラウザーの画面確認は <code>npm run dev:web</code> です。ネイティブのMP4出力などはWindows・Macアプリで利用します。</p>
       <p>ガイドのコマンドとキー割り当ては <code>npm run verify:readme</code> で実装と照合できます。通常の検証は <code>npm test</code>、<code>npm run build</code>。操作仕様とレビュー記録は <a href="https://github.com/altimix/LumaStudio">GitHubリポジトリ</a>で管理します。</p>
     </section>
-    <footer><p>Luma Studio v1.10.6 · README.html · 2026年9月28日更新<br>外部フォント・画像・CDNを使わない単体HTMLです。検索はこのページ内で行います。印刷では絞り込みにかかわらず全一覧を出力します。</p><a href="#top">ページの先頭へ戻る</a></footer>
+    <footer><p>Luma Studio v1.10.7 · README.html · 2026年9月28日更新<br>外部フォント・画像・CDNを使わない単体HTMLです。検索はこのページ内で行います。印刷では絞り込みにかかわらず全一覧を出力します。</p><a href="#top">ページの先頭へ戻る</a></footer>
   <p>トラック名の横のごみ箱からトラックを削除できます。素材がある場合は確認を表示します。元ファイルと別トラックの素材は残り、Ctrl+Zで戻せます。最後の1本とロック中のトラックは削除できません。</p><p>素材・図形・字幕の追加や移動で同じトラック内に重なる場合は、新しいトラックへ時間位置を保って自動配置します。ドラッグではマウスを離した時に整理します。Ctrl+Zで自動追加トラックも一緒に戻せます（最大24本）。</p></main>
 </div>
 <script>
