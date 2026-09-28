@@ -2,12 +2,13 @@ const assert=require('node:assert/strict');
 
 module.exports=async function checkClipEdges(page,save,zoom,checks){
   const original=await save();
+  let expanded=false;
   const cursorAt=point=>page.evaluate(({x,y})=>getComputedStyle(document.elementFromPoint(x,y)).cursor,point);
   const clip=kind=>page.locator(`.timeline-clip.${kind}`);
   const pointAt=async(kind,edge)=>{
     await clip(kind).scrollIntoViewIfNeeded();
     const r=await clip(kind).boundingBox();
-    return {x:edge==='left'?r.x+4:r.x+r.width-4,y:r.y+r.height*.4};
+    return {x:edge==='left'?r.x+4:r.x+r.width-4,y:r.y+(expanded?r.height*.4:3)};
   };
   const drag=async(point,delta,expected,cancel=false)=>{
     await page.mouse.move(point.x,point.y);await page.mouse.down();
@@ -18,19 +19,31 @@ module.exports=async function checkClipEdges(page,save,zoom,checks){
   };
   await clip('video').focus();await page.keyboard.press('v');
   assert.equal(await clip('video').evaluate(el=>getComputedStyle(el).cursor),'default');
-  for(const kind of ['video','audio'])for(const edge of ['left','right']){
-    const point=await pointAt(kind,edge);
-    assert.equal(await page.evaluate(({x,y})=>document.elementFromPoint(x,y)?.classList.contains('trim-handle'),point),true,`${kind} ${edge} edge below the title band is reachable`);
-    assert.match(await cursorAt(point),/url\(.+ew-resize/);
-    await drag(point,edge==='left'?.5:-.5,'trim');
-    const changed=(await save()).clips.find(c=>c.kind===kind),before=original.clips.find(c=>c.kind===kind);
-    assert.equal(changed.duration,3.5);assert.equal(changed.speed,1);assert.equal(changed.start,edge==='left'?2.5:2);assert.equal(changed.in,edge==='left'?1.5:1);
-    await page.keyboard.press('Control+z');assert.deepEqual((await save()).clips,original.clips);
-    await page.keyboard.press('Control+Shift+z');assert.deepEqual((await save()).clips.find(c=>c.id===before.id),changed);
-    await page.keyboard.press('Control+z');await save();
+  for(const tall of [false,true]){
+    expanded=tall;
+    if(tall){
+      const height=page.getByRole('button',{name:'トラックの高さ（末尾の丸）',exact:true});
+      for(let step=0;step<8;step++)await height.press('ArrowUp');
+    }
+    const rowHeight=await page.locator('.track-lane').first().evaluate(el=>el.getBoundingClientRect().height);
+    assert.ok(tall?rowHeight>95:rowHeight===48,'cover both minimum and expanded row heights');
+    for(const kind of ['video','audio'])for(const edge of ['left','right']){
+      const point=await pointAt(kind,edge);
+      assert.equal(await page.evaluate(({x,y})=>document.elementFromPoint(x,y)?.classList.contains('trim-handle'),point),true,`${kind} ${edge} trim is reachable in ${expanded?'expanded':'compact'} rows`);
+      assert.match(await cursorAt(point),/url\(.+ew-resize/);
+      await drag(point,edge==='left'?.5:-.5,'trim');
+      const changed=(await save()).clips.find(c=>c.kind===kind),before=original.clips.find(c=>c.kind===kind);
+      assert.equal(changed.duration,3.5);assert.equal(changed.speed,1);assert.equal(changed.start,edge==='left'?2.5:2);assert.equal(changed.in,edge==='left'?1.5:1);
+      await page.keyboard.press('Control+z');assert.deepEqual((await save()).clips,original.clips);
+      await page.keyboard.press('Control+Shift+z');assert.deepEqual((await save()).clips.find(c=>c.id===before.id),changed);
+      await page.keyboard.press('Control+z');await save();
+    }
   }
+  const thumb=page.locator('.timeline-navigation.vertical .timeline-navigation-thumb'),bounds=await thumb.boundingBox();
+  await thumb.dblclick({position:{x:bounds.width/2,y:bounds.height/2}});expanded=false;
+  assert.equal(await page.locator('.track-lane').first().evaluate(el=>el.getBoundingClientRect().height),48);
   await drag(await pointAt('audio','right'),-.5,'trim',true);assert.deepEqual((await save()).clips,original.clips);
-  checks.push('clip edges: video/audio left/right trim below the title band, cursors, Undo/Redo and Esc');
+  checks.push('clip edges: video/audio left/right trim in minimum and expanded rows, full-height edges, cursors, Undo/Redo and Esc');
   await clip('video').scrollIntoViewIfNeeded();const body=await clip('video').boundingBox(),bodyPoint={x:body.x+body.width/2,y:body.y+10};
   await drag(bodyPoint,.5,'move',true);assert.deepEqual((await save()).clips,original.clips);
   await page.keyboard.down('Alt');await drag(bodyPoint,.5,'copy',true);await page.keyboard.up('Alt');assert.deepEqual((await save()).clips,original.clips);

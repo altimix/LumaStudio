@@ -33,13 +33,17 @@ const root=path.join(__dirname,'..');
   await page.getByRole('button',{name:'Audio1 ロック',exact:true}).click();await drag('video','a');
   assert.equal(await page.locator('.timeline-clip[data-clip-id="video"]').evaluate(e=>e.parentElement.dataset.trackId),'v');
   await page.getByRole('button',{name:'Audio1 ロック解除',exact:true}).click();
-  await drag('video','a');await page.waitForFunction(()=>document.querySelectorAll('.track-lane').length===3);
-  await expectNames(['Video1','Audio1','Audio2']);
-  await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.track-lane').length===2);await expectNames(['Video1','Audio1']);
+  // New placements reject video on Audio without changing the project or adding tracks.
+  await drag('video','a');assert.equal(await page.locator('.track-lane').count(),2);
+  assert.equal(await page.locator('.timeline-clip[data-clip-id="video"]').evaluate(e=>e.parentElement.dataset.trackId),'v');
+  await drag('audio','v');await page.waitForFunction(()=>document.querySelectorAll('.track-lane').length===3);
+  await expectNames(['Video2','Video1','Audio1']);
+  await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.track-lane').length===2);
   await page.keyboard.press('Control+Shift+z');await page.waitForFunction(()=>document.querySelectorAll('.track-lane').length===3);
-  await drag('audio','v');await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
-  const saved=JSON.parse(await fs.readFile(file,'utf8')),visual=saved.clips.find(c=>c.id==='video'),sound=saved.clips.find(c=>c.id==='audio');
-  assert.equal(saved.tracks.find(t=>t.id===visual.trackId).kind,'audio');assert.equal(sound.trackId,'v');assert.equal(visual.start,0);assert.equal(sound.start,0);
+  await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));
+  const moved=JSON.parse(await fs.readFile(file,'utf8'));assert.equal(moved.tracks.find(t=>t.id===moved.clips.find(c=>c.id==='audio').trackId).kind,'video');
+  // Older saved projects may already contain visuals on Audio. Preserve their rendering and visibility controls.
+  const saved={...project,clips:project.clips.map(c=>({...c,trackId:c.kind==='video'?'a':'v'}))};
   await fs.writeFile(file,JSON.stringify({...saved,name:'上下の再読込'}));await open('上下の再読込');await page.keyboard.press('Home');
   await page.waitForFunction(()=>{const c=document.querySelector('.canvas-wrap canvas');return Number(c.dataset.previewTime)===0&&c.getContext('2d').getImageData(2,2,1,1).data[2]>180;});
   await page.keyboard.press('Space');await page.waitForFunction(()=>[...document.querySelectorAll('.meter-channel')].some(e=>Number(e.dataset.db)>-40),{},{timeout:30000});

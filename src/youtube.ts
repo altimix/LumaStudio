@@ -17,10 +17,12 @@ export function applySubtitles(p: Project): Project {
   if (prior.some(c => p.tracks.find(t => t.id === c.trackId)?.locked)) throw new Error('字幕トラックのロックを解除してください。');
   const remaining = p.clips.filter(c => !c.subtitle);
   if (remaining.length + y.cues.length > 2000) throw new Error('字幕を含めて2000クリップを超えます。シーケンスを分けてください。');
-  const priorTracks = new Set(prior.map(c => c.trackId));
-  let track = p.tracks.find(t => t.id === prior[0]?.trackId && !t.locked)
+  const priorTracks = new Set(prior.filter(c => p.tracks.some(t => t.id === c.trackId && t.kind === 'video')).map(c => c.trackId));
+  let track = p.tracks.find(t => t.id === prior[0]?.trackId && t.kind === 'video' && !t.locked)
     || p.tracks.find(t => priorTracks.has(t.id) && !t.locked)
-    || p.tracks.find(t => t.kind === 'video' && t.name === '日本語字幕' && !t.locked);
+    || p.tracks.find(t => t.kind === 'video' && t.name === '日本語字幕' && !t.locked)
+    || (p.tracks.length >= 24 ? p.tracks.find(t => t.kind === 'video' && !t.locked && !t.hidden && !remaining.some(c => c.trackId === t.id)) : undefined);
+  const reusableTracks = [...priorTracks, ...p.tracks.filter(t => t.kind === 'video' && !t.locked && !t.hidden && !remaining.some(c => c.trackId === t.id)).map(t => t.id)];
   const added = !track;
   if (!track) { if (p.tracks.length >= 24) throw new Error('字幕用のトラックを追加するには、不要なトラックを減らしてください。'); track = makeTrack('video'); }
   const limit = endTime(p);
@@ -31,7 +33,7 @@ export function applySubtitles(p: Project): Project {
     return { ...makeClip(track.id, start), name: c.text.replace(/\n/g, ' ').slice(0, 60), subtitle: true, duration: end - start, ...captionStyle(p,c.text), textStyle: 'subtitle' as const };
   });
   if (prior.length === clips.length && clips.every((c,i) => c.start === prior[i].start && c.duration === prior[i].duration)) {
-    clips = clips.map((c,i) => ({ ...c, trackId: prior[i].trackId }));
+    clips = clips.map((c,i) => ({ ...c, trackId: priorTracks.has(prior[i].trackId) ? prior[i].trackId : track.id }));
   }
-  return separateOverlappingClips({ ...p, tracks: added ? [track, ...p.tracks] : p.tracks, clips: [...remaining, ...clips] }, clips.map(c => c.id), undefined, [...priorTracks]);
+  return separateOverlappingClips({ ...p, tracks: added ? [track, ...p.tracks] : p.tracks, clips: [...remaining, ...clips] }, clips.map(c => c.id), undefined, reusableTracks);
 }

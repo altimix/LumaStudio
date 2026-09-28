@@ -101,8 +101,8 @@ export function applySequenceSettings(p: Project, settings: Pick<Project, 'name'
   const reposition=(settings.width!==p.width||settings.height!==p.height)&&clips.some(c=>c.captionAutoPosition&&!p.tracks.find(t=>t.id===c.trackId)?.locked);
   return { ...next, clips: reposition ? clips.map(c=>c.captionAutoPosition&&!p.tracks.find(t=>t.id===c.trackId)?.locked?positionAutomaticCaption(next,c):c) : clips };
 }
-export function splitClip(c: Clip, at: number, fps: number): [Clip, Clip] | null {
-  const left = roundFrame(at - c.start, fps); const right = c.duration - left;
+export function splitClip(c: Clip, at: number, fps: number, preserveTime = false): [Clip, Clip] | null {
+  const left = preserveTime ? at - c.start : roundFrame(at - c.start, fps); const right = c.duration - left;
   if (left < 1 / fps - 0.000001 || right < 1 / fps - 0.000001) return null;
   return [
     { ...c, duration: left, fadeIn: Math.min(c.fadeIn, left), fadeOut: 0, ...(c.opacityKeyframes ? { opacityKeyframes: windowOpacity(c.opacityKeyframes, 0, left) } : {}), ...(c.volumeKeyframes ? { volumeKeyframes: windowVolume(c.volumeKeyframes, 0, left) } : {}), ...(c.visualKeyframes ? { visualKeyframes: windowVisualKeys(c, 0, left) } : {}) },
