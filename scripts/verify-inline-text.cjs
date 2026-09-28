@@ -7,7 +7,7 @@ async function verify(){
   const profile=await fs.mkdtemp(path.join(root,'.local','inline-profile-')),env={...process.env,LUMA_TEST_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;
   const executablePath=process.env.LUMA_VERIFY_EXE,app=await electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000});
   const page=await app.firstWindow(),errors=[],checks=[],file=path.join(results,'直接編集.luma');page.on('pageerror',e=>errors.push(e.message));
-  const save=async()=>{await page.keyboard.press('Control+s');await page.waitForFunction(()=>!document.querySelector('.unsaved-dot'));return JSON.parse(await fs.readFile(file,'utf8'));};
+  const save=()=>require('./verify-save-project.cjs')(page,file);
   const open=async p=>{await fs.writeFile(file,JSON.stringify(p));await page.keyboard.press('Control+o');await page.getByRole('button',{name:p.name,exact:true}).waitFor();await page.keyboard.press('Home');};
   const number=async(label,value)=>{const field=page.getByRole('spinbutton',{name:label,exact:true});await field.fill(String(value));await field.press('Enter');};
   const input=page.getByRole('textbox',{name:'プレビューでテキストを編集',exact:true});
@@ -51,8 +51,18 @@ async function verify(){
     await page.locator('.title-drag-target').focus();await page.keyboard.press('F2');await input.waitFor();await input.dispatchEvent('compositionstart');await input.press('Escape');assert.ok(await input.isVisible());await input.dispatchEvent('compositionend');await input.press('Control+Enter');checks.push('F2 is accessible and Japanese IME Escape does not discard text during composition');
     await begin();await input.fill('外側クリックで確定');await page.locator('.panel-heading').first().click();await input.waitFor({state:'hidden'});assert.equal((await save()).clips[0].text,'外側クリックで確定');await page.keyboard.press('Control+z');assert.equal((await save()).clips[0].text,saved.clips[0].text);checks.push('unobstructed focused input commits on outside click and supports Undo');
     const beforeBox=await save(),wrap=await page.locator('.canvas-wrap').boundingBox();
+    // Disk replacement precedes asynchronous recovery cleanup. Delay that
+    // cleanup so the next Undo/save cannot accidentally race the previous save.
+    await app.evaluate(({ipcMain})=>{
+      const original=ipcMain._invokeHandlers.get('clear-recovery');globalThis.__inlineSaveCleanup=0;
+      globalThis.__restoreInlineSaveCleanup=()=>{ipcMain.removeHandler('clear-recovery');ipcMain.handle('clear-recovery',original);};
+      ipcMain.removeHandler('clear-recovery');ipcMain.handle('clear-recovery',async(...args)=>{
+        await new Promise(resolve=>setTimeout(resolve,750));const result=await original(...args);globalThis.__inlineSaveCleanup++;return result;
+      });
+    });
     await drag('テキスト枠の右を変更',-wrap.width*.15,0);saved=await save();assert.ok(saved.clips[0].textBox);assert.equal(saved.clips[0].fontSize,beforeBox.clips[0].fontSize);assert.ok(saved.clips[0].x<beforeBox.clips[0].x);
     await page.keyboard.press('Control+z');assert.equal((await save()).clips[0].textBox,undefined);await page.keyboard.press('Control+Shift+z');assert.deepEqual((await save()).clips[0].textBox,saved.clips[0].textBox);checks.push('resizing keeps font size, moves the dragged edge and is one Undo/Redo');
+    assert.equal(await app.evaluate(()=>globalThis.__inlineSaveCleanup),3,'resize, Undo and Redo each finish recovery cleanup before reading saved data');await app.evaluate(()=>globalThis.__restoreInlineSaveCleanup());
     const beforeCancel=await save();await drag('テキスト枠の下を変更',0,35,true);assert.deepEqual((await save()).clips,beforeCancel.clips);checks.push('Escape during resizing restores dimensions and position');
     await number('テキスト枠の幅',700);await number('テキスト枠の高さ',40);await page.locator('.text-box-controls .text-box-overflow').waitFor();await page.getByRole('button',{name:'枠の高さを文字に合わせる',exact:true}).click();await page.locator('.text-box-controls .text-box-overflow').waitFor({state:'hidden'});saved=await save();assert.equal(saved.clips[0].textBox.width,700);assert.ok(saved.clips[0].textBox.height>40);checks.push('numeric frame width reflows text and fit-height resolves overflow without shrinking the font');
     await open({...saved,name:'直接編集の再読込'});await page.locator('.timeline-clip.title').click();assert.equal(await page.getByRole('spinbutton',{name:'テキスト枠の幅',exact:true}).inputValue(),'700');
