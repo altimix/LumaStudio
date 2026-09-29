@@ -80,24 +80,30 @@ export function audioEnvelopes(p){
       if(range.end-range.start>epsilon){const list=map.get(clip.id)||[];list.push({...range,curve:t.audio,direction});map.set(clip.id,list);}
     }
   }
-  // A hard edit between unrelated samples clicks even with exact scheduling.
-  // Use a tiny edge ramp only at discontinuous adjacent cuts. A simple split
-  // of continuous source audio stays sample-identical, without a volume dip.
+  // A sudden step to/from silence clicks just like an unrelated hard cut.
+  // Soften exposed edges as well as cuts. A split of continuous source audio
+  // keeps its interior samples, and authored fades/transitions own their edge.
   for(const track of p.tracks){
     const lane=p.clips.filter(c=>c.trackId===track.id&&hasClipAudio(c,assets.get(c.assetId))).sort((a,b)=>a.start-b.start);
+    const continuousEdges=new Set();
     for(let i=1;i<lane.length;i++){
       const from=lane[i-1],to=lane[i];
       if(Math.abs(from.start+from.duration-to.start)>epsilon||plans.some(t=>t.audio&&t.fromId===from.id&&t.toId===to.id))continue;
       const fromGain=from.audioMuted||from.fadeOut?0:from.volume*volumeAt(from.volumeKeyframes,from.duration);
       const toGain=to.audioMuted||to.fadeIn?0:to.volume*volumeAt(to.volumeKeyframes,0);
       const continuous=from.assetId===to.assetId&&Math.abs(from.in+from.duration*from.speed-to.in)<epsilon&&from.speed===to.speed&&Math.abs(fromGain-toGain)<epsilon&&from.audioTreatment===to.audioTreatment;
-      if(continuous)continue;
-      for(const [clip,direction]of [[from,'out'],[to,'in']]){
-        // A cross-track transition owns only its participating edge. Do not
-        // truncate its handles, but still soften the unrelated hard-cut side.
-        if(plans.some(t=>t.audio&&(direction==='out'?t.fromId===clip.id:t.toId===clip.id)))continue;
-        const duration=Math.min(.003,clip.duration/2),edge=to.start;
-        const list=map.get(clip.id)||[];
+      if(continuous){continuousEdges.add(`${from.id}:out`);continuousEdges.add(`${to.id}:in`);}
+    }
+    for(const clip of lane){
+      const window=mediaWindow(clip,assets.get(clip.assetId),plans,'audio');
+      if(window.duration<=epsilon)continue;
+      for(const direction of ['in','out']){
+        const edge=direction==='in'?window.start:window.end;
+        const nominalEdge=direction==='in'?clip.start:clip.start+clip.duration;
+        if((Math.abs(edge-nominalEdge)<epsilon&&continuousEdges.has(`${clip.id}:${direction}`))||plans.some(t=>t.audio&&(direction==='out'?t.fromId===clip.id:t.toId===clip.id)))continue;
+        const authoredFade=direction==='in'?clip.fadeIn>0&&edge===clip.start:clip.fadeOut>0&&edge===clip.start+clip.duration;
+        if(authoredFade)continue;
+        const duration=Math.min(.003,window.duration/2),list=map.get(clip.id)||[];
         list.push({start:direction==='out'?edge-duration:edge,end:direction==='out'?edge:edge+duration,curve:'constantGain',direction});map.set(clip.id,list);
       }
     }
@@ -111,9 +117,10 @@ export function mediaWindow(c,asset,plans,kind){
     if(t.fromId===c.id)end=Math.max(end,t.end);
   }
   const sourceLimited=asset&&asset.kind!=='image';
-  if(kind==='audio'&&sourceLimited){start=Math.max(start,c.start-c.in/c.speed);end=Math.min(end,c.start+(asset.duration-c.in)/c.speed);}
+  const sourceLimit=kind==='audio'?(asset?.audioDuration??asset?.duration):asset?.duration;
+  if(kind==='audio'&&sourceLimited){start=Math.max(start,c.start-c.in/c.speed);end=Math.max(start,Math.min(end,c.start+(sourceLimit-c.in)/c.speed));}
   const rawIn=c.in+(start-c.start)*c.speed,rawEnd=c.in+(end-c.start)*c.speed;
-  const sourceIn=sourceLimited?Math.max(0,rawIn):0,sourceEnd=sourceLimited?Math.min(asset.duration,rawEnd):(end-start)*c.speed;
+  const sourceIn=sourceLimited?Math.max(0,rawIn):0,sourceEnd=sourceLimited?Math.min(sourceLimit,rawEnd):(end-start)*c.speed;
   return {start,end,duration:end-start,sourceIn,sourceDuration:Math.max(0,sourceEnd-sourceIn),padBefore:sourceLimited?Math.max(0,-rawIn)/c.speed:0,padAfter:sourceLimited?Math.max(0,rawEnd-asset.duration)/c.speed:0};
 }
 export function visualSourceTime(c,asset,time){return Math.max(0,Math.min(Math.max(0,asset.duration-1/(asset.fps||120)),c.in+(time-c.start)*c.speed));}

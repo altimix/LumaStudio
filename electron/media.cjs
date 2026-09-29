@@ -57,7 +57,7 @@ async function inspectMedia(file, cacheDir, { signal, onStage = () => {}, previe
       try { await run(ffmpeg, args, { signal }); signal?.throwIfAborted(); await fs.rename(temp, playbackPath); } finally { await fs.rm(temp, { force: true }).catch(() => {}); }
     }
   }
-  let thumbnailPath; let waveform = [];
+  let thumbnailPath, audioDuration; let waveform = [];
   if (kind !== 'audio' && !skipCache) {
     thumbnailPath = path.join(cacheDir, `${id}.jpg`);
     try { if (!(await fs.stat(thumbnailPath)).size) throw new Error('Empty thumbnail'); } catch {
@@ -82,10 +82,13 @@ async function inspectMedia(file, cacheDir, { signal, onStage = () => {}, previe
   if (sound && !skipCache) {
     onStage('音声波形を作成しています');
     const meta = await ensureWaveform(file, cacheDir, id, duration, sound.channels, signal);
+    // MP3 container duration includes encoder delay/padding. Keep the original
+    // media/edit duration, but stop audio at the real decoded sample boundary.
+    audioDuration = Math.min(duration, meta.frames / 48000);
     waveform = await overview(cacheDir, id, meta, duration);
   }
   signal?.throwIfAborted();
   const fpsParts = String(video?.avg_frame_rate || '0/1').split('/').map(Number);
-  return { id, name: path.basename(file), path: file, playbackPath, thumbnailPath, kind, duration, width: video?.width || 0, height: video?.height || 0, fps: fpsParts[1] ? fpsParts[0] / fpsParts[1] : 0, hasAudio: !!sound, waveform, size: stat.size, codec: video?.codec_name || sound?.codec_name, proxy: useProxy, ...(kind === 'video' && previewProxy ? { previewProxy: true } : {}) };
+  return { id, name: path.basename(file), path: file, playbackPath, thumbnailPath, kind, duration, ...(audioDuration === undefined ? {} : { audioDuration }), width: video?.width || 0, height: video?.height || 0, fps: fpsParts[1] ? fpsParts[0] / fpsParts[1] : 0, hasAudio: !!sound, waveform, size: stat.size, codec: video?.codec_name || sound?.codec_name, proxy: useProxy, ...(kind === 'video' && previewProxy ? { previewProxy: true } : {}) };
 }
 module.exports = { ffmpeg, ffprobe, run, probe, inspectMedia, assertMediaRevision };

@@ -9,6 +9,18 @@ function fixture() {
   return { version: 1, id: 'p', name: 'Saved project', width: 1280, height: 720, fps: 30, assets: [asset], tracks: [{ id: 'track', kind: 'video' }], markers: [], clips: [{ id: 'clip', assetId: 'saved', trackId: 'track', name: 'clip', kind: 'video', start: 0, in: 2, duration: 3, speed: 2, scale: 1, x: 0, y: 0, rotation: 0, opacity: 1, volume: 1, exposure: 0, contrast: 1, saturation: 1, fadeIn: 0, fadeOut: 0 }] };
 }
 
+test('decoded audio length refreshes legacy projects without moving or shortening their edits', async () => {
+  const p = fixture();
+  const result = await hydrateProject(p, async () => ({ ...p.assets[0], audioDuration: 7.95 }), a => a);
+  assert.equal(result.assets[0].audioDuration, 7.95);
+  assert.equal(result.assets[0].duration, p.assets[0].duration);
+  assert.deepEqual(result.clips, p.clips);
+  assert.equal(result.assets[0].offline, undefined);
+  for (const value of [-1, NaN, Infinity, 8.01, '7.95', null]) {
+    assert.throws(() => validateProject({ ...p, assets: [{ ...p.assets[0], audioDuration: value }] }), /音声の実サンプル/);
+  }
+});
+
 for (const [label, patch] of [['different kind', { kind: 'audio' }], ['shorter source', { duration: 4 }], ['invalid refreshed metadata', { waveform: null }]]) {
   test(`opening a ${label} replacement preserves a valid, relinkable offline edit`, async () => {
     const p = fixture(); let registered = false;
