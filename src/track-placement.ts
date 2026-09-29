@@ -46,8 +46,8 @@ export function separateOverlappingClips(project: Project, ids: string[], newId 
         if(partition.some(c=>!trackAcceptsClip(source,c.kind)))throw Error(AUDIO_TRACK_MESSAGE);
         if (tracks.length >= 24) throw Error('重ならないように配置するには新しいトラックが必要です。トラックは最大24本のため、不要なトラックを削除するか空き区間へ配置してください。');
         track = { ...source, id: newId(), name: '', autoName: true };
-        // Video overlays appear above their original lane. Keep audio next to its source too.
-        tracks.splice(tracks.findIndex(t => t.id === trackId), 0, track);
+        // Keep existing lanes in place; new video/audio grows outward.
+        if (track.kind === 'video') tracks.unshift(track); else tracks.push(track);
       }
       for (const clip of partition) placements.set(clip.id, track.id);
     }

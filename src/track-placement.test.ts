@@ -76,6 +76,25 @@ it('pastes linked audio and video at the original times on distinct fresh lanes'
   const next=useEditor.getState().project,copies=next.clips.slice(2);expect(next.tracks).toHaveLength(6);expect(copies.every(c=>c.start===2.017)).toBe(true);
   expect(copies[0].linkId).toBe(copies[1].linkId);expect(copies[0].linkId).not.toBe('pair');
   copies.forEach((c,i)=>expect(c.trackId).not.toBe(p.clips[i].trackId));expect(next.clips.slice(0,2)).toEqual(p.clips);
+  expect(copies[0].trackId).toBe(next.tracks[0].id);expect(copies[1].trackId).toBe(next.tracks.at(-1)!.id);
+  expect(next.tracks.slice(1,-1)).toEqual(p.tracks);
+  s.undo();expect(useEditor.getState().project).toEqual(p);s.redo();expect(useEditor.getState().project).toEqual(next);
+});
+
+it('adds an overlapping imported video above all existing lanes and its audio below them',()=>{
+  const p=emptyProject(),s=useEditor.getState();
+  const asset={id:'outer-source',name:'映像',path:'video.mp4',url:'',thumbnail:'',kind:'video' as const,duration:3,width:320,height:180,fps:30,hasAudio:true,waveform:[],size:1,codec:'h264'};
+  p.assets=[asset];
+  p.tracks[0]={...p.tracks[0],name:'最上段の字幕',autoName:false};
+  p.clips=p.tracks.map((track,i)=>({...makeClip(track.id,0,asset),id:`existing-${i}`,kind:track.kind,audioMuted:true}));
+  s.load(p);s.addAsset(asset.id,0,p.tracks[1].id);
+  const next=useEditor.getState().project,added=next.clips.slice(p.clips.length);
+  expect(next.tracks.slice(1,-1)).toEqual(p.tracks);expect(next.clips.slice(0,p.clips.length)).toEqual(p.clips);
+  expect(next.tracks[0].name).toBe('Video3');expect(next.tracks.at(-1)!.name).toBe('Audio3');
+  expect(added.find(c=>c.kind==='video')!.trackId).toBe(next.tracks[0].id);
+  expect(added.find(c=>c.kind==='audio')!.trackId).toBe(next.tracks.at(-1)!.id);
+  expect(added[0].linkId).toBe(added[1].linkId);
+  s.undo();expect(useEditor.getState().project).toEqual(p);s.redo();expect(useEditor.getState().project).toEqual(next);
 });
 it('rejects an overlapping addition at track capacity without changing project/history/selection',()=>{
   const p=emptyProject(),s=useEditor.getState();while(p.tracks.length<24)p.tracks.push(makeTrack('video','追加'));

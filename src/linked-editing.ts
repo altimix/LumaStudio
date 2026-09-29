@@ -20,7 +20,7 @@ export function separateAudio(p: Project, ids: string[], link = true, reuseAvail
     if (!track) {
       if (tracks.length >= 24) throw Error('音声用トラックを追加する空きがありません（最大24本）。');
       track = { ...makeTrack('audio'), audioSourceTrackId: sourceTrack.id, muted: sourceTrack.muted, solo: sourceTrack.solo };
-      const firstAudio = tracks.findIndex(t => t.kind === 'audio'); tracks.splice(firstAudio < 0 ? tracks.length : firstAudio, 0, track);
+      tracks.push(track);
     }
     const id = uid(), linkId = link ? uid() : undefined;
     reserved.push({ trackId: track.id, start: c.start, duration: c.duration });
