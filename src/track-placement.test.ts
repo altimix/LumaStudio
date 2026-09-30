@@ -81,6 +81,22 @@ it('pastes linked audio and video at the original times on distinct fresh lanes'
   s.undo();expect(useEditor.getState().project).toEqual(p);s.redo();expect(useEditor.getState().project).toEqual(next);
 });
 
+it('preserves the source layer order when pasting several tracks regardless of clip creation order',()=>{
+  for(const reversed of [false,true]){
+    const p=emptyProject(),s=useEditor.getState();p.tracks=numberTracks(p).tracks;
+    const top={...makeClip(p.tracks[0].id,0),id:'top',name:'前景',text:'前景'};
+    const bottom={...makeClip(p.tracks[1].id,0),id:'bottom',name:'背景',text:'背景'};
+    p.clips=reversed?[bottom,top]:[top,bottom];
+    s.load(p);s.select(['top','bottom']);s.copy();s.seek(0);s.paste();
+    const next=useEditor.getState().project,copies=next.clips.slice(2);
+    expect(copies.find(c=>c.name===top.name)!.trackId).toBe(next.tracks[0].id);
+    expect(copies.find(c=>c.name===bottom.name)!.trackId).toBe(next.tracks[1].id);
+    expect(next.tracks.slice(2)).toEqual(p.tracks);expect(next.clips.slice(0,2)).toEqual(p.clips);
+    expect(copies.every(c=>c.start===0)).toBe(true);
+    s.undo();expect(useEditor.getState().project).toEqual(p);s.redo();expect(useEditor.getState().project).toEqual(next);
+  }
+});
+
 it('adds an overlapping imported video above all existing lanes and its audio below them',()=>{
   const p=emptyProject(),s=useEditor.getState();
   const asset={id:'outer-source',name:'映像',path:'video.mp4',url:'',thumbnail:'',kind:'video' as const,duration:3,width:320,height:180,fps:30,hasAudio:true,waveform:[],size:1,codec:'h264'};

@@ -31,7 +31,7 @@ export function separateOverlappingClips(project: Project, ids: string[], newId 
   for (const clip of project.clips) if (selected.has(clip.id)) {
     const group = groups.get(clip.trackId) || []; group.push(clip); groups.set(clip.trackId, group);
   }
-  const tracks = [...project.tracks], placements = new Map<string, string>();
+  const tracks = [...project.tracks], placements = new Map<string, string>(), additions = new Map<string, number>();
   const reusable = new Set(reusableTrackIds);
   for (const [trackId, group] of groups) {
     const source = tracks.find(t => t.id === trackId);
@@ -46,11 +46,14 @@ export function separateOverlappingClips(project: Project, ids: string[], newId 
         if(partition.some(c=>!trackAcceptsClip(source,c.kind)))throw Error(AUDIO_TRACK_MESSAGE);
         if (tracks.length >= 24) throw Error('重ならないように配置するには新しいトラックが必要です。トラックは最大24本のため、不要なトラックを削除するか空き区間へ配置してください。');
         track = { ...source, id: newId(), name: '', autoName: true };
-        // Keep existing lanes in place; new video/audio grows outward.
-        if (track.kind === 'video') tracks.unshift(track); else tracks.push(track);
+        // Count new lanes immediately; order the batch by its source layers below.
+        additions.set(track.id, project.tracks.findIndex(t => t.id === trackId));
+        tracks.push(track);
       }
       for (const clip of partition) placements.set(clip.id, track.id);
     }
   }
-  return numberTracks(placements.size ? { ...project, tracks, clips: project.clips.map(c => placements.has(c.id) ? { ...c, trackId: placements.get(c.id)! } : c) } : project);
+  const added = tracks.filter(t => additions.has(t.id)).sort((a, b) => additions.get(a.id)! - additions.get(b.id)!);
+  const orderedTracks = [...added.filter(t => t.kind === 'video'), ...project.tracks, ...added.filter(t => t.kind === 'audio')];
+  return numberTracks(placements.size ? { ...project, tracks: orderedTracks, clips: project.clips.map(c => placements.has(c.id) ? { ...c, trackId: placements.get(c.id)! } : c) } : project);
 }
