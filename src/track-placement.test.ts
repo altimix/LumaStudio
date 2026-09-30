@@ -97,6 +97,31 @@ it('preserves the source layer order when pasting several tracks regardless of c
   }
 });
 
+it('keeps copied foreground above copied background when only one source lane collides',()=>{
+  for(const blocked of ['top','bottom']){
+    const p=emptyProject(),s=useEditor.getState();p.tracks=numberTracks(p).tracks;
+    const top={...makeClip(p.tracks[0].id,0),id:'top',name:'前景'};
+    const bottom={...makeClip(p.tracks[1].id,0),id:'bottom',name:'背景'};
+    p.clips=[bottom,top,{...(blocked==='top'?top:bottom),id:'blocker',start:10,name:'既存'}];
+    s.load(p);s.select(['top','bottom']);s.copy();s.seek(10);s.paste();
+    const next=useEditor.getState().project,copies=next.clips.slice(3);
+    const layer=(name:string)=>next.tracks.findIndex(t=>t.id===copies.find(c=>c.name===name)!.trackId);
+    expect(layer(top.name)).toBeLessThan(layer(bottom.name));
+    const added=blocked==='bottom'?2:1;
+    expect(next.tracks.slice(added)).toEqual(p.tracks);expect(next.clips.slice(0,3)).toEqual(p.clips);
+    expect(copies.every(c=>c.start===10)).toBe(true);
+    s.undo();expect(useEditor.getState().project).toEqual(p);s.redo();expect(useEditor.getState().project).toEqual(next);
+  }
+});
+
+it('rejects a batch atomically if preserving its layer order would exceed the track limit',()=>{
+  const p=emptyProject(),s=useEditor.getState();while(p.tracks.length<23)p.tracks.push(makeTrack('video','追加'));
+  const top={...makeClip(p.tracks[0].id,0),id:'top'},bottom={...makeClip(p.tracks[1].id,0),id:'bottom'};
+  p.clips=[top,bottom,{...bottom,id:'blocker',start:10}];p.tracks=numberTracks(p).tracks;
+  s.load(p);s.select(['top','bottom']);s.copy();s.seek(10);const before=useEditor.getState();s.paste();
+  expect(useEditor.getState().project).toBe(p);expect(useEditor.getState().history).toEqual(before.history);expect(useEditor.getState().selected).toEqual(before.selected);
+});
+
 it('adds an overlapping imported video above all existing lanes and its audio below them',()=>{
   const p=emptyProject(),s=useEditor.getState();
   const asset={id:'outer-source',name:'映像',path:'video.mp4',url:'',thumbnail:'',kind:'video' as const,duration:3,width:320,height:180,fps:30,hasAudio:true,waveform:[],size:1,codec:'h264'};

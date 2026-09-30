@@ -1,7 +1,7 @@
 import { trackAcceptsClip, AUDIO_TRACK_MESSAGE } from './track-compatibility';
 import { numberTracks } from './track-names';
 import { uid, makeTrack } from './model';
-import type { Clip, Project } from './types';
+import type { Clip, Project, Track } from './types';
 
 import { extraTrackPartitions, overlaps, TRACK_SPACE_MESSAGE } from './track-layout';
 
@@ -33,6 +33,11 @@ export function separateOverlappingClips(project: Project, ids: string[], newId 
   }
   const tracks = [...project.tracks], placements = new Map<string, string>(), additions = new Map<string, number>();
   const reusable = new Set(reusableTrackIds);
+  const addLane = (source: Track, order: number) => {
+    if (tracks.length >= 24) throw Error(TRACK_SPACE_MESSAGE);
+    const track = { ...source, id: newId(), name: '', autoName: true };
+    additions.set(track.id, order); tracks.push(track); return track;
+  };
   for (const [trackId, group] of groups) {
     const source = tracks.find(t => t.id === trackId);
     if (!source || source.locked) throw Error('配置先トラックのロックを解除してください。');
@@ -44,13 +49,22 @@ export function separateOverlappingClips(project: Project, ids: string[], newId 
       if (track) reusable.delete(track.id);
       else {
         if(partition.some(c=>!trackAcceptsClip(source,c.kind)))throw Error(AUDIO_TRACK_MESSAGE);
-        if (tracks.length >= 24) throw Error('重ならないように配置するには新しいトラックが必要です。トラックは最大24本のため、不要なトラックを削除するか空き区間へ配置してください。');
-        track = { ...source, id: newId(), name: '', autoName: true };
-        // Count new lanes immediately; order the batch by its source layers below.
-        additions.set(track.id, project.tracks.findIndex(t => t.id === trackId));
-        tracks.push(track);
+        track = addLane(source, project.tracks.findIndex(t => t.id === trackId));
       }
       for (const clip of partition) placements.set(clip.id, track.id);
+    }
+  }
+  // A background promoted to the outside must remain below the batch's
+  // foreground, including copies whose original lanes happened to be free.
+  const deepestVideo = Math.max(-1, ...tracks.filter(t => t.kind === 'video' && additions.has(t.id)).map(t => additions.get(t.id)!));
+  for (const [trackId, group] of groups) {
+    const order = project.tracks.findIndex(t => t.id === trackId), source = project.tracks[order];
+    if (source.kind !== 'video' || order >= deepestVideo) continue;
+    for (const clip of [...group].sort((a,b) => a.start-b.start)) {
+      if (additions.has(placements.get(clip.id) || clip.trackId)) continue;
+      let track = tracks.find(t => additions.get(t.id) === order && !group.some(other => (placements.get(other.id) || other.trackId) === t.id && overlaps(other, clip)));
+      if (!track) track = addLane(source, order);
+      placements.set(clip.id, track.id);
     }
   }
   const added = tracks.filter(t => additions.has(t.id)).sort((a, b) => additions.get(a.id)! - additions.get(b.id)!);
