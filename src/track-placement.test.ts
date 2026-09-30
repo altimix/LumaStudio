@@ -4,31 +4,24 @@ import { emptyProject, makeClip, makeTrack } from './model';
 import { separateOverlappingClips } from './track-placement';
 import { useEditor } from './store';
 
-it('reuses an available audio interval so overlapping AV placement fits the last track, with Undo/Redo',()=>{
+it('adds a dedicated outer AV pair even when existing audio has an available interval, with Undo/Redo',()=>{
   const p=emptyProject(),s=useEditor.getState();
   p.assets=[{id:'source',name:'source',path:'source.mp4',url:'',thumbnail:'',kind:'video',duration:3,width:320,height:180,fps:30,hasAudio:true,waveform:[],size:1,codec:'h264'}];
-  while(p.tracks.length<23)p.tracks.push(makeTrack('video','追加'));
+  while(p.tracks.length<22)p.tracks.push(makeTrack('video','追加'));
   const videoTrack=p.tracks[1].id,audioTrack=p.tracks[2].id;
   p.clips=[{...makeClip(videoTrack,0,p.assets[0]),id:'old',audioMuted:true},{...makeClip(audioTrack,3,p.assets[0]),id:'later',kind:'audio'}];
-  p.tracks=numberTracks(p).tracks;s.load(p);s.addAsset('source',0,videoTrack);
+  p.tracks=numberTracks(p).tracks;s.load(p);s.seek(0);s.addAsset('source');
   const next=useEditor.getState().project;expect(next.tracks).toHaveLength(24);expect(next.clips).toHaveLength(4);
-  const [video,audio]=next.clips.slice(2);expect(video.trackId).not.toBe(videoTrack);expect(audio.trackId).toBe(audioTrack);
+  const [video,audio]=next.clips.slice(2);expect(video.trackId).toBe(next.tracks[0].id);expect(audio.trackId).toBe(next.tracks.at(-1)!.id);
   expect(audio.linkId).toBe(video.linkId);expect(audio.start).toBe(0);expect(video.start).toBe(0);expect(next.clips.slice(0,2)).toEqual(p.clips);
   s.undo();expect(useEditor.getState().project).toEqual(p);s.redo();expect(useEditor.getState().project).toEqual(next);
 });
-
-it('does not reuse locked, differently muted/soloed, or occupied audio intervals at capacity',()=>{
-  for(const blocked of ['locked','muted','solo','occupied'] as const){
-    const p=emptyProject(),s=useEditor.getState();
-    p.assets=[{id:'source',name:'source',path:'source.mp4',url:'',thumbnail:'',kind:'video',duration:3,width:320,height:180,fps:30,hasAudio:true,waveform:[],size:1,codec:'h264'}];
-    while(p.tracks.length<23)p.tracks.push(makeTrack('video','追加'));
-    p.clips=[{...makeClip(p.tracks[1].id,0,p.assets[0]),id:'old',audioMuted:true}];
-    for(const t of p.tracks.filter(t=>t.kind==='audio')){
-      if(blocked==='occupied')p.clips.push({...makeClip(t.id,0,p.assets[0]),id:t.id,kind:'audio'});
-      else t[blocked]=true;
-    }
-    p.tracks=numberTracks(p).tracks;s.load(p);s.addAsset('source',0,p.tracks[1].id);expect(useEditor.getState().project).toBe(p);expect(useEditor.getState().history).toHaveLength(0);
-  }
+it('rejects a new AV pair with only one free track even when existing audio could be reused',()=>{
+  const p=emptyProject(),s=useEditor.getState();
+  p.assets=[{id:'source',name:'source',path:'source.mp4',url:'',thumbnail:'',kind:'video',duration:3,width:320,height:180,fps:30,hasAudio:true,waveform:[],size:1,codec:'h264'}];
+  while(p.tracks.length<23)p.tracks.push(makeTrack('video','追加'));
+  p.tracks=numberTracks(p).tracks;s.load(p);s.seek(0);const before=useEditor.getState();s.addAsset('source');
+  expect(useEditor.getState().project).toBe(p);expect(useEditor.getState().history).toEqual(before.history);expect(useEditor.getState().selected).toEqual(before.selected);expect(useEditor.getState().playhead).toBe(0);
 });
 
 it('separates arrow/box/caption placements without changing time or existing objects',()=>{
@@ -163,7 +156,7 @@ it('adds an overlapping imported video above all existing lanes and its audio be
   p.assets=[asset];
   p.tracks[0]={...p.tracks[0],name:'最上段の字幕',autoName:false};
   p.clips=p.tracks.map((track,i)=>({...makeClip(track.id,0,asset),id:`existing-${i}`,kind:track.kind,audioMuted:true}));
-  s.load(p);s.addAsset(asset.id,0,p.tracks[1].id);
+  s.load(p);s.seek(0);s.addAsset(asset.id);
   const next=useEditor.getState().project,added=next.clips.slice(p.clips.length);
   expect(next.tracks.slice(1,-1)).toEqual(p.tracks);expect(next.clips.slice(0,p.clips.length)).toEqual(p.clips);
   expect(next.tracks[0].name).toBe('Video3');expect(next.tracks.at(-1)!.name).toBe('Audio3');

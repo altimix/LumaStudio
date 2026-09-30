@@ -1,5 +1,5 @@
 import { it,expect } from 'vitest';
-import { emptyProject,makeClip,endTime } from './model';
+import { emptyProject,makeClip,makeTrack,endTime } from './model';
 import { insertBgm } from './bgm';
 import { useEditor } from './store';
 import type { Asset } from './types';
@@ -19,11 +19,11 @@ it('trims long music or inserts the full song, and treats an audio-only/empty se
   expect(insertBgm(p,music,21,true,.2).repeats).toBe(1);
 });
 it('avoids overlaps, locked and muted tracks while preserving track flags',()=>{
-  for(const flag of ['locked','muted','hidden'] as const){const p=sequence();p.tracks[2][flag]=true;const next=insertBgm(p,music,0,true,.2).project;expect(next.tracks).toHaveLength(4);expect(next.tracks[2]).toBe(p.tracks[2]);expect(next.clips[1].trackId).not.toBe(p.tracks[2].id);}
+  for(const flag of ['locked','muted','hidden'] as const){const p=sequence();p.tracks[2][flag]=true;const next=insertBgm(p,music,0,true,.2).project;expect(next.tracks).toHaveLength(5);expect(next.tracks[2]).toBe(p.tracks[2]);expect(next.clips[1].trackId).not.toBe(p.tracks[2].id);}
   const p=sequence();p.assets=[music];p.clips.push(makeClip(p.tracks[2].id,0,music));const next=insertBgm(p,music,1,true,.2).project;expect(next.clips[1]).toBe(p.clips[1]);expect(next.clips[2].trackId).not.toBe(p.tracks[2].id);
 });
-it('reuses a music track when the insertion only touches an existing endpoint',()=>{
-  const p=sequence();p.assets=[music];p.clips.push({...makeClip(p.tracks[2].id,0,music),duration:4});const next=insertBgm(p,music,4,true,.2).project;expect(next.tracks).toBe(p.tracks);expect(next.assets).toBe(p.assets);expect(next.clips[2].trackId).toBe(p.tracks[2].id);
+it('creates a fresh bottom music track even when insertion only touches an existing endpoint',()=>{
+  const p=sequence();p.assets=[music];p.clips.push({...makeClip(p.tracks[2].id,0,music),duration:4});const next=insertBgm(p,music,4,true,.2).project;expect(next.tracks.slice(0,-1)).toEqual(p.tracks);expect(next.assets).toBe(p.assets);expect(next.clips[2].trackId).toBe(next.tracks.at(-1)!.id);
 });
 it('adds the asset, track and repeated clips as one Undo/Redo action',()=>{
   const p=sequence();p.tracks[2].locked=true;p.tracks[3].locked=true;const s=useEditor.getState();s.load(p);s.seek(2);expect(s.addBgm(music,true,.2)).toBe(true);const after=useEditor.getState().project;expect(after.tracks).toHaveLength(5);expect(after.assets).toContain(music);expect(useEditor.getState().history).toHaveLength(1);s.undo();expect(useEditor.getState().project).toBe(p);s.redo();expect(useEditor.getState().project).toBe(after);expect(useEditor.getState().playhead).toBe(2);
@@ -39,5 +39,12 @@ it('rejects offline, invalid, subframe music and excessive repetitions atomicall
   expect(()=>insertBgm(p,music,NaN,true,.2)).toThrow();expect(()=>insertBgm(p,music,0,true,2)).toThrow();
   const s=useEditor.getState();s.load(p);expect(s.addBgm({...music,duration:1/120},true,.2)).toBe(false);expect(useEditor.getState().project).toBe(p);
   const large=sequence();large.clips[0].duration=10000;expect(()=>insertBgm(large,{...music,duration:1},0,true,.2)).toThrow(/2000/);
-  const full=sequence();full.tracks=Array.from({length:24},(_,i)=>({...p.tracks[0],id:'t'+i}));expect(()=>insertBgm(full,music,0,true,.2)).toThrow(/空きトラック/);
+  const full=sequence();full.tracks=Array.from({length:24},(_,i)=>({...p.tracks[0],id:'t'+i}));expect(()=>insertBgm(full,music,0,true,.2)).toThrow(/24本/);
+});
+
+it('places BGM at an exact non-frame playhead and rejects at 24 tracks despite empty reusable audio',()=>{
+  const p=sequence(),next=insertBgm(p,music,2.017,false,.2).project;
+  expect(next.clips[1].start).toBe(2.017);expect(next.clips[1].trackId).toBe(next.tracks.at(-1)!.id);expect(next.tracks.slice(0,-1)).toEqual(p.tracks);
+  while(p.tracks.length<24)p.tracks.push(makeTrack('audio','空き'));
+  const s=useEditor.getState();s.load(p);s.seek(2);const before=useEditor.getState();expect(s.addBgm(music,false,.2)).toBe(false);expect(useEditor.getState().project).toBe(before.project);expect(useEditor.getState().history).toEqual(before.history);
 });

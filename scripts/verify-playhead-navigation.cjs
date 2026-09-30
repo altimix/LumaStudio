@@ -242,7 +242,7 @@ async function verify() {
     await page.keyboard.press('Control+z'); await visible('Undo after a duration edit'); await reopen();
     const asset = demo.assets.find(a => a.kind === 'video');
     await scroll(8000); await page.getByRole('button', { name: `${asset.name} を追加`, exact: true }).click();
-    assert.equal((await visible('media add button')).time, 0);
+    assert.equal((await visible('media add button')).time, 2.4);
     await scroll(8000); await page.getByRole('button', { name: `${asset.name} をプレビュー`, exact: true }).click();
     await page.getByRole('button', { name: 'タイムラインに追加', exact: true }).click(); await visible('source monitor adds media');
     await cueJump(1); await page.keyboard.press('Control+z'); assert.equal((await visible('Undo clamps and reveals playhead')).time, 120);
