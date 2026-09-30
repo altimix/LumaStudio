@@ -3,6 +3,11 @@
    only over their own visible position and generous hit area. */
 .timeline-tracks .timeline-clip .trim-handle{width:min(12px,30%);height:auto;top:0;bottom:0;z-index:5;cursor:var(--cursor-trim)}
 .timeline-tracks .timeline-clip:has(.clip-volume-line) .trim-handle{height:auto;bottom:0}
+/* Keep the full-height hit area, but put the visible grip in the name row.
+   A centered vertical grip can otherwise look like a quiet tail's audio peak. */
+.timeline-tracks .timeline-clip.selected:has(.clip-waveform) .trim-handle:after{top:4px;bottom:auto;height:10px;left:auto;right:auto;width:min(7px,100%);background:transparent;border:2px solid #e6edf5;border-radius:2px}
+.timeline-tracks .timeline-clip.selected:has(.clip-waveform) .trim-handle.left:after{left:0;border-right:0}
+.timeline-tracks .timeline-clip.selected:has(.clip-waveform) .trim-handle.right:after{right:0;border-left:0}
 .timeline-scroll.select .timeline-clip{cursor:default}
 .timeline-scroll.select .trim-handle:hover{background:#d6ebaf70;box-shadow:inset 0 0 0 1px #e0f4bd}
 .timeline-scroll.rate .timeline-clip,.timeline-scroll.rate .trim-handle{cursor:var(--cursor-rate)}
