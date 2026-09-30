@@ -42,6 +42,24 @@ test('overview and detail survive cache reload and corrupt cache regeneration wi
   try { assert.deepEqual(await fresh.read(url, 70, 71, 1000), initial); } finally { fresh.close(); }
   assert.deepEqual(await fs.readFile(asset.path), before);
 });
+test('inconsistent cached frame counts rebuild the waveform instead of muting or truncating audio', async () => {
+  const index = path.join(cache, `${asset.id}.wave-v4.json`);
+  const expected = JSON.parse(await fs.readFile(index, 'utf8'));
+  for (const corruption of ['zero-frames', 'excess-frames', 'wrong-level']) {
+    const broken = structuredClone(expected);
+    if (corruption === 'zero-frames') broken.frames = 0;
+    else if (corruption === 'excess-frames') broken.frames += 48;
+    else {
+      broken.levels[1].count--;
+      await fs.truncate(path.join(cache, `${asset.id}.wave-v4-1.bin`), broken.levels[1].count * 4);
+    }
+    await fs.writeFile(index, JSON.stringify(broken));
+    const restored = await inspectMedia(asset.path, cache);
+    assert.equal(restored.audioDuration, asset.audioDuration, corruption);
+    assert.deepEqual(restored.waveform, asset.waveform, corruption);
+    assert.deepEqual(JSON.parse(await fs.readFile(index, 'utf8')), expected, corruption);
+  }
+});
 test('waveform IPC rejects unknown media and unbounded, invalid, or stale requests', async () => {
   for (const args of [['file:///etc/passwd', 0, 1, 100], [url, -1, 1, 100], [url, 0, Infinity, 100], [url, 0, 73, 100], [url, 1, 1, 100], [url, 0, 1, 9000], [url, 0, 1, 2.5]]) await assert.rejects(reader.read(...args));
   const stale = createWaveformReader(() => cache); stale.register(url, { ...asset, revision: '0'.repeat(24) });

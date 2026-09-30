@@ -128,6 +128,19 @@ it('softens isolated and overlapping clip edges at the actual PCM end without ch
  p.clips=[{...p.clips[0],fadeIn:.2,fadeOut:.3}];expect(audioEnvelopes(p).size).toBe(0);
 });
 
+it('ramps a continuous split that reaches the actual audio endpoint before the container ends',()=>{
+ const p=fixture();p.assets=[{...asset,duration:10,audioDuration:5}];
+ p.clips=p.clips.slice(0,2).map((c,i)=>({...c,start:i*5,in:i*5,duration:5,speed:1}));
+ const env=audioEnvelopes(p);
+ expect(crossfadeGain(env.get('c0'),5-.0015)).toBeCloseTo(.5);
+ expect(crossfadeGain(env.get('c0'),5)).toBe(0);
+ expect(env.has('c1')).toBe(false);expect(audioSlices(p,5,5.1,1)).toHaveLength(0);
+ p.assets[0].audioDuration=5.5;const continuous=audioEnvelopes(p);
+ expect(crossfadeGain(continuous.get('c0'),5)).toBe(1);
+ expect(crossfadeGain(continuous.get('c1'),5)).toBe(1);
+ expect(crossfadeGain(continuous.get('c1'),5.5)).toBe(0);
+});
+
 it('an earlier A-to-B transition does not suppress the later B-to-C hard-cut ramps',()=>{
  const p=fixture();p.clips=p.clips.slice(0,3);
  const n=applyTransition(p,'c0','c1',{duration:1,audio:'constantGain'},'t'),env=audioEnvelopes(n);

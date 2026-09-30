@@ -45,9 +45,13 @@ async function verify() {
     await page.waitForFunction(() => window.edgeCapture?.context.state === 'running');
     await page.keyboard.press('k');
     for (const scenario of [{ name: 'full MP3', in: 0, duration: imported.clips[0].duration, speed: 1 },
+      { name: 'split at PCM endpoint', in: 0, duration: imported.clips[0].duration, speed: 1, splitAtAudioEnd: true },
       { name: 'trimmed MP3 at 2x', in: 7.5, duration: (imported.assets[0].duration - 7.5) / 2, speed: 2 }]) {
       const name = `${project.name} ${scenario.name}`;
-      await fs.writeFile(file, JSON.stringify({ ...imported, name, clips: [{ ...imported.clips[0], start: 0, ...scenario }] }));
+      const { splitAtAudioEnd, ...edit } = scenario, clip = { ...imported.clips[0], start: 0, ...edit };
+      const audioEnd = imported.assets[0].audioDuration;
+      const clips = splitAtAudioEnd ? [{ ...clip, duration: audioEnd }, { ...clip, id: 'padding-only', start: audioEnd, in: audioEnd, duration: clip.duration - audioEnd }] : [clip];
+      await fs.writeFile(file, JSON.stringify({ ...imported, name, clips }));
       await app.evaluate(({ dialog }, target) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] }); }, file);
       await page.keyboard.press('Control+o'); await page.getByRole('button', { name, exact: true }).waitFor();
       await page.getByRole('button', { name: '先頭へ (Home)', exact: true }).click();

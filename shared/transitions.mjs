@@ -91,7 +91,8 @@ export function audioEnvelopes(p){
       if(Math.abs(from.start+from.duration-to.start)>epsilon||plans.some(t=>t.audio&&t.fromId===from.id&&t.toId===to.id))continue;
       const fromGain=from.audioMuted||from.fadeOut?0:from.volume*volumeAt(from.volumeKeyframes,from.duration);
       const toGain=to.audioMuted||to.fadeIn?0:to.volume*volumeAt(to.volumeKeyframes,0);
-      const continuous=from.assetId===to.assetId&&Math.abs(from.in+from.duration*from.speed-to.in)<epsilon&&from.speed===to.speed&&Math.abs(fromGain-toGain)<epsilon&&from.audioTreatment===to.audioTreatment;
+      const fromWindow=mediaWindow(from,assets.get(from.assetId),plans,'audio'),toWindow=mediaWindow(to,assets.get(to.assetId),plans,'audio');
+      const continuous=from.assetId===to.assetId&&Math.abs(from.in+from.duration*from.speed-to.in)<epsilon&&from.speed===to.speed&&Math.abs(fromGain-toGain)<epsilon&&from.audioTreatment===to.audioTreatment&&fromWindow.duration>epsilon&&toWindow.duration>epsilon&&Math.abs(fromWindow.end-toWindow.start)<epsilon;
       if(continuous){continuousEdges.add(`${from.id}:out`);continuousEdges.add(`${to.id}:in`);}
     }
     for(const clip of lane){

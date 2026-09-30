@@ -43,7 +43,7 @@ async function readIndex(directory, id) {
   if (meta.version !== 4 || !Number.isSafeInteger(meta.frames) || meta.frames < 0 || !Number.isFinite(meta.max) || meta.max < 0 || !Number.isInteger(meta.channels) || meta.channels < 1 || meta.channels > 64 || !Array.isArray(meta.levels) || !meta.levels.length || meta.levels.length > 12) throw Error('波形キャッシュが不正です。');
   for (let i = 0; i < meta.levels.length; i++) {
     const level = meta.levels[i];
-    if (level.step !== STEP * FACTOR ** i || !Number.isSafeInteger(level.count) || level.count < 0 || (await fs.stat(levelPath(directory, id, i))).size !== level.count * PEAK_BYTES) throw Error('波形キャッシュが不完全です。');
+    if (level.step !== STEP * FACTOR ** i || !Number.isSafeInteger(level.count) || level.count !== Math.ceil(meta.frames / level.step) || (await fs.stat(levelPath(directory, id, i))).size !== level.count * PEAK_BYTES) throw Error('波形キャッシュが不完全です。');
   }
   return meta;
 }
