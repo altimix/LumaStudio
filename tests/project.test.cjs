@@ -21,6 +21,22 @@ test('decoded audio length refreshes legacy projects without moving or shortenin
   }
 });
 
+test('proxy fallback retains the decoded endpoint only for the unchanged source revision', async () => {
+  const p = fixture();
+  Object.assign(p.assets[0], { previewProxy: true, revision: 'original-revision', audioDuration: 7.95 });
+  for (const revision of ['original-revision', 'replacement-revision']) {
+    const result = await hydrateProject(p, async (_file, options) => {
+      if (options.previewProxy) throw new Error('proxy encoder unavailable');
+      assert.equal(options.skipCache, true);
+      const { audioDuration, ...original } = p.assets[0];
+      return { ...original, id: revision };
+    }, a => a);
+    assert.equal(result.assets[0].audioDuration, revision === 'original-revision' ? 7.95 : undefined);
+    assert.equal(result.assets[0].offline, undefined);
+    assert.deepEqual(result.clips, p.clips);
+  }
+});
+
 for (const [label, patch] of [['different kind', { kind: 'audio' }], ['shorter source', { duration: 4 }], ['invalid refreshed metadata', { waveform: null }]]) {
   test(`opening a ${label} replacement preserves a valid, relinkable offline edit`, async () => {
     const p = fixture(); let registered = false;
