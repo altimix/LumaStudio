@@ -35,8 +35,17 @@ module.exports=async function checkClipEdges(page,save,zoom,checks){
       if(expanded)assert.equal(grip.height,compactGripHeights.get(key),`${kind} ${grip.side} visual grip does not grow with the waveform`);
       else compactGripHeights.set(key,grip.height);
     }
-    const lane=item.locator('..'),laneBounds=await lane.boundingBox();
-    await page.mouse.click(laneBounds.x+8,laneBounds.y+laneBounds.height/2);
+    const lane=item.locator('..');
+    // The playhead has its own invisible scrub target. Pick actual empty lane
+    // content, so this comparison exercises deselection rather than seeking it.
+    const emptyPoint=await lane.evaluate(el=>{
+      const r=el.getBoundingClientRect(),y=r.top+r.height/2;
+      for(const offset of [8,24,40,56,72]){const x=r.left+offset;if(document.elementFromPoint(x,y)===el)return {x,y};}
+      return null;
+    });
+    assert.ok(emptyPoint,'an unobstructed empty lane is available for deselection');
+    await page.mouse.click(emptyPoint.x,emptyPoint.y);
+    await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip.selected').length===0);
     assert.ok(!(await item.getAttribute('class')).split(' ').includes('selected'));
     assert.ok(await item.locator('.trim-handle').evaluateAll(handles=>handles.every(handle=>['none','normal'].includes(getComputedStyle(handle,'::after').content))),'unselected clips have no selection grip');
     assert.equal(await item.locator('.clip-waveform canvas').evaluate(el=>el.toDataURL()),waveformBefore,'selection changes controls without changing the waveform pixels');
