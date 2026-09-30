@@ -57,6 +57,16 @@ async function verify() {
     const output=path.join(results,'リンクした映像と音声.mp4');await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},output);await page.getByRole('button',{name:'書き出し',exact:true}).click();await page.getByLabel('品質',{exact:true}).selectOption('draft');await page.getByLabel('書き出し方式',{exact:true}).selectOption('cpu');await page.getByRole('button',{name:'保存先を選んで書き出す',exact:true}).click();await page.getByText('書き出しが完了しました',{exact:true}).waitFor({timeout:120000});
     const v=p.clips.find(c=>c.kind==='video'),baseline={...p,clips:[{...v,linkId:undefined,audioDetached:undefined}]},reference=path.join(results,'分離前の基準.mp4');await exportProject(baseline,{width:320,height:180,fps:30,quality:'draft',encoder:'cpu'},reference);
     const rms=async file=>{const b=await run(ffmpeg,['-v','error','-i',file,'-vn','-ac','1','-ar','16000','-f','f32le','pipe:1']);let sum=0;for(let i=0;i<b.length;i+=4)sum+=b.readFloatLE(i)**2;return Math.sqrt(sum/(b.length/4));};const levels=[await rms(reference),await rms(output)];assert.ok(Math.abs(levels[0]-levels[1])<.0001);assert.ok(levels[1]>.02);assert.ok(Math.abs(Number((await probe(output)).format.duration)-6)<.06);checks.push('packaged MP4 matches the original single soundtrack loudness without double audio');
+    await page.getByRole('dialog').getByRole('button',{name:'閉じる',exact:true}).click();
+    await video.focus();await page.keyboard.press('Enter');await page.keyboard.press('Home');await page.keyboard.press('Control+c');await page.keyboard.press('Control+v');
+    const outer=await save(),copies=outer.clips.filter(c=>!p.clips.some(old=>old.id===c.id));
+    assert.equal(copies.find(c=>c.kind==='video').trackId,outer.tracks[0].id);
+    assert.equal(copies.find(c=>c.kind==='audio').trackId,outer.tracks.at(-1).id);
+    assert.deepEqual(outer.tracks.slice(1,-1),p.tracks);assert.deepEqual(outer.clips.filter(c=>p.clips.some(old=>old.id===c.id)),p.clips);
+    validateClipLinks(outer);await page.keyboard.press('Control+z');assert.deepEqual((await save()).tracks,p.tracks);
+    await page.keyboard.press('Control+Shift+z');assert.deepEqual((await save()).tracks,outer.tracks);
+    await open(outer);assert.deepEqual((await save()).tracks,outer.tracks);assert.equal(await page.locator('.timeline-clip.offline').count(),0);
+    checks.push('overlapping AV paste adds video at the top and audio at the bottom, preserving existing rows through Undo/Redo and reopen');
     assert.deepEqual(errors,[]);await fs.writeFile(path.join(results,'linked-av-verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,checks,levels,consoleErrors:errors},null,2));console.log('Linked AV, context editing and ripple Undo verified.');
   } catch(error) {await page.screenshot({path:path.join(results,'linked-av-failure.png')}).catch(()=>{});throw error;} finally {await app.close();}
 }

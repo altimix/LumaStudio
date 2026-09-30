@@ -3,7 +3,7 @@ import type { Project } from './types';
 import { makeTrack, uid } from './model';
 import { audioTargets, clipsLocked, sameTiming, validateClipLinks } from '../shared/clip-links.mjs';
 
-export function separateAudio(p: Project, ids: string[], link = true, reuseAvailable = false): Project {
+export function separateAudio(p: Project, ids: string[], link = true, reuseAvailable = false, dedicatedTrack = false): Project {
   const targets = p.clips.filter(c => ids.includes(c.id) && c.kind === 'video' && !c.audioDetached && p.assets.find(a => a.id === c.assetId)?.hasAudio);
   if (!targets.length) throw Error('音声付きの未分離の動画を選択してください。');
   if (clipsLocked(p, targets.map(c => c.id))) throw Error('映像トラックのロックを解除してください。');
@@ -15,12 +15,12 @@ export function separateAudio(p: Project, ids: string[], link = true, reuseAvail
     const name = `${sourceTrack.name}の音声`;
     const available = (trackId: string) => ![...p.clips, ...reserved].some(other => other.trackId === trackId && Math.min(other.start + other.duration, c.start + c.duration) - Math.max(other.start, c.start) > 1e-7);
     const compatible = (t: Project['tracks'][number]) => t.kind === 'audio' && !t.locked && t.muted === sourceTrack.muted && t.solo === sourceTrack.solo;
-    let track = tracks.find(t => compatible(t) && (t.audioSourceTrackId === sourceTrack.id || t.name === name) && (!reuseAvailable || available(t.id)));
-    if (!track && reuseAvailable) track = tracks.find(t => compatible(t) && available(t.id));
+    let track = dedicatedTrack ? undefined : tracks.find(t => compatible(t) && (t.audioSourceTrackId === sourceTrack.id || t.name === name) && (!reuseAvailable || available(t.id)));
+    if (!track && reuseAvailable && !dedicatedTrack) track = tracks.find(t => compatible(t) && available(t.id));
     if (!track) {
       if (tracks.length >= 24) throw Error('音声用トラックを追加する空きがありません（最大24本）。');
       track = { ...makeTrack('audio'), audioSourceTrackId: sourceTrack.id, muted: sourceTrack.muted, solo: sourceTrack.solo };
-      const firstAudio = tracks.findIndex(t => t.kind === 'audio'); tracks.splice(firstAudio < 0 ? tracks.length : firstAudio, 0, track);
+      tracks.push(track);
     }
     const id = uid(), linkId = link ? uid() : undefined;
     reserved.push({ trackId: track.id, start: c.start, duration: c.duration });

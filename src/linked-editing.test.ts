@@ -18,7 +18,7 @@ function loadPair(){const p=separateAudio(fixture(),['v']);state().load(p);state
 afterEach(()=>{vi.unstubAllGlobals();useAudioJob.setState({busy:false,message:''});});
 
 it('new AV placement creates one linked pair and Undo/Redo restores the complete edit',()=>{
-  const p=fixture();p.clips=[];state().load(p);state().addAsset(asset.id,4,p.tracks[1].id);
+  const p=fixture();p.clips=[];state().load(p);state().seek(4);state().addAsset(asset.id);
   const next=state().project;expect(next.clips).toHaveLength(2);expect(next.clips.map(c=>c.kind)).toEqual(['video','audio']);
   expect(new Set(next.clips.map(c=>c.trackId)).size).toBe(2);expect(next.clips.every(c=>c.start===4&&c.duration===30)).toBe(true);validateClipLinks(next);
   expect(state().history).toHaveLength(1);state().undo();expect(state().project).toBe(p);state().redo();expect(state().project).toBe(next);

@@ -1,0 +1,44 @@
+const {_electron:electron}=require('playwright');
+const fs=require('node:fs/promises'),path=require('node:path'),assert=require('node:assert/strict');
+const {ffmpeg,run,inspectMedia}=require('../electron/media.cjs');
+const {validateClipLinks}=require('../shared/clip-links.mjs');
+const root=path.join(__dirname,'..');
+(async()=>{
+  const results=path.join(root,'test-results','asset-placement');await fs.mkdir(results,{recursive:true});
+  const videoFile=path.join(results,'追加する映像.mp4'),audioFile=path.join(results,'追加する音声.wav'),imageFile=path.join(results,'追加する画像.png');
+  await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','color=blue:s=320x180:r=30:d=4','-f','lavfi','-i','sine=frequency=440:sample_rate=48000:duration=4','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac','-shortest',videoFile]);
+  await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','sine=frequency=880:sample_rate=48000:duration=4','-c:a','pcm_s16le',audioFile]);
+  await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','color=green:s=320x180','-frames:v','1',imageFile]);
+  const assets=await Promise.all([videoFile,audioFile,imageFile].map(file=>inspectMedia(file,path.join(results,'cache'))));
+  const base={start:0,in:0,duration:4,speed:1,x:0,y:0,scale:1,rotation:0,opacity:1,exposure:0,contrast:1,saturation:1,volume:1,fadeIn:0,fadeOut:0,text:'字幕を前景に保持',fontSize:32,color:'#ffffff',textStyle:'minimal'};
+  const project={version:1,id:'asset-placement',name:'素材を字幕の下と外側へ追加',width:320,height:180,fps:30,assets,markers:[{id:'placement',label:'追加位置',time:3.017}],tracks:[['subtitle','video','字幕'],['video','video','既存映像'],['audio','audio','既存音声'],['empty','audio','空き音声']].map(([id,kind,name])=>({id,kind,name,autoName:false,locked:true,hidden:false,muted:false,solo:false})),clips:[{...base,id:'caption',trackId:'subtitle',kind:'title',name:'字幕'}, {...base,id:'existing-video',trackId:'video',kind:'video',name:'既存映像',assetId:assets[0].id,audioMuted:true}]};
+  const file=path.join(results,'配置.luma');await fs.writeFile(file,JSON.stringify(project));
+  const profile=await fs.mkdtemp(path.join(results,'profile-')),env={...process.env,LUMA_TEST_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;delete env.LUMA_DEMO_FIXTURE;delete env.LUMA_TEST_FIXTURES;
+  const executablePath=process.env.LUMA_VERIFY_EXE,app=await electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000}),page=await app.firstWindow(),checks=[],errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const save=()=>require('./verify-save-project.cjs')(page,file);
+  const open=async(p=project)=>{await fs.writeFile(file,JSON.stringify(p));await page.locator('.brand').click();await page.keyboard.press('Control+o');await page.getByRole('button',{name:p.name,exact:true}).waitFor();await page.getByRole('dialog',{name:'プロジェクトを開いています',exact:true}).waitFor({state:'hidden'});};
+  const seek=async()=>{await page.locator('.timeline-marker').click();await page.locator('.brand').click();};
+  const assertAdded=(next,before,expected)=>{
+    const added=next.clips.filter(c=>!before.clips.some(old=>old.id===c.id));assert.equal(added.length,expected);assert.ok(added.every(c=>c.start===3.017));validateClipLinks(next);
+    assert.deepEqual(next.clips.filter(c=>before.clips.some(old=>old.id===c.id)),before.clips);assert.deepEqual(next.tracks.filter(t=>before.tracks.some(old=>old.id===t.id)),before.tracks);
+    const firstVideo=added.find(c=>c.kind!=='audio');if(firstVideo)assert.equal(firstVideo.trackId,next.tracks[1].id);
+    const audio=added.filter(c=>c.kind==='audio');audio.forEach(c=>assert.ok(next.tracks.slice(before.tracks.length+added.filter(c=>c.kind!=='audio').length).some(t=>t.id===c.trackId)));
+    return added;
+  };
+  try{
+    await page.locator('.loading-screen').waitFor({state:'hidden',timeout:60000});await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1400,1000));
+    await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},file);
+    await open();project.assets=(await save()).assets;await seek();await page.getByRole('button',{name:path.basename(videoFile)+' を追加',exact:true}).click();let next=await save();assertAdded(next,project,2);
+    await page.keyboard.press('Control+z');assert.deepEqual(await save(),project);await page.keyboard.press('Control+Shift+z');assert.deepEqual(await save(),next);checks.push('card add creates linked dedicated AV lanes at exact playhead below locked subtitles, retaining existing rows and Undo/Redo');
+    await open(next);assert.deepEqual(await save(),next);checks.push('save and reopen retain all new lane IDs, AV links and exact placement time');
+    await open();await seek();await page.getByRole('button',{name:path.basename(imageFile)+' を選択',exact:true}).click();await page.getByRole('button',{name:'選択素材をタイムラインに追加',exact:true}).click();assertAdded(await save(),project,1);checks.push('selected media action places image below subtitles at playhead');
+    await open();await seek();await page.getByRole('button',{name:path.basename(audioFile)+' をプレビュー',exact:true}).click();await page.getByRole('button',{name:'タイムラインに追加',exact:true}).click();next=await save();const sound=assertAdded(next,project,1)[0];assert.equal(sound.trackId,next.tracks.at(-1).id);checks.push('source monitor adds audio in a dedicated bottom lane at playhead');
+    await open();await seek();const accepted=await page.evaluate(id=>{const card=document.querySelector(`[data-asset-id="${id}"]`),lane=document.querySelector('[data-track-id="audio"]'),dt=new DataTransfer();card.dispatchEvent(new DragEvent('dragstart',{bubbles:true,cancelable:true,dataTransfer:dt}));const drag=new DragEvent('dragover',{bubbles:true,cancelable:true,dataTransfer:dt,clientX:10,clientY:10});lane.dispatchEvent(drag);lane.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:dt,clientX:10,clientY:10}));return drag.defaultPrevented;},assets[0].id);assert.ok(accepted);assertAdded(await save(),project,2);checks.push('library video drag onto a locked audio lane adds fresh AV lanes without using drop coordinates');
+    await open();await seek();await page.evaluate(()=>{const input=document.createElement('input');input.id='placement-drop';input.type='file';input.multiple=true;input.hidden=true;document.body.appendChild(input);});await page.locator('#placement-drop').setInputFiles([videoFile,audioFile,imageFile]);
+    const drop=await page.locator('#placement-drop').evaluate(input=>{const lane=document.querySelector('[data-track-id="audio"]'),dt=new DataTransfer();for(const file of input.files)dt.items.add(file);// Chromium keeps native dropEffect at none for untrusted drag events. Observe the actual handlers' assignments while retaining genuine File objects.
+      let requestedEffect='none';Object.defineProperty(dt,'dropEffect',{get:()=>requestedEffect,set:value=>{requestedEffect=value;}});const drag=new DragEvent('dragover',{bubbles:true,cancelable:true,dataTransfer:dt});lane.dispatchEvent(drag);const effect=dt.dropEffect;lane.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:dt}));return{accepted:drag.defaultPrevented,effect};});assert.deepEqual(drop,{accepted:true,effect:'copy'});
+    await page.waitForFunction(()=>document.querySelectorAll('.timeline-clip').length===6,{},{timeout:60000});next=await save();assertAdded(next,project,4);await page.keyboard.press('Control+z');assert.deepEqual((await save()).clips,project.clips);checks.push('real external multiple-file drop is accepted as copy and atomically places all media at captured playhead with one placement Undo');
+    const full={...project,id:'full',name:'24本の配置拒否',tracks:[...project.tracks,...Array.from({length:20},(_,i)=>({...project.tracks[3],id:'empty'+i,name:'空き'+i}))]};await open(full);await seek();await page.getByRole('button',{name:path.basename(audioFile)+' を追加',exact:true}).click();await page.getByText('素材は新しいトラックへ追加します。トラックは最大24本のため、不要なトラックを削除してから追加してください。',{exact:true}).waitFor();assert.deepEqual(await save(),full);assert.ok(await page.getByRole('button',{name:/^元に戻す \(/,exact:true}).isDisabled());checks.push('24-track limit rejects audio insertion despite empty old lanes without adding history');
+    await page.screenshot({path:path.join(results,'editor.png')});assert.deepEqual(errors,[]);await fs.writeFile(path.join(results,'verification.json'),JSON.stringify({passed:true,packaged:!!executablePath,checks,consoleErrors:errors},null,2));console.log('New asset placement, subtitle stacking and file drops verified.');
+  }catch(error){await page.screenshot({path:path.join(results,'failure.png')}).catch(()=>{});throw error;}finally{await app.close();}
+})().catch(error=>{console.error(error);process.exitCode=1;});

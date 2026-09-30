@@ -1,7 +1,7 @@
 import { trackAcceptsClip, AUDIO_TRACK_MESSAGE } from './track-compatibility';
 import { numberTracks } from './track-names';
 import { uid, makeTrack } from './model';
-import type { Clip, Project } from './types';
+import type { Clip, Project, Track } from './types';
 
 import { extraTrackPartitions, overlaps, TRACK_SPACE_MESSAGE } from './track-layout';
 
@@ -31,8 +31,13 @@ export function separateOverlappingClips(project: Project, ids: string[], newId 
   for (const clip of project.clips) if (selected.has(clip.id)) {
     const group = groups.get(clip.trackId) || []; group.push(clip); groups.set(clip.trackId, group);
   }
-  const tracks = [...project.tracks], placements = new Map<string, string>();
+  const tracks = [...project.tracks], placements = new Map<string, string>(), additions = new Map<string, number>();
   const reusable = new Set(reusableTrackIds);
+  const addLane = (source: Track, order: number) => {
+    if (tracks.length >= 24) throw Error(TRACK_SPACE_MESSAGE);
+    const track = { ...source, id: newId(), name: '', autoName: true };
+    additions.set(track.id, order); tracks.push(track); return track;
+  };
   for (const [trackId, group] of groups) {
     const source = tracks.find(t => t.id === trackId);
     if (!source || source.locked) throw Error('配置先トラックのロックを解除してください。');
@@ -44,13 +49,31 @@ export function separateOverlappingClips(project: Project, ids: string[], newId 
       if (track) reusable.delete(track.id);
       else {
         if(partition.some(c=>!trackAcceptsClip(source,c.kind)))throw Error(AUDIO_TRACK_MESSAGE);
-        if (tracks.length >= 24) throw Error('重ならないように配置するには新しいトラックが必要です。トラックは最大24本のため、不要なトラックを削除するか空き区間へ配置してください。');
-        track = { ...source, id: newId(), name: '', autoName: true };
-        // Video overlays appear above their original lane. Keep audio next to its source too.
-        tracks.splice(tracks.findIndex(t => t.id === trackId), 0, track);
+        track = addLane(source, project.tracks.findIndex(t => t.id === trackId));
       }
       for (const clip of partition) placements.set(clip.id, track.id);
     }
   }
-  return numberTracks(placements.size ? { ...project, tracks, clips: project.clips.map(c => placements.has(c.id) ? { ...c, trackId: placements.get(c.id)! } : c) } : project);
+  // Only displaced visuals affect stacking. A Video lane may contain audio,
+  // and moving that audio outside must not also move a free foreground visual.
+  let deepestVisual = -1;
+  for (const clip of project.clips) {
+    if (!selected.has(clip.id) || clip.kind === 'audio') continue;
+    const order = additions.get(placements.get(clip.id) || '');
+    if (order !== undefined) deepestVisual = Math.max(deepestVisual, order);
+  }
+  for (const [trackId, group] of groups) {
+    const order = project.tracks.findIndex(t => t.id === trackId), source = project.tracks[order];
+    if (source.kind !== 'video' || order >= deepestVisual) continue;
+    for (const clip of [...group].sort((a,b) => a.start-b.start)) {
+      if (clip.kind === 'audio') continue;
+      if (additions.has(placements.get(clip.id) || clip.trackId)) continue;
+      let track = tracks.find(t => additions.get(t.id) === order && !group.some(other => (placements.get(other.id) || other.trackId) === t.id && overlaps(other, clip)));
+      if (!track) track = addLane(source, order);
+      placements.set(clip.id, track.id);
+    }
+  }
+  const added = tracks.filter(t => additions.has(t.id)).sort((a, b) => additions.get(a.id)! - additions.get(b.id)!);
+  const orderedTracks = [...added.filter(t => t.kind === 'video'), ...project.tracks, ...added.filter(t => t.kind === 'audio')];
+  return numberTracks(placements.size ? { ...project, tracks: orderedTracks, clips: project.clips.map(c => placements.has(c.id) ? { ...c, trackId: placements.get(c.id)! } : c) } : project);
 }
