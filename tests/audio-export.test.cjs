@@ -6,7 +6,7 @@ const path = require('node:path');
 const { ffmpeg, run, probe, inspectMedia } = require('../electron/media.cjs');
 const { buildExport, exportProject } = require('../electron/export.cjs');
 const { exportMp3 } = require('../electron/audio-export.cjs');
-const { audioClips, buildMp3Audio } = require('../electron/timeline-audio.cjs');
+const { audioClips, buildMp3Audio, buildTimelineAudio } = require('../electron/timeline-audio.cjs');
 
 let dir, video, voice;
 before(async () => {
@@ -76,6 +76,26 @@ test('an audio-only timeline exports MP3 without preparing any visual input', as
   assert.equal((await probe(out)).streams[0].codec_name, 'mp3');
   assert.ok(await rms(out, .4) < .005);
   assert.ok(await rms(out, 1.7) > .01);
+});
+
+test('MP3 export and transcription preserve low-rate MP3 priming like continuous PCM input', async () => {
+  const source = path.join(dir, '低レート.mp3'), reference = path.join(dir, '連続デコード.wav');
+  await run(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'aevalsrc=0.3*cos(2*PI*(197*t+3*t*t)):s=22050:d=0.65', '-c:a', 'libmp3lame', '-q:a', '2', source]);
+  await run(ffmpeg, ['-v', 'error', '-i', source, '-af', 'aresample=48000:async=1:first_pts=0', '-ac', '2', '-ar', '48000', '-c:a', 'pcm_f32le', reference]);
+  const asset = await inspectMedia(source, path.join(dir, 'priming-cache'));
+  const p = project(); p.assets = [asset]; p.clips = [clip('priming', asset, 'audio', 'a', 0, .6)];
+  for (const [build, extension] of [[buildMp3Audio, 'mp3'], [buildTimelineAudio, 'wav']]) {
+    const originalOutput = path.join(dir, `priming-original.${extension}`), referenceOutput = path.join(dir, `priming-reference.${extension}`);
+    await run(ffmpeg, build(p, originalOutput));
+    await run(ffmpeg, build({ ...p, assets: [{ ...asset, path: reference }] }, referenceOutput));
+    const decode = file => run(ffmpeg, ['-v', 'error', '-i', file, '-ac', '1', '-ar', '48000', '-f', 'f32le', 'pipe:1']);
+    const actual = await decode(originalOutput), expected = await decode(referenceOutput);
+    assert.equal(actual.length, expected.length);
+    let peak = 0;
+    for (let i = 0; i < actual.length; i += 4) peak = Math.max(peak, Math.abs(actual.readFloatLE(i) - expected.readFloatLE(i)));
+    // Codec/sample-format rounding is below -80 dB; broken priming exceeds -20 dB.
+    assert.ok(peak < 1e-4, `${extension} startup peak error: ${peak}`);
+  }
 });
 
 test('fully-zero volume points count as no exportable audio before choosing a destination', async () => {

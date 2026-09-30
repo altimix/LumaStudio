@@ -73,7 +73,7 @@ it('uses unused handles and freezes only missing video frames without looping au
   expect(mediaWindow(next.clips[1],p.assets[0],plans,'video')).toMatchObject({start:3.5,end:8,sourceIn:0,sourceDuration:8,padBefore:.5});
   expect(visualSourceTime(next.clips[0],p.assets[0],4.25)).toBeCloseTo(8-1/30);
   expect(visualSourceTime(next.clips[1],p.assets[0],3.75)).toBe(0);
-  const env=audioEnvelopes(next);expect(env.get('c0')).toMatchObject([{start:3.5,end:4,direction:'out'}]);expect(env.get('c1')).toMatchObject([{start:4,end:4.5,direction:'in'}]);
+  const env=audioEnvelopes(next);expect(env.get('c0')).toEqual(expect.arrayContaining([expect.objectContaining({start:3.5,end:4,direction:'out'})]));expect(env.get('c1')).toEqual(expect.arrayContaining([expect.objectContaining({start:4,end:4.5,direction:'in'})]));
   const slices=audioSlices(next,3.5,4.5,1);expect(slices.find(s=>s.clip.id==='c0')!.timelineEnd).toBe(4);expect(slices.find(s=>s.clip.id==='c1')!.timelineStart).toBe(4);
 });
 it('rejects malformed fixed duration metadata and preserves legacy overlap timing',()=>{
@@ -97,7 +97,8 @@ it('preserves fixed effects and common cuts when sequence FPS changes',()=>{
 });
 it('continuous source splits stay untouched while discontinuous cuts have 3 ms edge ramps',()=>{
  const p=fixture();p.clips=p.clips.slice(0,2);p.clips[1]={...p.clips[1],in:10};
- expect(audioEnvelopes(p).size).toBe(0);
+ const continuous=audioEnvelopes(p);
+ expect(crossfadeGain(continuous.get('c0'),4)).toBe(1);expect(crossfadeGain(continuous.get('c1'),4)).toBe(1);
  p.clips[1]={...p.clips[1],in:11};
  const envelopes=audioEnvelopes(p);
  expect(crossfadeGain(envelopes.get('c0'),4-.003)).toBe(1);
@@ -105,15 +106,72 @@ it('continuous source splits stay untouched while discontinuous cuts have 3 ms e
  expect(crossfadeGain(envelopes.get('c1'),4)).toBe(0);
  expect(crossfadeGain(envelopes.get('c1'),4+.003)).toBe(1);
  expect(crossfadeGain(envelopes.get('c1'),4+.0015)).toBeCloseTo(.5);
- p.clips[1]={...p.clips[1],start:5};expect(audioEnvelopes(p).size).toBe(0);
+ p.clips[1]={...p.clips[1],start:5};const gap=audioEnvelopes(p);
+ expect(crossfadeGain(gap.get('c0'),4)).toBe(0);expect(crossfadeGain(gap.get('c1'),5)).toBe(0);
+});
+
+it('softens isolated and overlapping clip edges at the actual PCM end without changing edit times',()=>{
+ for(const speed of [.5,1,2]){
+  const p=fixture();p.assets=[{...asset,audioDuration:3.125}];
+  p.clips=[{...p.clips[0],start:2,in:1,duration:4,speed}];
+  const before=JSON.stringify(p),clip=p.clips[0],end=2+Math.min(4,2.125/speed),env=audioEnvelopes(p);
+  expect(mediaWindow(clip,p.assets[0],[],'audio').end).toBe(end);
+  expect(crossfadeGain(env.get('c0'),2)).toBe(0);
+  expect(crossfadeGain(env.get('c0'),2.003)).toBeCloseTo(1);
+  expect(crossfadeGain(env.get('c0'),end-.0015)).toBeCloseTo(.5);
+  expect(crossfadeGain(env.get('c0'),end)).toBe(0);
+  expect(audioSlices(p,end,end+.1,1)).toHaveLength(0);
+  expect(JSON.stringify(p)).toBe(before);
+ }
+ const p=fixture();p.clips=p.clips.slice(0,2).map((c,i)=>({...c,start:i,in:0,speed:1}));
+ const env=audioEnvelopes(p);expect(crossfadeGain(env.get('c1'),1)).toBe(0);expect(crossfadeGain(env.get('c0'),4)).toBe(0);
+ p.clips=[{...p.clips[0],fadeIn:.2,fadeOut:.3}];expect(audioEnvelopes(p).size).toBe(0);
+});
+
+it('ramps a continuous split that reaches the actual audio endpoint before the container ends',()=>{
+ const p=fixture();p.assets=[{...asset,duration:10,audioDuration:5}];
+ p.clips=p.clips.slice(0,2).map((c,i)=>({...c,start:i*5,in:i*5,duration:5,speed:1}));
+ const env=audioEnvelopes(p);
+ expect(crossfadeGain(env.get('c0'),5-.0015)).toBeCloseTo(.5);
+ expect(crossfadeGain(env.get('c0'),5)).toBe(0);
+ expect(env.has('c1')).toBe(false);expect(audioSlices(p,5,5.1,1)).toHaveLength(0);
+ p.assets[0].audioDuration=5.5;const continuous=audioEnvelopes(p);
+ expect(crossfadeGain(continuous.get('c0'),5)).toBe(1);
+ expect(crossfadeGain(continuous.get('c1'),5)).toBe(1);
+ expect(crossfadeGain(continuous.get('c1'),5.5)).toBe(0);
+});
+
+it('ramps the real PCM endpoint when an outgoing transition starts after its audio ended',()=>{
+ const p=fixture();p.assets=[{...asset,audioDuration:5}];
+ p.clips=p.clips.slice(0,2).map((c,i)=>({...c,start:i*10,in:0,duration:10,speed:1}));
+ const next=applyTransition(p,'c0','c1',{duration:1,audio:'constantGain'},'late');
+ const env=audioEnvelopes(next),out=env.get('c0');
+ expect(mediaWindow(next.clips[0],next.assets[0],transitionPlan(next),'audio').end).toBe(5);
+ expect(crossfadeGain(out,5-.0015)).toBeCloseTo(.5);
+ expect(crossfadeGain(out,5)).toBe(0);
+ expect(out?.some(e=>e.direction==='out'&&e.end===5)).toBe(true);
+});
+
+it('ramps a short PCM tail even when a fixed or legacy transition is already fading it',()=>{
+ for(const legacy of [false,true]){
+  const p=fixture();p.assets=[{...asset,duration:20,audioDuration:legacy?9.5:9.75}];
+  p.clips=p.clips.slice(0,2).map((c,i)=>({...c,start:i*(legacy?9:10),in:0,duration:10,speed:1}));
+  const next=legacy?{...p,transitions:[{id:'old',fromId:'c0',toId:'c1',audio:'constantGain' as const}]}:applyTransition(p,'c0','c1',{duration:1,audio:'constantGain'},'fixed');
+  const end=legacy?9.5:9.75,out=audioEnvelopes(next).get('c0');
+  expect(mediaWindow(next.clips[0],next.assets[0],transitionPlan(next),'audio').end).toBe(end);
+  expect(out?.filter(e=>e.direction==='out')).toHaveLength(2);
+  expect(crossfadeGain(out,end-.003)).toBeGreaterThan(.49);
+  expect(crossfadeGain(out,end-.0015)).toBeCloseTo(.25,1);
+  expect(crossfadeGain(out,end)).toBe(0);
+ }
 });
 
 it('an earlier A-to-B transition does not suppress the later B-to-C hard-cut ramps',()=>{
  const p=fixture();p.clips=p.clips.slice(0,3);
  const n=applyTransition(p,'c0','c1',{duration:1,audio:'constantGain'},'t'),env=audioEnvelopes(n);
- expect(env.get('c0')).toEqual([{start:3.5,end:4.5,curve:'constantGain',direction:'out'}]);
+ expect(env.get('c0')?.filter(e=>e.direction==='out')).toEqual([{start:3.5,end:4.5,curve:'constantGain',direction:'out'}]);
  expect(env.get('c1')).toContainEqual({start:7.997,end:8,curve:'constantGain',direction:'out'});
- expect(env.get('c2')).toEqual([{start:8,end:8.003,curve:'constantGain',direction:'in'}]);
+ expect(env.get('c2')?.filter(e=>e.direction==='in')).toEqual([{start:8,end:8.003,curve:'constantGain',direction:'in'}]);
  expect(crossfadeGain(env.get('c1'),8)).toBe(0);
  expect(crossfadeGain(env.get('c2'),8)).toBe(0);
  expect(crossfadeGain(env.get('c2'),8.003)).toBe(1);
@@ -123,13 +181,13 @@ it('keeps a cross-track transition tail and ramps only the unrelated hard-cut en
  p.transitions=[{id:'cross',fromId:'c0',toId:'other',mode:'fixed',duration:1,audio:'constantGain'}];
  const env=audioEnvelopes(p);
  expect(crossfadeGain(env.get('c0'),4.25)).toBeCloseTo(.25);
- expect(env.get('c1')).toEqual([{start:4,end:4.003,curve:'constantGain',direction:'in'}]);
+ expect(env.get('c1')?.filter(e=>e.direction==='in')).toEqual([{start:4,end:4.003,curve:'constantGain',direction:'in'}]);
  expect(crossfadeGain(env.get('c1'),4)).toBe(0);
  expect(crossfadeGain(env.get('c1'),4.003)).toBe(1);
  p.clips=p.clips.map(c=>c.id==='other'?{...c,start:0}:c);
  p.transitions=[{id:'cross-in',fromId:'other',toId:'c1',mode:'fixed',duration:1,audio:'constantGain'}];
  const incoming=audioEnvelopes(p);
  expect(crossfadeGain(incoming.get('c1'),3.75)).toBeCloseTo(.25);
- expect(incoming.get('c0')).toEqual([{start:3.997,end:4,curve:'constantGain',direction:'out'}]);
+ expect(incoming.get('c0')?.filter(e=>e.direction==='out')).toEqual([{start:3.997,end:4,curve:'constantGain',direction:'out'}]);
  expect(crossfadeGain(incoming.get('c0'),4)).toBe(0);
 });
