@@ -2,7 +2,7 @@ const { test } = require('node:test'); const assert = require('node:assert/stric
 const fs = require('node:fs/promises'); const path = require('node:path'); const os = require('node:os');
 const { decodeAudioChunk, createAudioReader, SAMPLE_RATE } = require('../electron/audio.cjs');
 const { audioFixture } = require('./helpers/audio.cjs');
-const { ffmpeg, run } = require('../electron/media.cjs');
+const { ffmpeg, run, inspectMedia } = require('../electron/media.cjs');
 
 test('FFmpeg reads exact stereo source windows from Japanese paths and pads only the tail', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-audio-')); const file = path.join(dir, '音声 波形 & original.wav');
@@ -20,6 +20,28 @@ test('audio IPC reader rejects unregistered paths, non-audio assets and invalid 
   reader.register('media://local/asset/no-audio', { path: 'silent.mp4', duration: 16, hasAudio: false });
   for (const [url, index] of [['C:\\secret.wav', 0], ['media://local/asset/a?v=old', 0], ['media://local/asset/no-audio', 0], ['media://local/asset/a?v=1', -1], ['media://local/asset/a?v=1', 2], ['media://local/asset/a?v=1', 0.5], ['media://local/asset/a?v=1', Infinity]]) await assert.rejects(reader.read(url, index), /不正/);
   assert.equal(calls, 0); reader.close();
+});
+test('MP3 priming and final padding match continuous decoding at every supported sample rate', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-mp3-edges-'));
+  try {
+    const source = path.join(dir, '冒頭と末尾 & 音声.wav');
+    await audioFixture(source, 10.125);
+    for (const rate of [16000, 22050, 44100, 48000]) for (const vbr of [true, false]) {
+      const file = path.join(dir, `${rate}-${vbr}.mp3`);
+      await run(ffmpeg, ['-v', 'error', '-i', source, '-ar', String(rate), '-c:a', 'libmp3lame', ...(vbr ? ['-q:a', '2'] : ['-b:a', '96k']), file]);
+      const bytes = await run(ffmpeg, ['-v', 'error', '-i', file, '-af', 'aresample=48000:async=1:first_pts=0', '-ac', '2', '-ar', '48000', '-f', 'f32le', 'pipe:1']);
+      const reference = new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length));
+      const asset = await inspectMedia(file, path.join(dir, 'cache'));
+      assert.ok(Math.abs(asset.audioDuration - reference.length / (SAMPLE_RATE * 2)) < 1 / SAMPLE_RATE);
+      assert.ok(asset.duration > asset.audioDuration, 'MP3 container padding does not extend audible time');
+      for (const index of [0, 1]) {
+        const chunk = await decodeAudioChunk(file, index); let peak = 0;
+        for (let i = 0; i < chunk.length; i++) peak = Math.max(peak, Math.abs(chunk[i] - (reference[index * SAMPLE_RATE * 8 * 2 + i] || 0)));
+        assert.ok(peak < 1e-4, `${rate} Hz ${vbr ? 'VBR' : 'CBR'} window ${index}: peak error ${peak}`);
+        if (index === 1) assert.ok(chunk.subarray(reference.length - SAMPLE_RATE * 8 * 2).every(value => value === 0), 'EOF is silence, with no repeated final sample');
+      }
+    }
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
 test('AAC windows retain container timing including delayed embedded audio', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'luma-aac-')); const source = path.join(dir, 'source.wav'); const file = path.join(dir, '音声 遅延.mp4');

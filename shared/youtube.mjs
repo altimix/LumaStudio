@@ -6,7 +6,7 @@ export function timelineKey(p) {
   const solo = p.tracks.some(t => t.solo);
   const data = [p.id, p.fps, Math.max(0, ...p.clips.map(c => c.start + c.duration)), p.clips.filter(c => c.kind === 'audio' || (c.kind === 'video' && !c.audioDetached)).map(c => {
     const a = p.assets.find(a => a.id === c.assetId); const t = p.tracks.find(t => t.id === c.trackId);
-    return [c.id, c.assetId, a?.path, a?.revision || a?.id, a?.size, a?.hasAudio, a?.duration, a?.offline || false, c.start, c.in, c.duration, c.speed, c.volume, c.fadeIn, c.fadeOut, !!t?.muted, solo && !t?.solo, ...(c.audioMuted ? ["muted"] : []), ...(c.audioTreatment ? [c.audioTreatment] : []), ...(c.volumeKeyframes?.length ? [c.volumeKeyframes] : [])];
+    return [c.id, c.assetId, a?.path, a?.revision || a?.id, a?.size, a?.hasAudio, a?.duration, a?.offline || false, c.start, c.in, c.duration, c.speed, c.volume, c.fadeIn, c.fadeOut, !!t?.muted, solo && !t?.solo, ...(c.audioMuted ? ["muted"] : []), ...(c.audioTreatment ? [c.audioTreatment] : []), ...(c.volumeKeyframes?.length ? [c.volumeKeyframes] : []), ...(a?.audioDuration === undefined ? [] : [a.audioDuration])];
   })];
   const transitions=p.transitions?.filter(t=>t.audio).map(t=>[t.fromId,t.toId,t.audio,...(t.mode==='fixed'?[t.mode,t.duration]:[])]);if(transitions?.length)data.push(transitions);
   let a = 2166136261, b = 5381; const text = JSON.stringify(data);

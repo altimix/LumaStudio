@@ -10,6 +10,7 @@ test('optional video proxies preserve original metadata, persist preferences and
  const hydrated=await hydrateProject(saved,(file,options)=>inspectMedia(file,cache,options),a=>a);assert.equal(hydrated.assets[0].previewProxy,true);assert.equal(hydrated.assets[0].playbackPath,proxy.playbackPath);
  const fallback=await hydrateProject(saved,async(file,options)=>{if(options.previewProxy)throw Error('disk full');return inspectMedia(file,path.join(dir,'cannot-write'),options);},a=>a);
  assert.ok(saved.assets[0].waveform.length>0);assert.deepEqual(fallback.assets[0].waveform,saved.assets[0].waveform);assert.equal(fallback.assets[0].offline,undefined);assert.equal(fallback.assets[0].playbackPath,file);assert.equal(fallback.assets[0].previewProxy,undefined);assert.match(fallback.assets[0].proxyWarning,/原本/);assert.equal(JSON.parse(serializeProject(fallback)).assets[0].proxyWarning,undefined);
+ assert.equal(fallback.assets[0].audioDuration, saved.assets[0].audioDuration);assert.equal(JSON.parse(serializeProject(fallback)).assets[0].audioDuration, original.audioDuration);
  await assert.rejects(fs.access(path.join(dir,'cannot-write')));
  const thumbnailBefore=await fs.readFile(original.thumbnailPath),statBefore=await fs.stat(original.thumbnailPath),filesBefore=(await fs.readdir(cache)).sort();
  const cachedFallback=await hydrateProject(saved,async(file,options)=>{if(options.previewProxy)throw Error('encoder failed');return inspectMedia(file,cache,options);},a=>a);
