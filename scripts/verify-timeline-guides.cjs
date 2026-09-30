@@ -88,10 +88,15 @@ const root = path.join(__dirname, '..');
     await page.locator('.brand').click();for(let i=0;i<6;i++)await page.keyboard.press('s');await page.keyboard.press('Home');
     const before=await save(),source=await page.locator('.timeline-clip[data-clip-id="video"]').boundingBox(),dest=await lane('a2').boundingBox();
     await page.mouse.move(source.x+25,source.y+12);await page.mouse.down();await page.mouse.move(source.x+35,dest.y+12,{steps:10});assert.equal(await page.evaluate(()=>document.documentElement.dataset.timelineGesture),'blocked');await page.mouse.up();assert.deepEqual(await save(),before);
-    for(const asset of [assets[0],assets[2]]){assert.equal(await dropAsset(asset.id),false);assert.deepEqual(await save(),before);}
-    assert.equal(await dropAsset(assets[1].id),true);saved=await save();assert.equal(saved.clips.length,before.clips.length+1);assert.equal(saved.clips.at(-1).kind,'audio');assert.equal(saved.clips.at(-1).trackId,'a2');
-    await button(/^元に戻す \(/).click();assert.deepEqual(await save(),before);await button(/^やり直す \(/).click();assert.deepEqual(await save(),saved);
-    checks.push('native video move and HTML5 video/image library drops onto Audio rejected atomically; audio drop and Undo/Redo succeed');
+    for(const asset of [assets[0],assets[2],assets[1]]){
+      assert.equal(await dropAsset(asset.id),true);saved=await save();const added=saved.clips.at(-1);
+      assert.equal(saved.clips.length,before.clips.length+1);assert.equal(added.start,0);
+      assert.equal(added.trackId,asset.kind==='audio'?saved.tracks.at(-1).id:saved.tracks[1].id);
+      assert.deepEqual(saved.clips.slice(0,-1),before.clips);
+      await button(/^元に戻す \(/).click();assert.deepEqual(await save(),before);
+    }
+    await button(/^やり直す \(/).click();assert.deepEqual(await save(),saved);
+    checks.push('native video move onto Audio remains rejected; library video/image/audio drops create dedicated outside rows at the playhead, below subtitles, with Undo/Redo');
     await page.locator('.brand').click();await page.keyboard.press('Control+o');await button(project.name).waitFor();assert.deepEqual((await save()).clips,saved.clips);
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setContentSize(1280,720));await page.waitForFunction(()=>innerWidth===1280&&innerHeight===720);await settle();
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:path.join(results,'compact-1280.png')});

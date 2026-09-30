@@ -4,31 +4,24 @@ import { emptyProject, makeClip, makeTrack } from './model';
 import { separateOverlappingClips } from './track-placement';
 import { useEditor } from './store';
 
-it('reuses an available audio interval so overlapping AV placement fits the last track, with Undo/Redo',()=>{
+it('adds a dedicated outer AV pair even when existing audio has an available interval, with Undo/Redo',()=>{
   const p=emptyProject(),s=useEditor.getState();
   p.assets=[{id:'source',name:'source',path:'source.mp4',url:'',thumbnail:'',kind:'video',duration:3,width:320,height:180,fps:30,hasAudio:true,waveform:[],size:1,codec:'h264'}];
-  while(p.tracks.length<23)p.tracks.push(makeTrack('video','追加'));
+  while(p.tracks.length<22)p.tracks.push(makeTrack('video','追加'));
   const videoTrack=p.tracks[1].id,audioTrack=p.tracks[2].id;
   p.clips=[{...makeClip(videoTrack,0,p.assets[0]),id:'old',audioMuted:true},{...makeClip(audioTrack,3,p.assets[0]),id:'later',kind:'audio'}];
-  p.tracks=numberTracks(p).tracks;s.load(p);s.addAsset('source',0,videoTrack);
+  p.tracks=numberTracks(p).tracks;s.load(p);s.seek(0);s.addAsset('source');
   const next=useEditor.getState().project;expect(next.tracks).toHaveLength(24);expect(next.clips).toHaveLength(4);
-  const [video,audio]=next.clips.slice(2);expect(video.trackId).not.toBe(videoTrack);expect(audio.trackId).toBe(audioTrack);
+  const [video,audio]=next.clips.slice(2);expect(video.trackId).toBe(next.tracks[0].id);expect(audio.trackId).toBe(next.tracks.at(-1)!.id);
   expect(audio.linkId).toBe(video.linkId);expect(audio.start).toBe(0);expect(video.start).toBe(0);expect(next.clips.slice(0,2)).toEqual(p.clips);
   s.undo();expect(useEditor.getState().project).toEqual(p);s.redo();expect(useEditor.getState().project).toEqual(next);
 });
-
-it('does not reuse locked, differently muted/soloed, or occupied audio intervals at capacity',()=>{
-  for(const blocked of ['locked','muted','solo','occupied'] as const){
-    const p=emptyProject(),s=useEditor.getState();
-    p.assets=[{id:'source',name:'source',path:'source.mp4',url:'',thumbnail:'',kind:'video',duration:3,width:320,height:180,fps:30,hasAudio:true,waveform:[],size:1,codec:'h264'}];
-    while(p.tracks.length<23)p.tracks.push(makeTrack('video','追加'));
-    p.clips=[{...makeClip(p.tracks[1].id,0,p.assets[0]),id:'old',audioMuted:true}];
-    for(const t of p.tracks.filter(t=>t.kind==='audio')){
-      if(blocked==='occupied')p.clips.push({...makeClip(t.id,0,p.assets[0]),id:t.id,kind:'audio'});
-      else t[blocked]=true;
-    }
-    p.tracks=numberTracks(p).tracks;s.load(p);s.addAsset('source',0,p.tracks[1].id);expect(useEditor.getState().project).toBe(p);expect(useEditor.getState().history).toHaveLength(0);
-  }
+it('rejects a new AV pair with only one free track even when existing audio could be reused',()=>{
+  const p=emptyProject(),s=useEditor.getState();
+  p.assets=[{id:'source',name:'source',path:'source.mp4',url:'',thumbnail:'',kind:'video',duration:3,width:320,height:180,fps:30,hasAudio:true,waveform:[],size:1,codec:'h264'}];
+  while(p.tracks.length<23)p.tracks.push(makeTrack('video','追加'));
+  p.tracks=numberTracks(p).tracks;s.load(p);s.seek(0);const before=useEditor.getState();s.addAsset('source');
+  expect(useEditor.getState().project).toBe(p);expect(useEditor.getState().history).toEqual(before.history);expect(useEditor.getState().selected).toEqual(before.selected);expect(useEditor.getState().playhead).toBe(0);
 });
 
 it('separates arrow/box/caption placements without changing time or existing objects',()=>{
@@ -76,6 +69,101 @@ it('pastes linked audio and video at the original times on distinct fresh lanes'
   const next=useEditor.getState().project,copies=next.clips.slice(2);expect(next.tracks).toHaveLength(6);expect(copies.every(c=>c.start===2.017)).toBe(true);
   expect(copies[0].linkId).toBe(copies[1].linkId);expect(copies[0].linkId).not.toBe('pair');
   copies.forEach((c,i)=>expect(c.trackId).not.toBe(p.clips[i].trackId));expect(next.clips.slice(0,2)).toEqual(p.clips);
+  expect(copies[0].trackId).toBe(next.tracks[0].id);expect(copies[1].trackId).toBe(next.tracks.at(-1)!.id);
+  expect(next.tracks.slice(1,-1)).toEqual(p.tracks);
+  s.undo();expect(useEditor.getState().project).toEqual(p);s.redo();expect(useEditor.getState().project).toEqual(next);
+});
+
+it('preserves the source layer order when pasting several tracks regardless of clip creation order',()=>{
+  for(const reversed of [false,true]){
+    const p=emptyProject(),s=useEditor.getState();p.tracks=numberTracks(p).tracks;
+    const top={...makeClip(p.tracks[0].id,0),id:'top',name:'前景',text:'前景'};
+    const bottom={...makeClip(p.tracks[1].id,0),id:'bottom',name:'背景',text:'背景'};
+    p.clips=reversed?[bottom,top]:[top,bottom];
+    s.load(p);s.select(['top','bottom']);s.copy();s.seek(0);s.paste();
+    const next=useEditor.getState().project,copies=next.clips.slice(2);
+    expect(copies.find(c=>c.name===top.name)!.trackId).toBe(next.tracks[0].id);
+    expect(copies.find(c=>c.name===bottom.name)!.trackId).toBe(next.tracks[1].id);
+    expect(next.tracks.slice(2)).toEqual(p.tracks);expect(next.clips.slice(0,2)).toEqual(p.clips);
+    expect(copies.every(c=>c.start===0)).toBe(true);
+    s.undo();expect(useEditor.getState().project).toEqual(p);s.redo();expect(useEditor.getState().project).toEqual(next);
+  }
+});
+
+it('keeps copied foreground above copied background when only one source lane collides',()=>{
+  for(const blocked of ['top','bottom']){
+    const p=emptyProject(),s=useEditor.getState();p.tracks=numberTracks(p).tracks;
+    const top={...makeClip(p.tracks[0].id,0),id:'top',name:'前景'};
+    const bottom={...makeClip(p.tracks[1].id,0),id:'bottom',name:'背景'};
+    p.clips=[bottom,top,{...(blocked==='top'?top:bottom),id:'blocker',start:10,name:'既存'}];
+    s.load(p);s.select(['top','bottom']);s.copy();s.seek(10);s.paste();
+    const next=useEditor.getState().project,copies=next.clips.slice(3);
+    const layer=(name:string)=>next.tracks.findIndex(t=>t.id===copies.find(c=>c.name===name)!.trackId);
+    expect(layer(top.name)).toBeLessThan(layer(bottom.name));
+    const added=blocked==='bottom'?2:1;
+    expect(next.tracks.slice(added)).toEqual(p.tracks);expect(next.clips.slice(0,3)).toEqual(p.clips);
+    expect(copies.every(c=>c.start===10)).toBe(true);
+    s.undo();expect(useEditor.getState().project).toEqual(p);s.redo();expect(useEditor.getState().project).toEqual(next);
+  }
+});
+
+it('keeps a free visual on its lane when only audio on a Video lane collides at the 24-track limit',()=>{
+  for(const reversed of [false,true]){
+    const p=emptyProject(),s=useEditor.getState();while(p.tracks.length<23)p.tracks.push(makeTrack('video','追加'));
+    const asset={id:'tone',name:'tone',path:'tone.mp3',url:'',thumbnail:'',kind:'audio' as const,duration:5,width:0,height:0,fps:0,hasAudio:true,waveform:[],size:1,codec:'mp3'};
+    p.assets=[asset];
+    const visual={...makeClip(p.tracks[0].id,0),id:'visual',name:'前景'};
+    const sound={...makeClip(p.tracks[1].id,0,asset),id:'sound',name:'音声'};
+    const blocker={...makeClip(p.tracks[1].id,10,asset),id:'blocker',name:'既存音声'};
+    p.clips=[...(reversed?[sound,visual]:[visual,sound]),blocker];p.tracks=numberTracks(p).tracks;
+    s.load(p);s.select(['visual','sound']);s.copy();s.seek(10);s.paste();
+    const next=useEditor.getState().project,copies=next.clips.filter(c=>!p.clips.some(old=>old.id===c.id));
+    expect(next.tracks).toHaveLength(24);expect(next.tracks.slice(1)).toEqual(p.tracks);
+    expect(copies.find(c=>c.name==='前景')!.trackId).toBe(p.tracks[0].id);
+    expect(copies.find(c=>c.name==='音声')!.trackId).toBe(next.tracks[0].id);
+    expect(copies.every(c=>c.start===10)).toBe(true);expect(next.clips.slice(0,3)).toEqual(p.clips);
+    s.undo();expect(useEditor.getState().project).toEqual(p);s.redo();expect(useEditor.getState().project).toEqual(next);
+  }
+});
+
+it('does not promote free audio on a Video lane with a displaced visual background at the track limit',()=>{
+  const p=emptyProject(),s=useEditor.getState();while(p.tracks.length<23)p.tracks.push(makeTrack('video','追加'));
+  const asset={id:'tone',name:'tone',path:'tone.mp3',url:'',thumbnail:'',kind:'audio' as const,duration:5,width:0,height:0,fps:0,hasAudio:true,waveform:[],size:1,codec:'mp3'};
+  p.assets=[asset];
+  const sound={...makeClip(p.tracks[0].id,0,asset),id:'sound',name:'前景側の音声'};
+  const visual={...makeClip(p.tracks[1].id,0),id:'visual',name:'背景'};
+  p.clips=[sound,visual,{...visual,id:'blocker',start:10,name:'既存映像'}];p.tracks=numberTracks(p).tracks;
+  s.load(p);s.select(['sound','visual']);s.copy();s.seek(10);s.paste();
+  const next=useEditor.getState().project,copies=next.clips.slice(3);
+  expect(next.tracks).toHaveLength(24);expect(next.tracks.slice(1)).toEqual(p.tracks);
+  expect(copies.find(c=>c.name==='前景側の音声')!.trackId).toBe(p.tracks[0].id);
+  expect(copies.find(c=>c.name==='背景')!.trackId).toBe(next.tracks[0].id);
+  expect(next.clips.slice(0,3)).toEqual(p.clips);
+  s.undo();expect(useEditor.getState().project).toEqual(p);s.redo();expect(useEditor.getState().project).toEqual(next);
+});
+
+it('rejects a batch atomically if preserving its layer order would exceed the track limit',()=>{
+  const p=emptyProject(),s=useEditor.getState();while(p.tracks.length<23)p.tracks.push(makeTrack('video','追加'));
+  const top={...makeClip(p.tracks[0].id,0),id:'top'},bottom={...makeClip(p.tracks[1].id,0),id:'bottom'};
+  p.clips=[top,bottom,{...bottom,id:'blocker',start:10}];p.tracks=numberTracks(p).tracks;
+  s.load(p);s.select(['top','bottom']);s.copy();s.seek(10);const before=useEditor.getState();s.paste();
+  expect(useEditor.getState().project).toBe(p);expect(useEditor.getState().history).toEqual(before.history);expect(useEditor.getState().selected).toEqual(before.selected);
+});
+
+it('adds an overlapping imported video above all existing lanes and its audio below them',()=>{
+  const p=emptyProject(),s=useEditor.getState();
+  const asset={id:'outer-source',name:'映像',path:'video.mp4',url:'',thumbnail:'',kind:'video' as const,duration:3,width:320,height:180,fps:30,hasAudio:true,waveform:[],size:1,codec:'h264'};
+  p.assets=[asset];
+  p.tracks[0]={...p.tracks[0],name:'最上段の字幕',autoName:false};
+  p.clips=p.tracks.map((track,i)=>({...makeClip(track.id,0,asset),id:`existing-${i}`,kind:track.kind,audioMuted:true}));
+  s.load(p);s.seek(0);s.addAsset(asset.id);
+  const next=useEditor.getState().project,added=next.clips.slice(p.clips.length);
+  expect(next.tracks.slice(1,-1)).toEqual(p.tracks);expect(next.clips.slice(0,p.clips.length)).toEqual(p.clips);
+  expect(next.tracks[0].name).toBe('Video3');expect(next.tracks.at(-1)!.name).toBe('Audio3');
+  expect(added.find(c=>c.kind==='video')!.trackId).toBe(next.tracks[0].id);
+  expect(added.find(c=>c.kind==='audio')!.trackId).toBe(next.tracks.at(-1)!.id);
+  expect(added[0].linkId).toBe(added[1].linkId);
+  s.undo();expect(useEditor.getState().project).toEqual(p);s.redo();expect(useEditor.getState().project).toEqual(next);
 });
 it('rejects an overlapping addition at track capacity without changing project/history/selection',()=>{
   const p=emptyProject(),s=useEditor.getState();while(p.tracks.length<24)p.tracks.push(makeTrack('video','追加'));

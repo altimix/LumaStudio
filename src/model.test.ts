@@ -136,7 +136,7 @@ describe('long media removal restores usable zoom', () => {
 
 it('rebinds zoom when playback returns from a distant empty seek to the sequence', () => {
  const s=useEditor.getState();s.load(fixture());
- for(const action of [()=>s.togglePlay(),()=>s.shuttle(1),()=>s.shuttle(-1),()=>s.addAsset(asset.id,0)]){
+ for(const action of [()=>s.togglePlay(),()=>s.shuttle(1),()=>s.shuttle(-1)]){
   s.stop();s.seek(60*86400);s.setZoom(.01);expect(useEditor.getState().zoom).toBeLessThan(1);action();expect(useEditor.getState().zoom).toBeGreaterThanOrEqual(8);
  }
 });
