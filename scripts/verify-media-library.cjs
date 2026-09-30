@@ -109,6 +109,7 @@ async function verify() {
     await fs.writeFile(projectFile, JSON.stringify({ ...saved, name: '長尺タイムライン 30日検証', clips: [longTitle] }));
     await page.keyboard.press('Control+o');
     await page.getByRole('button', { name: '長尺タイムライン 30日検証', exact: true }).waitFor();
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1100, 690));
     await page.keyboard.press('End'); await visibleHead();
     assert.ok(await page.locator('.ruler-tick').count() < 100); assert.ok(await page.locator('.timeline-scroll').evaluate(v => v.scrollWidth) <= 10000001);
     await page.getByRole('button', { name: 'タイムライン全体を表示', exact: true }).click(); await visibleHead();
@@ -116,13 +117,25 @@ async function verify() {
     const labels = await page.locator('.ruler-tick span').allTextContents(); assert.ok(labels.every(label => /^\d{2,}:\d{2}:\d{2}:\d{2}$/.test(label))); assert.ok(labels.some(label => Number(label.split(':')[0]) >= 100)); checks.push('thirty day timeline has bounded ruler rendering, complete hours and reachable ending');
     await page.keyboard.press('Home'); await visibleHead();
     const zoomBefore = Number(await page.getByRole('slider', { name: 'タイムラインのズーム', exact: true }).inputValue());
-    const titleRect = await page.locator('.timeline-clip.title').boundingBox(), handle = await page.locator('.timeline-clip.title .trim-handle.right').boundingBox();
-    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2); await page.mouse.down();
+    const titleClip = page.locator('.timeline-clip.title');
+    // Each media addition creates outside tracks, so the title can be below the
+    // viewport in a small window. Scroll its row into view before trimming it.
+    await titleClip.locator('.trim-handle.right').scrollIntoViewIfNeeded();
+    await titleClip.evaluate(el => {
+      const view = el.closest('.timeline-scroll'), rect = el.getBoundingClientRect(), bounds = view.getBoundingClientRect();
+      const top = bounds.top + view.clientTop + view.querySelector('.timeline-ruler').getBoundingClientRect().height;
+      if (rect.top < top) view.scrollTop += rect.top - top - 8;
+    });
+    const titleRect = await titleClip.boundingBox(), handle = await titleClip.locator('.trim-handle.right').boundingBox();
+    const pointer = { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 };
+    assert.equal(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('.trim-handle.right')?.closest('[data-clip-id]')?.getAttribute('data-clip-id'), pointer), longTitle.id, 'visible pointer target is the long title right trim handle');
+    await page.screenshot({ path: path.join(results, 'media-library-long-trim-visible.png') });
+    await page.mouse.move(pointer.x, pointer.y); await page.mouse.down();
     await page.mouse.move(titleRect.x - 10, handle.y + handle.height / 2);
     await page.waitForFunction(() => Number(document.querySelector('[aria-label="タイムラインのズーム"]').value) >= 8);
     await page.keyboard.press('Escape'); await page.mouse.up();
     assert.equal(Number(await page.getByRole('slider', { name: 'タイムラインのズーム', exact: true }).inputValue()), zoomBefore);
-    assert.ok(await page.locator('.timeline-scroll').evaluate(v => v.scrollWidth) <= 10000001); checks.push('canceling a temporary short trim restores the bounded long-project zoom');
+    assert.ok(await page.locator('.timeline-scroll').evaluate(v => v.scrollWidth) <= 10000001); checks.push('scrolling the title row into view at 1100 × 690 allows canceling a temporary short trim and restores the bounded long-project zoom');
     assert.equal(await hash(source), sourceHash); assert.equal(await hash(unused), unusedHash); checks.push('original media files retain their hashes');
     assert.deepEqual(errors, []); await page.screenshot({ path: path.join(results, 'media-library.png') });
     await fs.writeFile(path.join(results, 'media-library-verification.json'), JSON.stringify({ passed: true, packaged: !!executablePath, checks, sourceSeconds: asset.duration, exportedSeconds: Number(info.format.duration), tailPixel: rgb, tailRms, sourceFilesUnchanged: true, consoleErrors: errors }, null, 2));
