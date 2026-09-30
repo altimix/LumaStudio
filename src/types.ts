@@ -17,7 +17,7 @@ export interface GaussianBlur { x: number; y: number; width: number; height: num
 export interface Graphic { shape: 'arrow' | 'rectangle' | 'ellipse'; width:number; height:number; lineWidth:number; fill:boolean; fillColor:string; flipX?:boolean; flipY?:boolean }
 export interface Asset {
   id: string; name: string; path: string; url: string; thumbnail: string; kind: MediaKind;
-  duration: number; width: number; height: number; fps: number; hasAudio: boolean;
+  duration: number; audioDuration?: number; width: number; height: number; fps: number; hasAudio: boolean;
   waveform: number[]; size: number; codec: string; proxy?: boolean; previewProxy?: boolean; proxyWarning?: string; offline?: boolean; revision?: string;
 }
 export interface Track { id: string; name: string; autoName?: boolean; audioSourceTrackId?: string; kind: 'video' | 'audio'; muted: boolean; hidden: boolean; locked: boolean; solo: boolean }

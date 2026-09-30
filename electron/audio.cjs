@@ -10,7 +10,9 @@ async function decodeAudioChunk(file, index, signal) {
   // Compressed audio needs decoder pre-roll; discard it rather than playing the
   // decoder's startup transient at every 8-second boundary (and in reverse).
   const seek = Math.max(0, index * CHUNK_SECONDS - 1); const trim = index * CHUNK_SECONDS - seek;
-  const data = await run(ffmpeg, ['-v', 'error', '-ss', String(seek), '-i', file,
+  // Seeking even to zero can make the MP3 decoder discard its gapless priming
+  // samples twice (notably at 16/22.05 kHz). Read the first window normally.
+  const data = await run(ffmpeg, ['-v', 'error', ...(seek > 0 ? ['-ss', String(seek)] : []), '-i', file,
     '-map', '0:a:0', '-vn', '-af', `aresample=${SAMPLE_RATE}:async=1:first_pts=0,apad,atrim=start=${trim}:duration=${CHUNK_SECONDS},asetpts=PTS-STARTPTS`,
     '-t', String(CHUNK_SECONDS), '-ac', String(CHANNELS), '-ar', String(SAMPLE_RATE), '-f', 'f32le', 'pipe:1'], { signal });
   if (data.length !== SAMPLE_RATE * CHUNK_SECONDS * CHANNELS * 4) throw new Error('音声データの長さが不正です。');

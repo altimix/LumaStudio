@@ -44,8 +44,8 @@ function buildAudioGraph(p, output, audioPaths, range, mp3) {
     if (a.offline) throw new Error('音声素材がオフラインです。再リンクしてください。');
     if (c.audioTreatment && !audioPaths[c.id]) throw new Error('自動調整した音声を準備できませんでした。');
     const window = { ...whole, start: start - from, duration: end - start, sourceIn: whole.sourceIn + (start - whole.start) * c.speed, sourceDuration: (end - start) * c.speed };
-    const sourceTrim = Math.min(1, window.sourceIn);
-    args.push('-ss', number(window.sourceIn - sourceTrim), '-t', number(window.sourceDuration + sourceTrim), '-i', c.audioTreatment ? audioPaths[c.id] : a.path);
+    const sourceTrim = Math.min(1, window.sourceIn), seek = window.sourceIn - sourceTrim;
+    args.push(...(seek > 0 ? ['-ss', number(seek)] : []), '-t', number(window.sourceDuration + sourceTrim), '-i', c.audioTreatment ? audioPaths[c.id] : a.path);
     const index = labels.length;
     filters.push(clipAudioFilter({ ...c, start: c.start - from }, index, (envelopes.get(c.id) || []).map(e => ({ ...e, start: e.start - from, end: e.end - from })), window, sourceTrim));
     labels.push(`[a${index}]`);

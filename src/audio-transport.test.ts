@@ -49,7 +49,7 @@ describe('audio command lifetime', () => {
   });
   it('meters only played mixed PCM, flushes a short peak on K, and clears queued future audio', async () => {
     const samples = pcm();
-    samples[100 * 2] = 1.25; samples[100 * 2 + 1] = -.5;
+    samples[200 * 2] = 1.25; samples[200 * 2 + 1] = -.5;
     samples[24000 * 2] = 2;
     const { context, project, transport, meter } = setup(async () => samples);
     try {

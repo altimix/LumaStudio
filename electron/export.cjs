@@ -60,6 +60,7 @@ function validateProject(p, { allowForeignPaths = false } = {}) {
     finite(a.fps, 0, 1000, '素材のFPS'); finite(a.size, 0, Number.MAX_SAFE_INTEGER, '素材のサイズ');
     if (a.previewProxy !== undefined && (typeof a.previewProxy !== 'boolean' || a.kind !== 'video')) throw new Error('プレビュー用プロキシの指定が不正です。');
     assetIds.add(a.id); finite(a.duration, 0.001, MAX_MEDIA_SECONDS, '素材の長さ');
+    if (a.audioDuration !== undefined) finite(a.audioDuration, 0, a.duration, '音声の実サンプルの長さ');
   }
   const clipIds = new Set();
   for (const c of p.clips) {
@@ -299,12 +300,12 @@ function buildExport(p, settings, sourcePaths, output, audioPaths = {}, maskPath
       }
       visuals.push({clip:{...c,start:videoWindow.start,duration:videoWindow.duration},label,full:moving||transitionClips.has(c.id)});
     }
-    if (audio) {
+    if (audio && audioWindow.duration > 0) {
       if (c.audioTreatment&&!audioPaths[c.id]) throw new Error('自動調整した音声を準備できませんでした。');
       // Warm up compressed audio before each cut, matching preview decoding.
       // Keep this input independent of the video seek and discard the pre-roll.
       const sourceTrim=Math.min(1,audioWindow.sourceIn),seek=audioWindow.sourceIn-sourceTrim;
-      args.push('-ss', number(seek), '-t', number(audioWindow.sourceDuration+sourceTrim), '-i', c.audioTreatment?audioPaths[c.id]:source);
+      args.push(...(seek > 0 ? ['-ss', number(seek)] : []), '-t', number(audioWindow.sourceDuration+sourceTrim), '-i', c.audioTreatment?audioPaths[c.id]:source);
       const audioIndex=input++;
       filters.push(clipAudioFilter(c, audioIndex, envelopes.get(c.id),audioWindow,sourceTrim)); audios.push(`[a${audioIndex}]`);
     }
