@@ -101,7 +101,10 @@ export function audioEnvelopes(p){
       for(const direction of ['in','out']){
         const edge=direction==='in'?window.start:window.end;
         const nominalEdge=direction==='in'?clip.start:clip.start+clip.duration;
-        if((Math.abs(edge-nominalEdge)<epsilon&&continuousEdges.has(`${clip.id}:${direction}`))||plans.some(t=>t.audio&&(direction==='out'?t.fromId===clip.id:t.toId===clip.id)))continue;
+        // A transition that merely crosses the last PCM sample can still
+        // leave a nonzero gain there when the source ends before the edit.
+        const transitionOwnsEdge=(map.get(clip.id)||[]).some(e=>e.direction===direction&&crossfadeGain([e],edge)<epsilon);
+        if((Math.abs(edge-nominalEdge)<epsilon&&continuousEdges.has(`${clip.id}:${direction}`))||transitionOwnsEdge)continue;
         const authoredFade=direction==='in'?clip.fadeIn>0&&edge===clip.start:clip.fadeOut>0&&edge===clip.start+clip.duration;
         if(authoredFade)continue;
         const duration=Math.min(.003,window.duration/2),list=map.get(clip.id)||[];

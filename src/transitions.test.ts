@@ -141,6 +141,31 @@ it('ramps a continuous split that reaches the actual audio endpoint before the c
  expect(crossfadeGain(continuous.get('c1'),5.5)).toBe(0);
 });
 
+it('ramps the real PCM endpoint when an outgoing transition starts after its audio ended',()=>{
+ const p=fixture();p.assets=[{...asset,audioDuration:5}];
+ p.clips=p.clips.slice(0,2).map((c,i)=>({...c,start:i*10,in:0,duration:10,speed:1}));
+ const next=applyTransition(p,'c0','c1',{duration:1,audio:'constantGain'},'late');
+ const env=audioEnvelopes(next),out=env.get('c0');
+ expect(mediaWindow(next.clips[0],next.assets[0],transitionPlan(next),'audio').end).toBe(5);
+ expect(crossfadeGain(out,5-.0015)).toBeCloseTo(.5);
+ expect(crossfadeGain(out,5)).toBe(0);
+ expect(out?.some(e=>e.direction==='out'&&e.end===5)).toBe(true);
+});
+
+it('ramps a short PCM tail even when a fixed or legacy transition is already fading it',()=>{
+ for(const legacy of [false,true]){
+  const p=fixture();p.assets=[{...asset,duration:20,audioDuration:legacy?9.5:9.75}];
+  p.clips=p.clips.slice(0,2).map((c,i)=>({...c,start:i*(legacy?9:10),in:0,duration:10,speed:1}));
+  const next=legacy?{...p,transitions:[{id:'old',fromId:'c0',toId:'c1',audio:'constantGain' as const}]}:applyTransition(p,'c0','c1',{duration:1,audio:'constantGain'},'fixed');
+  const end=legacy?9.5:9.75,out=audioEnvelopes(next).get('c0');
+  expect(mediaWindow(next.clips[0],next.assets[0],transitionPlan(next),'audio').end).toBe(end);
+  expect(out?.filter(e=>e.direction==='out')).toHaveLength(2);
+  expect(crossfadeGain(out,end-.003)).toBeGreaterThan(.49);
+  expect(crossfadeGain(out,end-.0015)).toBeCloseTo(.25,1);
+  expect(crossfadeGain(out,end)).toBe(0);
+ }
+});
+
 it('an earlier A-to-B transition does not suppress the later B-to-C hard-cut ramps',()=>{
  const p=fixture();p.clips=p.clips.slice(0,3);
  const n=applyTransition(p,'c0','c1',{duration:1,audio:'constantGain'},'t'),env=audioEnvelopes(n);
