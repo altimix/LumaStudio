@@ -7,7 +7,7 @@ Issue: https://github.com/altimix/LumaStudio/issues/37
 初めて使う人が開発者、開発目的、配布元、データの扱いを判断できる公式サイトにする。
 
 - トップページに安藤昇氏の提供写真、氏名、講師としての活動、開発者コメントを掲載する。
-- `/developer/` に学校で動画編集の基本を学ぶために作った意図、社会人・YouTube用途、学校の導入判断に必要な情報を掲載する。
+- `/developer/` に学校で動画編集の基本を学ぶために作った意図と、学校の導入判断に必要な情報を掲載する。社会人・YouTube用途は補足として案内する。Issue #147の学校向けの位置付けは `147-school-website.md` を参照する。
 - 肩書きと写真は本人の依頼内容による。コメントは本人が提供した趣旨を文章化し、動画の逐語引用としては扱わない。
 - 写真は提供された `ando2026.png` の原本を `assets/noboru-ando.png` として使用する。生成・顔の加工をしない。
 - 国産は日本の開発者による企画・開発を意味する。第三者ソフトウェアの由来や所属先の公式推奨を誤認させない。
@@ -15,7 +15,7 @@ Issue: https://github.com/altimix/LumaStudio/issues/37
 
 ## 検索向けの要件
 
-- トップのtitle・descriptionに製品名、開発者名、国産・無料動画編集ソフトを自然に記載する。
+- トップのtitle・descriptionに製品名、開発者名、学校で気軽に使える無料動画編集アプリという位置付けを自然に記載する。国産の意味は開発者紹介で説明する。
 - 全ページは日本語の静的HTMLで本文を配信し、ページごとにtitle・description・canonicalを持つ。
 - JSON-LDでWebSite、Organization、WebPageを記述する。トップはSoftwareApplicationとPerson、開発者ページはAboutPageとPersonを追加する。架空の評価・レビューは付けない。
 - 通常ページをindex可能にし、404はnoindexと実際のHTTP 404を維持する。
