@@ -3,6 +3,7 @@ import { emptyProject, makeClip, makeTrack } from './model';
 import { useEditor } from './store';
 import { validateClipLinks } from '../shared/clip-links.mjs';
 import type { Asset } from './types';
+import { MAX_MEDIA_SECONDS } from '../shared/time.mjs';
 const asset:Asset={id:'video',name:'映像',kind:'video',path:'video.mp4',url:'',thumbnail:'',duration:3,width:320,height:180,fps:30,hasAudio:false,waveform:[],size:1,codec:'h264'};
 it.each(['video','image','audio'] as const)('always creates an outer %s lane at the exact playhead, even when all existing lanes are empty and locked',kind=>{
   const p=emptyProject(),s=useEditor.getState();p.assets=[{...asset,kind,hasAudio:kind==='audio'}];p.tracks.forEach(t=>{t.locked=true;});
@@ -48,4 +49,9 @@ it('puts a newly added drawing sound in a dedicated bottom audio lane and reject
   s.undo();expect(useEditor.getState().project).toBe(p);s.redo();expect(useEditor.getState().project).toBe(next);
   const full=emptyProject();while(full.tracks.length<24)full.tracks.push(makeTrack('audio','空き'));
   s.load(full);expect(s.addDrawing(input,sound)).toBe(false);expect(useEditor.getState().project).toBe(full);expect(useEditor.getState().history).toHaveLength(0);
+});
+
+it('rejects a batch whose media ends beyond the sequence limit without creating tracks',()=>{
+  const p=emptyProject(),s=useEditor.getState();p.assets=[asset];s.load(p);s.seek(MAX_MEDIA_SECONDS-1,true);
+  expect(s.addAssets([asset.id])).toBe(false);expect(useEditor.getState().project).toBe(p);expect(useEditor.getState().history).toHaveLength(0);
 });

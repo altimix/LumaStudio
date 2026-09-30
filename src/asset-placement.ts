@@ -6,7 +6,7 @@ import { MAX_MEDIA_SECONDS } from '../shared/time.mjs';
 
 /** New library media gets dedicated outer lanes at one captured playhead position. */
 export function placeAssetsOutside(project: Project, ids: readonly string[], start: number) {
-  if (!Number.isFinite(start) || start < 0 || start > MAX_MEDIA_SECONDS) throw Error('素材の追加位置が不正です。');
+  if (!Number.isFinite(start) || start < 0 || start >= MAX_MEDIA_SECONDS) throw Error('素材の追加位置が不正です。');
   const assets = [...new Set(ids)].map(id => {
     const asset = project.assets.find(a => a.id === id);
     if (!asset) throw Error('追加する素材が見つかりません。');
@@ -23,6 +23,7 @@ export function placeAssetsOutside(project: Project, ids: readonly string[], sta
     (track.kind==='video' ? videoTracks : audioTracks).push(track);
     // Preserve an exact seek position; normalize only source duration and properties.
     const clip = { ...normalizeClip(makeClip(track.id,start,asset),project), start };
+    if (start+clip.duration > MAX_MEDIA_SECONDS) throw Error('素材の終了位置がシーケンスの上限を超えます。再生ヘッドを手前に移動してください。');
     added.push(clip.id);
     next = { ...next, tracks:[...next.tracks,track], clips:[...next.clips,clip] };
     if (asset.kind==='video' && asset.hasAudio) {
