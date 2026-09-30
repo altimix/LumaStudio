@@ -54,13 +54,19 @@ export function separateOverlappingClips(project: Project, ids: string[], newId 
       for (const clip of partition) placements.set(clip.id, track.id);
     }
   }
-  // A background promoted to the outside must remain below the batch's
-  // foreground, including copies whose original lanes happened to be free.
-  const deepestVideo = Math.max(-1, ...tracks.filter(t => t.kind === 'video' && additions.has(t.id)).map(t => additions.get(t.id)!));
+  // Only displaced visuals affect stacking. A Video lane may contain audio,
+  // and moving that audio outside must not also move a free foreground visual.
+  let deepestVisual = -1;
+  for (const clip of project.clips) {
+    if (!selected.has(clip.id) || clip.kind === 'audio') continue;
+    const order = additions.get(placements.get(clip.id) || '');
+    if (order !== undefined) deepestVisual = Math.max(deepestVisual, order);
+  }
   for (const [trackId, group] of groups) {
     const order = project.tracks.findIndex(t => t.id === trackId), source = project.tracks[order];
-    if (source.kind !== 'video' || order >= deepestVideo) continue;
+    if (source.kind !== 'video' || order >= deepestVisual) continue;
     for (const clip of [...group].sort((a,b) => a.start-b.start)) {
+      if (clip.kind === 'audio') continue;
       if (additions.has(placements.get(clip.id) || clip.trackId)) continue;
       let track = tracks.find(t => additions.get(t.id) === order && !group.some(other => (placements.get(other.id) || other.trackId) === t.id && overlaps(other, clip)));
       if (!track) track = addLane(source, order);
