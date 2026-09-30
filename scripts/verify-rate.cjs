@@ -4,7 +4,7 @@ async function verify(){
   const results=path.join(root,'test-results');await fs.mkdir(results,{recursive:true});await fs.mkdir(path.join(root,'.local'),{recursive:true});
   const profile=await fs.mkdtemp(path.join(root,'.local','rate-profile-')),env={...process.env,LUMA_TEST_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;
   const videoFile=path.join(results,'速度変更の映像.mp4'),audioFile=path.join(results,'速度変更の音声.wav');
-  await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','color=blue:s=320x180:r=30:d=6','-vf',"drawbox=w=iw:h=ih:color=red:t=fill:enable='gte(t,3)'",'-c:v','libx264','-preset','ultrafast','-pix_fmt','yuv420p',videoFile]);
+  await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','color=blue:s=320x180:r=30:d=6','-f','lavfi','-i','sine=frequency=440:duration=6','-vf',"drawbox=w=iw:h=ih:color=red:t=fill:enable='gte(t,3)'",'-c:v','libx264','-preset','ultrafast','-pix_fmt','yuv420p','-c:a','aac',videoFile]);
   await run(ffmpeg,['-y','-v','error','-f','lavfi','-i','sine=frequency=660:duration=6',audioFile]);
   const executablePath=process.env.LUMA_VERIFY_EXE,app=await electron.launch({executablePath,args:executablePath?[]:[root],env,timeout:60000}),page=await app.firstWindow(),checks=[],errors=[];page.on('pageerror',e=>errors.push(e.message));
   try{
